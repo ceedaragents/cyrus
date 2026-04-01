@@ -125,6 +125,7 @@ import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
+import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
@@ -212,6 +213,7 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	private defaultSkillsDeployer: DefaultSkillsDeployer;
 	private skillsPluginResolver: SkillsPluginResolver;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
@@ -453,6 +455,10 @@ export class EdgeWorker extends EventEmitter {
 			gitService: this.gitService,
 			config: this.config,
 		});
+		this.defaultSkillsDeployer = new DefaultSkillsDeployer(
+			this.cyrusHome,
+			this.logger,
+		);
 		this.skillsPluginResolver = new SkillsPluginResolver(
 			this.cyrusHome,
 			this.logger,
@@ -465,6 +471,9 @@ export class EdgeWorker extends EventEmitter {
 	 * Start the edge worker
 	 */
 	async start(): Promise<void> {
+		// Deploy default skills to cyrusHome if not already present (one-time setup)
+		await this.defaultSkillsDeployer.ensureDeployed();
+
 		// Scaffold user skills plugin manifest if needed (one-time setup)
 		await this.skillsPluginResolver.ensureUserPluginScaffolded();
 

@@ -1,6 +1,5 @@
 import { access, mkdir, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { SdkPluginConfig } from "cyrus-claude-runner";
 import type { ILogger } from "cyrus-core";
 
@@ -8,17 +7,17 @@ import type { ILogger } from "cyrus-core";
  * Resolves skills plugins for agent sessions.
  *
  * Two plugin sources are supported:
- * 1. Bundled plugin — default Cyrus workflow skills shipped with the package
- * 2. User skills plugin — custom skills managed by the CYHOST UI
+ * 1. Internal plugin — default Cyrus workflow skills deployed to ~/.cyrus/cyrus-skills-plugin/
+ *    (editable by the user)
+ * 2. User skills plugin — custom skills managed by the CYHOST UI at ~/.cyrus/user-skills-plugin/
  *
- * User skills live outside the repository (in ~/.cyrus/user-skills-plugin/)
- * so they are never committed to the user's repo.
+ * Both live outside the repository so they are never committed to the user's repo.
  *
- * Plugin ordering: user plugin is loaded before bundled plugin so that
- * user-defined skills take precedence over bundled skills with the same name.
+ * Plugin ordering: user plugin is loaded before internal plugin so that
+ * user-defined skills take precedence over internal skills with the same name.
  */
 export class SkillsPluginResolver {
-	private readonly bundledPluginPath: string;
+	private readonly internalPluginPath: string;
 	private readonly userPluginPath: string;
 	private readonly userSkillsDir: string;
 
@@ -26,11 +25,7 @@ export class SkillsPluginResolver {
 		private readonly cyrusHome: string,
 		private readonly logger: ILogger,
 	) {
-		this.bundledPluginPath = join(
-			dirname(fileURLToPath(import.meta.url)),
-			"..",
-			"cyrus-skills-plugin",
-		);
+		this.internalPluginPath = join(this.cyrusHome, "cyrus-skills-plugin");
 		this.userPluginPath = join(this.cyrusHome, "user-skills-plugin");
 		this.userSkillsDir = join(this.userPluginPath, "skills");
 	}
@@ -71,25 +66,25 @@ export class SkillsPluginResolver {
 	}
 
 	/**
-	 * Resolve all available skills plugins (user + bundled).
+	 * Resolve all available skills plugins (user + internal).
 	 *
 	 * User plugin is listed first so user-defined skills take precedence
-	 * over bundled skills with the same name.
+	 * over internal skills with the same name.
 	 *
 	 * Pure query — no filesystem side effects.
 	 */
 	async resolve(): Promise<SdkPluginConfig[]> {
 		const plugins: SdkPluginConfig[] = [];
 
-		// User plugin first — user skills override bundled skills
+		// User plugin first — user skills override internal skills
 		const user = await this.resolveUserPlugin();
 		if (user) {
 			plugins.push(user);
 		}
 
-		const bundled = await this.resolveBundledPlugin();
-		if (bundled) {
-			plugins.push(bundled);
+		const internal = await this.resolveInternalPlugin();
+		if (internal) {
+			plugins.push(internal);
 		}
 
 		await this.logConflicts(plugins);
@@ -101,7 +96,7 @@ export class SkillsPluginResolver {
 	 * Discover all available skill names from the given plugin configs.
 	 *
 	 * Reads the `skills/` subdirectory of each plugin path and returns
-	 * deduplicated skill names (user skills shadow bundled ones due to
+	 * deduplicated skill names (user skills shadow internal ones due to
 	 * insertion order of the Set).
 	 */
 	async discoverSkillNames(plugins: SdkPluginConfig[]): Promise<string[]> {
@@ -156,15 +151,15 @@ export class SkillsPluginResolver {
 		);
 	}
 
-	private async resolveBundledPlugin(): Promise<SdkPluginConfig | null> {
-		if (await this.exists(this.bundledPluginPath)) {
+	private async resolveInternalPlugin(): Promise<SdkPluginConfig | null> {
+		if (await this.exists(this.internalPluginPath)) {
 			this.logger.debug(
-				`Using bundled skills plugin at ${this.bundledPluginPath}`,
+				`Using internal skills plugin at ${this.internalPluginPath}`,
 			);
-			return { type: "local", path: this.bundledPluginPath };
+			return { type: "local", path: this.internalPluginPath };
 		}
 		this.logger.warn(
-			`No bundled skills plugin found at ${this.bundledPluginPath}`,
+			`No internal skills plugin found at ${this.internalPluginPath}`,
 		);
 		return null;
 	}
@@ -184,7 +179,7 @@ export class SkillsPluginResolver {
 	}
 
 	/**
-	 * Detect and log skill name conflicts between user and bundled plugins.
+	 * Detect and log skill name conflicts between user and internal plugins.
 	 */
 	private async logConflicts(plugins: SdkPluginConfig[]): Promise<void> {
 		if (plugins.length < 2) {
@@ -204,13 +199,13 @@ export class SkillsPluginResolver {
 			}
 		}
 
-		// First set is user, second is bundled — find overlap
+		// First set is user, second is internal — find overlap
 		if (skillSets.length >= 2 && skillSets[0] && skillSets[1]) {
 			const userSkills = new Set(skillSets[0]);
 			const conflicts = skillSets[1].filter((s) => userSkills.has(s));
 			if (conflicts.length > 0) {
 				this.logger.info(
-					`User skills override bundled skills: ${conflicts.join(", ")}`,
+					`User skills override internal skills: ${conflicts.join(", ")}`,
 				);
 			}
 		}
