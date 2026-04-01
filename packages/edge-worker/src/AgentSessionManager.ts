@@ -67,6 +67,7 @@ export class AgentSessionManager extends EventEmitter {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private lastAssistantBodyBySession: Map<string, string> = new Map(); // Buffer: last assistant text per session for posting as response on result
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
@@ -473,6 +474,13 @@ export class AgentSessionManager extends EventEmitter {
 						sessionId,
 						message as SDKAssistantMessage,
 					);
+					// Buffer the text content so we can post it as the response when result arrives
+					if (assistantEntry.content) {
+						this.lastAssistantBodyBySession.set(
+							sessionId,
+							assistantEntry.content,
+						);
+					}
 					await this.syncEntryToActivitySink(assistantEntry, sessionId);
 					break;
 				}
@@ -561,15 +569,23 @@ export class AgentSessionManager extends EventEmitter {
 						: "claude";
 
 		// For error results, content may be in errors[] rather than result
-		const content =
-			"result" in resultMessage && typeof resultMessage.result === "string"
-				? resultMessage.result
-				: resultMessage.is_error &&
-						"errors" in resultMessage &&
-						Array.isArray(resultMessage.errors) &&
-						resultMessage.errors.length > 0
-					? resultMessage.errors.join("\n")
-					: "";
+		// For success results from Claude, prefer the buffered last assistant message
+		// (structured content) over result.result (plain-text duplicate).
+		const bufferedAssistant = this.lastAssistantBodyBySession.get(sessionId);
+		this.lastAssistantBodyBySession.delete(sessionId);
+		const content = resultMessage.is_error
+			? resultMessage.is_error &&
+				"errors" in resultMessage &&
+				Array.isArray(resultMessage.errors) &&
+				resultMessage.errors.length > 0
+				? resultMessage.errors.join("\n")
+				: "result" in resultMessage && typeof resultMessage.result === "string"
+					? resultMessage.result
+					: ""
+			: (bufferedAssistant ??
+				("result" in resultMessage && typeof resultMessage.result === "string"
+					? resultMessage.result
+					: ""));
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type

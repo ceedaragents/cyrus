@@ -11,6 +11,7 @@ import { join } from "node:path";
 import {
 	type CanUseTool,
 	type PermissionResult,
+	type Query,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
@@ -67,6 +68,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private readableLogStream: WriteStream | null = null;
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
+	private activeQuery: Query | null = null;
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
@@ -440,6 +442,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 						CLAUDE_CODE_ENABLE_TASKS: "true",
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+						CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
 					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
@@ -470,7 +473,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			};
 
 			// Process messages from the query
-			for await (const message of query(queryOptions)) {
+			this.activeQuery = query(queryOptions);
+			for await (const message of this.activeQuery) {
 				if (!this.sessionInfo?.isRunning) {
 					this.logger.info("Session was stopped, breaking from query loop");
 					break;
@@ -514,18 +518,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				// where subroutine transitions start before the runner has fully cleaned up
 				if (message.type === "result") {
 					this.pendingResultMessage = message;
-					// Complete streaming prompt immediately so it stops accepting input
-					if (this.streamingPrompt) {
-						this.logger.debug(
-							"Got result message, completing streaming prompt",
-						);
-						this.streamingPrompt.complete();
-					}
+					// Don't complete streamingPrompt here — keep the session warm for follow-up messages
 				} else {
 					this.emit("message", message);
 					this.processMessage(message);
 				}
 			}
+
+			this.activeQuery = null;
 
 			// Session completed successfully - mark as not running BEFORE emitting result
 			// This ensures any code checking isRunning() during result processing sees the correct state
@@ -577,6 +577,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.abortController = null;
+			this.activeQuery = null;
 			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
@@ -645,6 +646,19 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
+	 * Interrupt the current turn without killing the session.
+	 * The session stays warm and can accept new messages.
+	 */
+	async interrupt(): Promise<void> {
+		if (this.activeQuery) {
+			this.logger.info("Interrupting current turn");
+			await this.activeQuery.interrupt();
+		} else {
+			this.logger.debug("interrupt() called but no active query");
+		}
+	}
+
+	/**
 	 * Stop the current Claude session
 	 */
 	stop(): void {
@@ -659,6 +673,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 			this.streamingPrompt = null;
 		}
+
+		this.activeQuery = null;
 
 		if (this.sessionInfo) {
 			this.sessionInfo.isRunning = false;

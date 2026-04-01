@@ -180,6 +180,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
+	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -3717,24 +3718,46 @@ ${taskSection}`;
 			return;
 		}
 
-		// Stop the existing runner if it's active
+		// Double-stop detection: two stop signals within 10s → full abort
+		const now = Date.now();
+		const lastStop = this.lastStopTimeBySession.get(agentSessionId);
+		const isDoubleStop = lastStop !== undefined && now - lastStop < 10_000;
+		this.lastStopTimeBySession.set(agentSessionId, now);
+
 		const existingRunner = foundSession.agentRunner;
-		this.agentSessionManager.requestSessionStop(agentSessionId);
-		if (existingRunner) {
-			existingRunner.stop();
-			log.info(
-				`Stopped agent session for agent activity session ${agentSessionId}`,
+		const issueTitle = issue?.title || "this issue";
+		const senderName = webhook.agentSession.creator?.name || "user";
+
+		if (isDoubleStop) {
+			// Second stop within window — full kill
+			this.agentSessionManager.requestSessionStop(agentSessionId);
+			if (existingRunner) {
+				existingRunner.stop();
+				log.info(`Double-stop: fully aborted session ${agentSessionId}`);
+			}
+			this.lastStopTimeBySession.delete(agentSessionId);
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				`I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`,
+			);
+		} else {
+			// First stop — interrupt current turn, keep session warm
+			if (existingRunner?.interrupt) {
+				await existingRunner.interrupt();
+				log.info(
+					`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
+				);
+			} else if (existingRunner) {
+				// Runner doesn't support interrupt — fall back to full stop
+				this.agentSessionManager.requestSessionStop(agentSessionId);
+				existingRunner.stop();
+				log.info(`Stopped session ${agentSessionId} (no interrupt support)`);
+			}
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				`I've paused working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Tip:** Send stop again within 10 seconds to fully terminate the session.`,
 			);
 		}
-
-		// Post confirmation
-		const issueTitle = issue?.title || "this issue";
-		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
-
-		await this.agentSessionManager.createResponseActivity(
-			agentSessionId,
-			stopConfirmation,
-		);
 	}
 
 	/**
