@@ -142,7 +142,7 @@ export class SkillsPluginResolver {
 			"\n\n## Skills\n\n" +
 			`You have skills available via the Skill tool: ${skillsList}\n\n` +
 			"Choose the appropriate skill based on the context:\n\n" +
-			"- **Code changes requested** (feature, bug fix, refactor): Use `implementation` to write code, then `verify-and-ship` to run checks and create a PR, then `summarize` to post results.\n" +
+			"- **Code changes requested** (feature, bug fix, refactor): Use `implementation` to write code, then `verify-and-ship` to run checks and create a PR, then `summarize` to narrate results.\n" +
 			"- **Bug report or error**: Use `debug` to reproduce, root-cause, and fix, then `verify-and-ship`, then `summarize`.\n" +
 			"- **Question or research request**: Use `investigate` to search the codebase and provide an answer, then `summarize`.\n" +
 			"- **PR review feedback** (changes requested): Use `implementation` to address review comments, then `verify-and-ship`.\n\n" +
