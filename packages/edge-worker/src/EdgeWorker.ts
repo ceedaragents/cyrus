@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
 import type {
+	ClaudeRunnerConfig,
 	McpServerConfig,
 	SDKMessage,
 	WarmSession,
@@ -5267,10 +5268,10 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): Promise<{
-		config: AgentRunnerConfig;
-		runnerType: RunnerType;
-	}> {
+	): Promise<
+		| { config: ClaudeRunnerConfig; runnerType: "claude" }
+		| { config: AgentRunnerConfig; runnerType: Exclude<RunnerType, "claude"> }
+	> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
@@ -5308,8 +5309,7 @@ ${input.userComment}
 			const warmSession = this.warmInstances.get(sessionId);
 			if (warmSession) {
 				this.warmInstances.delete(sessionId);
-				(result.config as unknown as Record<string, unknown>).warmSession =
-					warmSession;
+				result.config.warmSession = warmSession;
 				log.debug("Attaching pre-warmed session to runner config");
 			}
 		}
