@@ -56,7 +56,7 @@ Remember: Your first message is internal planning. Use this time to:
 
 ## Skills
 
-You have skills available via the Skill tool: \`debug\`, \`f1-test-drive\`, \`implementation\`, \`investigate\`, \`summarize\`, \`verify-and-ship\`
+You have skills available via the Skill tool: \`debug\`, \`implementation\`, \`investigate\`, \`summarize\`, \`verify-and-ship\`
 
 Choose the appropriate skill based on the context:
 
