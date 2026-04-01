@@ -92,9 +92,12 @@ If **No** → skip to Completion.
 
 ```bash
 grep -c '^GITHUB_WEBHOOK_SECRET=.' ~/.cyrus/.env 2>/dev/null
+grep -c '^GITHUB_APP_ID=.' ~/.cyrus/.env 2>/dev/null
+grep -c '^GITHUB_APP_INSTALLATION_ID=.' ~/.cyrus/.env 2>/dev/null
+test -f ~/.cyrus/github-app.pem && echo "PEM exists" || echo "PEM missing"
 ```
 
-If the secret is already set (returns 1), skip to Step 11 (Install App).
+If all four checks pass (1, 1, 1, "PEM exists"), skip to Completion — webhooks are already configured.
 
 ### Step 6: Collect Inputs
 
@@ -140,8 +143,7 @@ Construct the manifest, substituting `AGENT_NAME` and `CYRUS_BASE_URL`:
   "default_events": [
     "issue_comment",
     "pull_request_review",
-    "pull_request_review_comment",
-    "pull_request_review_thread"
+    "pull_request_review_comment"
   ]
 }
 ```
@@ -156,12 +158,15 @@ Determine the creation URL:
 
 GitHub's manifest flow requires a **form POST** with a `manifest` field to the creation URL — the page itself does not have a manifest input field. All paths use the same helper HTML page approach.
 
-First, create the helper page (used by all paths):
+First, create the helper page (used by all paths). **Note:** The manifest JSON must be HTML-entity-escaped (replace `"` with `&quot;`) since it's placed in an HTML attribute:
 
 ```bash
-cat > /tmp/github-app-manifest.html << 'HTMLEOF'
+# Escape the manifest JSON for safe embedding in an HTML attribute
+MANIFEST_HTML_ESCAPED=$(echo '<MANIFEST_JSON>' | sed 's/"/\&quot;/g')
+
+cat > /tmp/github-app-manifest.html << HTMLEOF
 <form method="post" action="<CREATION_URL>">
-  <input type="hidden" name="manifest" value='<MANIFEST_JSON_ESCAPED>'>
+  <input type="hidden" name="manifest" value="$MANIFEST_HTML_ESCAPED">
   <p>Click the button to create the GitHub App:</p>
   <button type="submit" style="font-size:18px;padding:12px 24px;">Create GitHub App</button>
 </form>
@@ -191,14 +196,10 @@ Extract the `code` parameter from the redirect URL.
 
 ### Step 9: Exchange Code for Credentials
 
-```bash
-gh api /app-manifests/<CODE>/conversions --method POST
-```
-
-This returns a JSON object. Extract the needed fields:
+**IMPORTANT:** The `/app-manifests/<CODE>/conversions` endpoint is one-time-use. Call it exactly once.
 
 ```bash
-# Store the full response temporarily
+# Store the full response temporarily (one-time-use endpoint — do NOT call twice)
 gh api /app-manifests/<CODE>/conversions --method POST > /tmp/github-app-response.json
 
 # Extract values (these are all secrets — handle via Bash only)
@@ -255,6 +256,9 @@ Or via browser automation (navigate to URL, select repos, click Install).
 After installation, capture the installation ID:
 
 ```bash
+# Re-read GITHUB_APP_ID from .env (shell vars don't persist between blocks)
+GITHUB_APP_ID=$(grep '^GITHUB_APP_ID=' ~/.cyrus/.env | cut -d= -f2-)
+
 # Generate a JWT to authenticate as the app
 GITHUB_APP_JWT=$(node -e "
 const crypto = require('crypto');
@@ -267,11 +271,12 @@ const sig = crypto.createSign('RSA-SHA256').update(header+'.'+payload).sign(key,
 console.log(header+'.'+payload+'.'+sig);
 ")
 
-# List installations and get the ID
-curl -s -H "Authorization: Bearer $GITHUB_APP_JWT" -H "Accept: application/vnd.github+json" https://api.github.com/app/installations | jq '.[0].id'
+# List installations — if multiple, show all and let user pick
+INSTALLATIONS=$(curl -s -H "Authorization: Bearer $GITHUB_APP_JWT" -H "Accept: application/vnd.github+json" https://api.github.com/app/installations)
+echo "$INSTALLATIONS" | jq '.[] | {id, account: .account.login}'
 ```
 
-Write the installation ID:
+If there are multiple installations, ask the user which one to use. Then write the installation ID:
 
 ```bash
 printf 'GITHUB_APP_INSTALLATION_ID=%s\n' "<INSTALLATION_ID>" >> ~/.cyrus/.env
@@ -295,7 +300,7 @@ If webhooks were enabled:
 > ✓ GitHub App created: `<GITHUB_APP_SLUG>`
 > ✓ Webhook secret and app credentials saved to `~/.cyrus/.env`
 > ✓ Private key saved to `~/.cyrus/github-app.pem`
-> ✓ App installed on repositories
+> ✓ App installed (installation ID: `<GITHUB_APP_INSTALLATION_ID>`)
 > ✓ Cyrus will respond to `@<GITHUB_APP_SLUG>` mentions in PR comments
 
 **Note:** The webhook URL will only respond successfully once Cyrus is running. If GitHub shows a webhook delivery failure during setup, it will retry automatically once Cyrus starts.
