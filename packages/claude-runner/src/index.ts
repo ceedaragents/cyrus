@@ -5,6 +5,7 @@ export type {
 	HookInput,
 	HookJSONOutput,
 	PostToolUseHookInput,
+	Query,
 	StopHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 export { AbortError, ClaudeRunner } from "./ClaudeRunner.js";
