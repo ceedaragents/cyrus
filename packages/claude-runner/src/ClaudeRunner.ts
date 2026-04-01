@@ -476,9 +476,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost)
 			if (this.config.warmSession && this.streamingPrompt) {
 				this.logger.debug("Using pre-warmed session for first turn");
-				this.activeQuery = this.config.warmSession.query(
-					this.streamingPrompt,
-				) as typeof this.activeQuery;
+				this.activeQuery = this.config.warmSession.query(this.streamingPrompt);
 			} else {
 				this.activeQuery = query(queryOptions);
 			}

@@ -4,6 +4,7 @@ import type {
 	JsonSchemaOutputFormat,
 	McpServerConfig,
 	OutputFormat,
+	Query,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -62,7 +63,7 @@ export interface ClaudeRunnerConfig {
 	 * Pre-warmed session from startup() — when set, the first streaming query uses
 	 * this warm instance instead of spawning a cold process (~20x faster first turn).
 	 */
-	warmSession?: { query(prompt: AsyncIterable<SDKUserMessage>): unknown };
+	warmSession?: { query(prompt: AsyncIterable<SDKUserMessage>): Query };
 }
 
 export interface ClaudeSessionInfo {
