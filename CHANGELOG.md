@@ -4,14 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.39] - 2026-03-31
+
 ### Fixed
 - **Linear OAuth tokens now stay fresh across long sessions** - When Linear access tokens are refreshed (at least once daily with OAuth 2.0), running sessions and services now automatically pick up the new token instead of continuing with a stale one. ([CYPACK-1024](https://linear.app/ceedar/issue/CYPACK-1024), [#1056](https://github.com/ceedaragents/cyrus/pull/1056))
+- **Self-auth now works with reverse proxies on other machines** - The self-auth OAuth callback server now respects `CYRUS_HOST_EXTERNAL=true` and listens on `0.0.0.0` instead of `localhost`, matching the main server's behavior. ([#1046](https://github.com/ceedaragents/cyrus/issues/1046), [CYPACK-1017](https://linear.app/ceedar/issue/CYPACK-1017), [#1047](https://github.com/ceedaragents/cyrus/pull/1047))
 
 ### Added
 - **Auto-detect base branch when adding repositories** - `cyrus self-add-repo` now automatically detects the remote's default branch instead of always using `main`. Also adds a `--base-branch` flag for manual override. ([CYPACK-1015](https://linear.app/ceedar/issue/CYPACK-1015), [#1051](https://github.com/ceedaragents/cyrus/pull/1051))
-
-### Fixed
-- **Self-auth now works with reverse proxies on other machines** - The self-auth OAuth callback server now respects `CYRUS_HOST_EXTERNAL=true` and listens on `0.0.0.0` instead of `localhost`, matching the main server's behavior. ([#1046](https://github.com/ceedaragents/cyrus/issues/1046), [CYPACK-1017](https://linear.app/ceedar/issue/CYPACK-1017), [#1047](https://github.com/ceedaragents/cyrus/pull/1047))
 
 ### Changed
 - **Skills replace rigid procedure workflows** - Agent sessions now use flexible, customizable skills instead of fixed procedure sequences. Skills are discoverable at runtime, giving the agent more natural control over its workflow. A Stop hook ensures PRs and summaries are always created before sessions end. Users can add custom skills to `~/.cyrus/skills/`. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
@@ -19,6 +19,53 @@ All notable changes to this project will be documented in this file.
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.88** - Syncs with Claude Code v2.1.88. Fixes error result messages now correctly setting `is_error: true`, MCP servers no longer getting permanently stuck after a connection race, ~50% failure rate bug in `StructuredOutput` schema cache, and `ERR_STREAM_WRITE_AFTER_END` errors with single-turn queries. Also adds `includeSystemMessages` option to `getSessionMessages()` and `includeHookEvents` option for hook lifecycle messages. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1023](https://linear.app/ceedar/issue/CYPACK-1023), [#1053](https://github.com/ceedaragents/cyrus/pull/1053))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.87** - Syncs with Claude Code v2.1.87 (maintenance release). See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1020](https://linear.app/ceedar/issue/CYPACK-1020), [#1050](https://github.com/ceedaragents/cyrus/pull/1050))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.86** - Keeps AI SDK dependency up to date. v0.2.86 adds `getContextUsage()` for token distribution visibility, makes `session_id` optional in `SDKUserMessage`, and fixes TypeScript type resolution. v0.2.85 adds `reloadPlugins()` for dynamic plugin refresh and fixes PreToolUse hooks with `"ask"` permission decisions. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1016](https://linear.app/ceedar/issue/CYPACK-1016), [#1045](https://github.com/ceedaragents/cyrus/pull/1045))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.39
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.39
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.39
+
+#### cyrus-core
+- cyrus-core@0.2.39
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.39
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.39
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.39
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.39
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.39
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.39
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.39
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.39
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.39
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.39
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.39
 
 ## [0.2.38] - 2026-03-25
 
