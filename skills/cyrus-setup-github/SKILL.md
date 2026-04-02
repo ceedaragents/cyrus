@@ -127,14 +127,20 @@ Ask:
 
 Store the org name if applicable.
 
+Ask:
+
+> **What homepage URL should the GitHub App use?** This is displayed on the app's settings page as its website. It has no functional impact — GitHub just shows it as a link. Most users use their company website, GitHub org page, or any placeholder URL.
+>
+> (e.g., `https://github.com/your-org`, your company URL, or just `https://example.com`)
+
 ### Step 7: Build Manifest JSON
 
-Construct the manifest, substituting `AGENT_NAME` and `CYRUS_BASE_URL`:
+Construct the manifest, substituting `AGENT_NAME`, `HOMEPAGE_URL`, and `CYRUS_BASE_URL`:
 
 ```json
 {
   "name": "<AGENT_NAME>",
-  "url": "<CYRUS_BASE_URL>",
+  "url": "<HOMEPAGE_URL>",
   "redirect_url": "http://localhost:8976",
   "hook_attributes": {
     "url": "<CYRUS_BASE_URL>/github-webhook",
