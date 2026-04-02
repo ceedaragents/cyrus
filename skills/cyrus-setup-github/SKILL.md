@@ -193,7 +193,13 @@ After the user completes the flow, stop the server:
 kill $HTTP_SERVER_PID 2>/dev/null
 ```
 
-**Path A-1 (claude-in-chrome — preferred):**
+Choose the automation path based on what's available:
+
+1. If `claude-in-chrome` MCP tools are available → use **Path A-1**
+2. If `agent-browser` is installed and a Chrome debug session is connected → use **Path A-2**
+3. Otherwise → use **Path B** (manual)
+
+**Path A-1 (claude-in-chrome):**
 
 1. Navigate to `http://localhost:8976/github-app-manifest.html`
 2. Click the submit button to POST the manifest to GitHub
