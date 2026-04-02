@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Global teardown script support** - Added `global_teardown_script` config option that runs before worktree deletion when an issue reaches a terminal state (Done, Canceled, deleted). Mirrors the existing `global_setup_script` pattern. Useful for cleaning up per-worktree resources like databases or registered ports. Non-blocking on failure. ([#1065](https://github.com/ceedaragents/cyrus/issues/1065))
+
 ## [0.2.40] - 2026-04-02
 
 ### Fixed
