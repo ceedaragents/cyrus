@@ -113,6 +113,12 @@ Use the `AGENT_NAME` value from the orchestrator (set in Step 0 of `/cyrus-setup
 
 > **What should the GitHub App be named?** (e.g., "Cyrus", "My Code Agent")
 
+**Important — GitHub @mention autocomplete quirk:** GitHub's autocomplete in PR comments only suggests real GitHub *user accounts*, not App bots. This means `@your-bot` won't appear in the autocomplete dropdown unless a GitHub user with that exact name exists. The mention still *works* if typed manually, but for the best experience:
+
+> **Before choosing a name**, check if the same name is available as a GitHub username at `https://github.com/<name>`. If it is, consider creating a free GitHub user account with that name and inviting it to your org/repo as a collaborator. This is the only way to get autocomplete working for @mentions — a silly GitHub limitation, but the known workaround.
+>
+> Set `GITHUB_BOT_USERNAME` to match whatever handle users will actually type in @mentions (the GitHub username, *not* `<slug>[bot]`).
+
 Ask:
 
 > **Where should the GitHub App be created?**
@@ -129,6 +135,7 @@ Construct the manifest, substituting `AGENT_NAME` and `CYRUS_BASE_URL`:
 {
   "name": "<AGENT_NAME>",
   "url": "https://github.com/ceedaragents/cyrus",
+  "redirect_url": "https://github.com/ceedaragents/cyrus",
   "hook_attributes": {
     "url": "<CYRUS_BASE_URL>/github-webhook",
     "active": true
@@ -148,6 +155,8 @@ Construct the manifest, substituting `AGENT_NAME` and `CYRUS_BASE_URL`:
 }
 ```
 
+**Note:** `redirect_url` is required by GitHub's manifest flow. The actual redirect will include a `?code=` parameter appended to this URL — the code is what matters, not the destination page.
+
 ### Step 8: Create GitHub App via Manifest
 
 GitHub's manifest flow works by POSTing a form with a `manifest` field to the app creation URL. After the user approves, GitHub redirects to a URL containing a `code` parameter.
@@ -158,7 +167,7 @@ Determine the creation URL:
 
 GitHub's manifest flow requires a **form POST** with a `manifest` field to the creation URL — the page itself does not have a manifest input field. All paths use the same helper HTML page approach.
 
-First, create the helper page (used by all paths). **Note:** The manifest JSON must be HTML-entity-escaped (replace `"` with `&quot;`) since it's placed in an HTML attribute:
+First, create the helper page and serve it via a local web server. This works for both local and remote/headless setups (e.g., tmux/SSH into a server). The manifest JSON must be HTML-entity-escaped (replace `"` with `&quot;`) since it's placed in an HTML attribute:
 
 ```bash
 # Escape the manifest JSON for safe embedding in an HTML attribute
@@ -171,11 +180,22 @@ cat > /tmp/github-app-manifest.html << HTMLEOF
   <button type="submit" style="font-size:18px;padding:12px 24px;">Create GitHub App</button>
 </form>
 HTMLEOF
+
+# Serve the page on a local port (works for headless/remote setups)
+python3 -m http.server 8976 --directory /tmp &
+HTTP_SERVER_PID=$!
+echo "Serving at http://localhost:8976/github-app-manifest.html"
+```
+
+After the user completes the flow, stop the server:
+
+```bash
+kill $HTTP_SERVER_PID 2>/dev/null
 ```
 
 **Path A-1 (claude-in-chrome — preferred):**
 
-1. Navigate to `file:///tmp/github-app-manifest.html`
+1. Navigate to `http://localhost:8976/github-app-manifest.html`
 2. Click the submit button to POST the manifest to GitHub
 3. GitHub shows a confirmation page — click **Create GitHub App**
 4. After redirect, extract the `code` parameter from the URL
@@ -188,7 +208,7 @@ Same flow via Playwright automation — navigate to the helper page, click submi
 
 Tell the user:
 
-> 1. Open `/tmp/github-app-manifest.html` in your browser and click the button
+> 1. Open `http://localhost:8976/github-app-manifest.html` in your browser and click the button
 > 2. Review the permissions on GitHub and click **Create GitHub App**
 > 3. After redirect, copy the **entire URL** from the browser address bar and paste it here
 
@@ -224,8 +244,8 @@ printf 'GITHUB_WEBHOOK_SECRET=%s\n' "$GITHUB_WEBHOOK_SECRET" >> ~/.cyrus/.env
 # App ID (for token minting)
 printf 'GITHUB_APP_ID=%s\n' "$GITHUB_APP_ID" >> ~/.cyrus/.env
 
-# Bot username (for mention filtering — GitHub App bots are "<slug>[bot]")
-printf 'GITHUB_BOT_USERNAME=%s[bot]\n' "$GITHUB_APP_SLUG" >> ~/.cyrus/.env
+# Bot username (for mention filtering — see note below about GitHub autocomplete)
+printf 'GITHUB_BOT_USERNAME=%s\n' "$GITHUB_APP_SLUG" >> ~/.cyrus/.env
 
 # Private key (multi-line — stored as a separate file)
 printf '%s\n' "$GITHUB_APP_PEM" > ~/.cyrus/github-app.pem
