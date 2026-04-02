@@ -134,7 +134,7 @@ Construct the manifest, substituting `AGENT_NAME` and `CYRUS_BASE_URL`:
 ```json
 {
   "name": "<AGENT_NAME>",
-  "url": "https://github.com/ceedaragents/cyrus",
+  "url": "<CYRUS_BASE_URL>",
   "redirect_url": "http://localhost:8976",
   "hook_attributes": {
     "url": "<CYRUS_BASE_URL>/github-webhook",
