@@ -380,7 +380,13 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
 
 ### `global_setup_script` (string)
 
-Path to a script that runs for all repositories when creating new worktrees. See the main README for details on setup scripts.
+Path to a script that runs for all repositories when creating new worktrees. See [SETUP_SCRIPTS.md](SETUP_SCRIPTS.md) for details.
+
+---
+
+### `global_teardown_script` (string)
+
+Path to a script that runs for all repositories before a worktree is deleted (when an issue reaches a terminal state). Runs in the worktree directory so it can read configuration files like `.env.local`. Non-blocking on failure — worktree deletion proceeds regardless. See [SETUP_SCRIPTS.md](SETUP_SCRIPTS.md) for details.
 
 ---
 

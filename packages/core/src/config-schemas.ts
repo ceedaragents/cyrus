@@ -375,6 +375,9 @@ export const EdgeConfigSchema = z.object({
 	/** Optional path to global setup script that runs for all repositories */
 	global_setup_script: z.string().optional(),
 
+	/** Optional path to global teardown script that runs before worktree deletion */
+	global_teardown_script: z.string().optional(),
+
 	/** Default tools to allow across all repositories */
 	defaultAllowedTools: z.array(z.string()).optional(),
 

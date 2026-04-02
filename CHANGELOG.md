@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Worktree teardown scripts** — New `global_teardown_script` config option runs a script before worktree deletion when an issue reaches a terminal state. Mirrors the existing `global_setup_script` pattern. Useful for cleaning up resources created by the setup script (e.g., dropping databases). ([#1066](https://github.com/ceedaragents/cyrus/pull/1066))
+
 ## [0.2.45] - 2026-04-15
 
 ### Added
@@ -275,6 +278,10 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.2.41
+=======
+### Added
+- **Global teardown script support** - Added `global_teardown_script` config option that runs before worktree deletion when an issue reaches a terminal state (Done, Canceled, deleted). Mirrors the existing `global_setup_script` pattern. Useful for cleaning up per-worktree resources like databases or registered ports. Non-blocking on failure. ([#1065](https://github.com/ceedaragents/cyrus/issues/1065))
+>>>>>>> 29209216 (feat: add global_teardown_script config option)
 
 ## [0.2.40] - 2026-04-02
 
