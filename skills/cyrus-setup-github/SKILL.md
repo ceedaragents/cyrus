@@ -1,13 +1,13 @@
 ---
 name: cyrus-setup-github
-description: Configure GitHub for Cyrus — gh CLI login and git config for PRs, with optional webhook setup to enable @mention responses in PR comments.
+description: Configure GitHub for Cyrus — gh CLI login and git config for PRs, with optional webhook setup to enable @mention responses in PR comments, automated rebases and merges, and auto-fixing based on CI failures (coming soon).
 ---
 
 **CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
 
 # Setup GitHub
 
-Configures GitHub CLI and git so Cyrus can create branches, commits, and pull requests. Optionally creates a GitHub App so Cyrus can receive and respond to @mentions in PR comments and reviews.
+Configures GitHub CLI and git so Cyrus can create branches, commits, and pull requests. Optionally creates a GitHub App so Cyrus can receive and respond to @mentions in PR comments and reviews, automate rebases and merges, and auto-fix based on CI failures (coming soon).
 
 ---
 
