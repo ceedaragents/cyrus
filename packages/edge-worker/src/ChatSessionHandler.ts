@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type { SDKMessage } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
@@ -55,7 +55,8 @@ export interface ChatPlatformAdapter<TEvent> {
  */
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
-	mcpConfig?: Record<string, McpServerConfig>;
+	/** Linear workspace ID for building fresh MCP config per session */
+	linearWorkspaceId?: string;
 	/** Repository to source user-configured MCP paths from (V1: first available repo) */
 	repository?: RepositoryConfig;
 	chatRepositoryPaths?: string[];
@@ -405,7 +406,7 @@ export class ChatSessionHandler<TEvent> {
 			sessionId,
 			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
-			mcpConfig: this.deps.mcpConfig,
+			linearWorkspaceId: this.deps.linearWorkspaceId,
 			repository: this.deps.repository,
 			repositoryPaths: this.deps.chatRepositoryPaths,
 			logger: sessionLogger,

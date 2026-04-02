@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Slack chat sessions now use fresh Linear tokens** - The Linear MCP connection in Slack chat sessions was using a token captured once at startup, so after a daily OAuth refresh new sessions would fail to reach Linear. Chat sessions now build fresh MCP config per session, matching how issue sessions already work. ([CYPACK-1029](https://linear.app/ceedar/issue/CYPACK-1029))
 - **Logger tests updated for ISO timestamp output** - Fixed test failures caused by the ISO timestamp addition to log output in v0.2.39. Tests in `core` and `claude-runner` now correctly match the timestamped log format. ([CYPACK-1027](https://linear.app/ceedar/issue/CYPACK-1027), [#1060](https://github.com/ceedaragents/cyrus/pull/1060))
 
 ### Changed

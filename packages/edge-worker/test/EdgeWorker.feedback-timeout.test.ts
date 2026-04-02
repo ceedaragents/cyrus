@@ -221,7 +221,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				});
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",
@@ -270,7 +270,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				});
 
 			// Build MCP config
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",

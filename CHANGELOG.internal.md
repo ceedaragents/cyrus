@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Removed `EdgeWorker.buildMcpConfig()` private wrapper — `RunnerConfigBuilder` and `McpConfigService` now handle all MCP config assembly. Chat sessions (`ChatSessionHandler`) pass `linearWorkspaceId` instead of a pre-built `mcpConfig` object, so `RunnerConfigBuilder.buildChatConfig()` calls `mcpConfigProvider.buildMcpConfig()` fresh per session (same pattern as `buildIssueConfig`). ([CYPACK-1029](https://linear.app/ceedar/issue/CYPACK-1029))
+
 ## [0.2.39] - 2026-03-31
 
 _No internal changes._
