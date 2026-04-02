@@ -19,5 +19,5 @@ Research the codebase and provide a clear, direct answer to the question.
 - Present in Linear-compatible markdown
 - Use `+++Section Name\n...\n+++` for collapsible sections with detailed information
 - Include code references with file paths and line numbers
-- Use `https://linear.app/linear/profiles/username` for @mentions
+- For @mentions, use the Linear profile URL format from `<assignee>` context (e.g. `https://linear.app/<workspace>/profiles/<username>`)
 - Be complete but concise — answer the question directly without unnecessary preamble

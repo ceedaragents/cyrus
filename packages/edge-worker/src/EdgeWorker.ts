@@ -4991,7 +4991,10 @@ ${taskSection}`;
 		// 3. Append skills guidance — instruct the agent to use skills based on context
 		systemPrompt += await this.skillsPluginResolver.buildSkillsGuidance();
 
-		// 4. Build issue context using appropriate builder
+		// 4. Append agent context — dynamic values for skills to reference
+		systemPrompt += this.buildAgentContextBlock();
+
+		// 5. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
 		const promptType = this.determinePromptType(
 			input,
@@ -5046,6 +5049,32 @@ ${input.userComment}
 				isStreaming: false,
 			},
 		};
+	}
+
+	/**
+	 * Build an <agent_context> block with dynamic values that skills can reference.
+	 *
+	 * Provides bot usernames so skills (e.g. verify-and-ship) can refer to the
+	 * correct bot account without hardcoding.
+	 */
+	private buildAgentContextBlock(): string {
+		const githubBot = process.env.GITHUB_BOT_USERNAME || "";
+		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "";
+
+		if (!githubBot && !gitlabBot) {
+			return "";
+		}
+
+		const lines: string[] = ["\n\n<agent_context>"];
+		if (githubBot) {
+			lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
+		}
+		if (gitlabBot) {
+			lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
+		}
+		lines.push("</agent_context>");
+
+		return lines.join("\n");
 	}
 
 	/**

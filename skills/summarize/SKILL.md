@@ -1,11 +1,11 @@
 ---
 name: summarize
-description: Generate a concise summary of the work completed for posting to Linear.
+description: Format a final summary message for Linear. Your output is automatically streamed to the Linear agent session — just format it well, do not post it yourself.
 ---
 
 # Summarize
 
-Generate a concise summary of the work completed for posting to Linear.
+Format a final summary of the work completed. Your output will be automatically rendered inside Linear — just write it as your response. Do **not** use any tool to post or save it.
 
 ## Content
 
@@ -20,7 +20,7 @@ Cover the following:
 - Use clear, professional language suitable for Linear
 - Use markdown formatting for readability
 - **Collapsible sections**: Wrap "Changes Made" and "Files Modified" in `+++Section Name\n...\n+++`
-- **@mentions**: Use `https://linear.app/linear/profiles/username` syntax
+- **@mentions**: Use the Linear profile URL format from `<assignee>` context (e.g. `https://linear.app/<workspace>/profiles/<username>`)
 
 ## Example
 

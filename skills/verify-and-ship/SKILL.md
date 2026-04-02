@@ -1,6 +1,6 @@
 ---
 name: verify-and-ship
-description: Run all quality checks (tests, lint, typecheck), fix failures, update the changelog, commit, push, and create/update the pull request.
+description: Run all quality checks (tests, lint, typecheck), fix failures, update the changelog, commit, push, and create/update the pull request or merge request.
 ---
 
 # Verify and Ship
@@ -29,7 +29,7 @@ ls -la CHANGELOG.md CHANGELOG.internal.md 2>/dev/null || echo "NO_CHANGELOG"
 If changelog files exist:
 - Add an entry under `## [Unreleased]` in the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`)
 - Focus on end-user impact — be concise but descriptive
-- Include the Linear issue identifier and PR link (format: `([ISSUE-ID](linear_url), [#NUMBER](PR_URL))`)
+- Include the Linear issue identifier and PR/MR link (format: `([ISSUE-ID](linear_url), [#NUMBER](PR_OR_MR_URL))`)
 - Follow [Keep a Changelog](https://keepachangelog.com/) format
 
 ## 4. Commit and Push
@@ -38,30 +38,37 @@ If changelog files exist:
 - Commit with clear, descriptive messages following the project's commit conventions
 - Push to the remote repository
 
-## 5. Create or Update Pull Request
+## 5. Create or Update PR/MR
 
-Push the branch and create/update the PR:
+Determine the platform from the repository context (`<github_url>` or `<gitlab_url>` in the issue context). Use the appropriate tool for the platform.
+
+### GitHub (when `<github_url>` is present)
 
 ```bash
-# Push the branch
 git push -u origin HEAD
-
-# Create or verify PR exists
-# IMPORTANT: --base MUST match the base_branch from the issue context
 gh pr view --json url,number 2>/dev/null || gh pr create --draft --base [base_branch from context] --title "[descriptive title]" --body "Work in progress"
 ```
 
-Update the PR with a comprehensive description:
-- **Assignee attribution**: If `<github_username>` is available in the assignee context, add `Assignee: @username ([Display Name](linear_profile_url))` at the top of the PR body. If only a linear profile URL is available, use `Assignee: [Display Name](linear_profile_url)`.
+### GitLab (when `<gitlab_url>` is present)
+
+```bash
+git push -u origin HEAD
+glab mr view 2>/dev/null || glab mr create --draft --target-branch [base_branch from context] --title "[descriptive title]" --description "Work in progress"
+```
+
+### PR/MR Description
+
+Update the PR/MR with a comprehensive description:
+- **Assignee attribution**: If `<github_username>` is available in the assignee context, add `Assignee: @username ([Display Name](linear_profile_url))` at the top of the body. If only a linear profile URL is available, use `Assignee: [Display Name](linear_profile_url)`.
 - **Summary** of changes, implementation approach, and testing performed
 - **Link** to the Linear issue
-- **Cyrus marker**: Include `<!-- generated-by-cyrus -->` as a hidden HTML comment at the end of the PR body
-- **Interaction tip**: Add this at the end (before the marker):
+- **Cyrus marker**: Include `<!-- generated-by-cyrus -->` as a hidden HTML comment at the end of the body
+- **Interaction tip**: Add this at the end (before the marker), using the bot username from `<github_bot_username>` or `<gitlab_bot_username>` in the `<agent_context>` block of the system prompt:
   ```
   ---
-  > **Tip:** I will respond to comments that @ mention @cyrusagent on this PR. You can also submit a "changes requested" review with all your feedback at once, and I will automatically wake up to address each comment.
+  > **Tip:** I will respond to comments that @ mention @<bot_username> on this PR/MR. You can also submit a review with all your feedback at once, and I will automatically wake up to address each comment.
   ```
 
-Remove the "WIP:" prefix from the title. Check `<agent_guidance>` — only run `gh pr ready` if guidance does NOT specify keeping PRs as drafts.
+Remove any "WIP:" or "Draft:" prefix from the title. Check `<agent_guidance>` — only mark the PR/MR as ready if guidance does NOT specify keeping them as drafts.
 
-Verify the PR targets the correct base branch from `<base_branch>` in the issue context.
+Verify the PR/MR targets the correct base branch from `<base_branch>` in the issue context.
