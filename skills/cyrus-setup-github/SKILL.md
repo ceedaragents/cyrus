@@ -208,7 +208,7 @@ Choose the automation path based on what's available:
 
 **Path A-2 (agent-browser):**
 
-Same flow via Playwright automation — navigate to the helper page, click submit, then click Create.
+Same flow via `agent-browser` — navigate to the helper page, click submit, then click Create.
 
 **Path B (manual):**
 
