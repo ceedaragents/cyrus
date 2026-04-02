@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type { SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -903,15 +903,11 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// V1: Source MCP config from first available repo (all repos share the same MCPs today)
+		// V1: Source workspace/repo from first available (all repos share the same MCPs today)
 		const firstLinearWorkspaceId = Object.keys(
 			this.config.linearWorkspaces || {},
 		)[0];
 		const firstRepo = allRepos[0];
-		const mcpConfig =
-			firstLinearWorkspaceId && firstRepo
-				? this.buildMcpConfig(firstRepo.id, firstLinearWorkspaceId)
-				: undefined;
 
 		if (!firstLinearWorkspaceId || !firstRepo) {
 			this.logger.warn(
@@ -924,7 +920,7 @@ export class EdgeWorker extends EventEmitter {
 			{
 				cyrusHome: this.cyrusHome,
 				chatRepositoryPaths,
-				mcpConfig,
+				linearWorkspaceId: firstLinearWorkspaceId,
 				repository: firstRepo,
 				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
@@ -5290,23 +5286,6 @@ ${taskSection}`;
 				? server.getPort()
 				: this.config.serverPort || this.config.webhookPort || 3456;
 		return `http://127.0.0.1:${port}${this.cyrusToolsMcpEndpoint}`;
-	}
-
-	/**
-	 * Build MCP configuration — delegates to McpConfigService.
-	 */
-	private buildMcpConfig(
-		repoId: string,
-		linearWorkspaceId: string,
-		parentSessionId?: string,
-		options?: { excludeSlackMcp?: boolean },
-	): Record<string, McpServerConfig> {
-		return this.mcpConfigService.buildMcpConfig(
-			repoId,
-			linearWorkspaceId,
-			parentSessionId,
-			options,
-		);
 	}
 
 	/**
