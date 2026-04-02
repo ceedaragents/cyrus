@@ -20,7 +20,7 @@ export class GitHubAppTokenProvider {
 	private config: GitHubAppTokenProviderConfig;
 	private cachedToken: string | null = null;
 	private expiresAt = 0;
-	private privateKey: string | null = null;
+	private privateKeyPromise: Promise<string> | null = null;
 
 	constructor(config: GitHubAppTokenProviderConfig) {
 		this.config = config;
@@ -70,11 +70,11 @@ export class GitHubAppTokenProvider {
 		return this.cachedToken;
 	}
 
-	private async loadPrivateKey(): Promise<string> {
-		if (!this.privateKey) {
-			this.privateKey = await readFile(this.config.privateKeyPath, "utf-8");
+	private loadPrivateKey(): Promise<string> {
+		if (!this.privateKeyPromise) {
+			this.privateKeyPromise = readFile(this.config.privateKeyPath, "utf-8");
 		}
-		return this.privateKey;
+		return this.privateKeyPromise;
 	}
 }
 
