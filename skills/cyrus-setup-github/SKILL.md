@@ -83,7 +83,7 @@ Ask the user:
 
 > **Do you want Cyrus to respond to GitHub @mentions in PR comments and reviews?**
 >
-> - **Yes — enable @mentions**: Creates a GitHub App so Cyrus can receive PR comments and reviews via webhooks, and respond when @mentioned.
+> - **Yes — enable @mentions**: Creates a GitHub App so Cyrus can receive PR comments and reviews via webhooks, respond when @mentioned, and act on "changes requested" reviews.
 > - **No — PRs only**: Cyrus will create branches, commits, and PRs but won't respond to comments.
 
 If **No** → skip to Completion.
