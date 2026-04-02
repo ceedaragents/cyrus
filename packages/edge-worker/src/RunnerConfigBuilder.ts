@@ -150,7 +150,6 @@ export class RunnerConfigBuilder {
 						input.repository.id,
 						input.linearWorkspaceId,
 						input.sessionId,
-						{ excludeSlackMcp: true },
 					)
 				: undefined;
 
