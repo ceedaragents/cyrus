@@ -330,6 +330,6 @@ If webhooks were enabled:
 > ✓ Webhook secret and app credentials saved to `~/.cyrus/.env`
 > ✓ Private key saved to `~/.cyrus/github-app.pem`
 > ✓ App installed (installation ID: `<GITHUB_APP_INSTALLATION_ID>`)
-> ✓ Cyrus will respond to `@<GITHUB_APP_SLUG>` mentions in PR comments
+> ✓ Cyrus will respond to `@<GITHUB_BOT_USERNAME>` mentions in PR comments
 
 **Note:** The webhook URL will only respond successfully once Cyrus is running. If GitHub shows a webhook delivery failure during setup, it will retry automatically once Cyrus starts.
