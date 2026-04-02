@@ -115,9 +115,15 @@ Use the `AGENT_NAME` value from the orchestrator (set in Step 0 of `/cyrus-setup
 
 **Important — GitHub @mention autocomplete quirk:** GitHub's autocomplete in PR comments only suggests real GitHub *user accounts*, not App bots. This means `@your-bot` won't appear in the autocomplete dropdown unless a GitHub user with that exact name exists. The mention still *works* if typed manually, but for the best experience:
 
-> **Before choosing a name**, check if the same name is available as a GitHub username at `https://github.com/<name>`. If it is, consider creating a free GitHub user account with that name and inviting it to your org/repo as a collaborator. This is the only way to get autocomplete working for @mentions — a silly GitHub limitation, but the known workaround.
+> **Before choosing a name**, check if the same name is available as a GitHub username at `https://github.com/<name>`. If it is:
 >
-> Set `GITHUB_BOT_USERNAME` to match whatever handle users will actually type in @mentions (the GitHub username, *not* `<slug>[bot]`).
+> 1. Create a free GitHub user account with that name
+> 2. Invite it to your org and/or repo as a collaborator
+> 3. Set `GITHUB_BOT_USERNAME` to that username (the one users will type in @mentions, *not* `<slug>[bot]`)
+>
+> This is the simplest way to get autocomplete working — a silly GitHub limitation, but the known workaround.
+>
+> **Without a matching GitHub user**, @mentions still work if typed manually, but won't autocomplete. In that case users would need to set up co-authorship (via a git message template or `prepare-commit-msg` hook adding `Co-authored-by:`) to get the bot's name showing as a repo contributor, which is more involved.
 
 Ask:
 
