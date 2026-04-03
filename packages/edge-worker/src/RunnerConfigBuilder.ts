@@ -67,8 +67,8 @@ export interface ChatRunnerConfigInput {
 	sessionId: string;
 	resumeSessionId?: string;
 	cyrusHome: string;
-	/** MCP server config (pre-built by McpConfigService or passed externally) */
-	mcpConfig?: Record<string, McpServerConfig>;
+	/** Linear workspace ID for building fresh MCP config at session start */
+	linearWorkspaceId?: string;
 	/** Repository to source user-configured MCP paths from (V1: first available repo) */
 	repository?: RepositoryConfig;
 	/** Repository paths the chat session can read */
@@ -144,14 +144,23 @@ export class RunnerConfigBuilder {
 			? this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository)
 			: undefined;
 
+		// Build fresh MCP config at session start (reads current token from config)
+		// This follows the same pattern as buildIssueConfig — never use a pre-baked config
+		const mcpConfig =
+			input.linearWorkspaceId && input.repository
+				? this.mcpConfigProvider.buildMcpConfig(
+						input.repository.id,
+						input.linearWorkspaceId,
+						input.sessionId,
+					)
+				: undefined;
+
 		// Extract MCP tool entries from the repository's allowedTools config
 		const userMcpTools = (input.repository?.allowedTools ?? []).filter((tool) =>
 			tool.startsWith("mcp__"),
 		);
 
-		const mcpConfigKeys = input.mcpConfig
-			? Object.keys(input.mcpConfig)
-			: undefined;
+		const mcpConfigKeys = mcpConfig ? Object.keys(mcpConfig) : undefined;
 		const allowedTools = this.chatToolResolver.buildChatAllowedTools(
 			mcpConfigKeys,
 			userMcpTools,
@@ -171,7 +180,7 @@ export class RunnerConfigBuilder {
 			workspaceName: input.workspaceName,
 			cyrusHome: input.cyrusHome,
 			appendSystemPrompt: input.systemPrompt,
-			...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
+			...(mcpConfig ? { mcpConfig } : {}),
 			...(mcpConfigPath ? { mcpConfigPath } : {}),
 			...(input.resumeSessionId
 				? { resumeSessionId: input.resumeSessionId }

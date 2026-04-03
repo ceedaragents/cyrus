@@ -10,28 +10,19 @@ import { TEST_CYRUS_CHAT } from "./test-dirs.js";
 function createMockRunnerConfigBuilder(): RunnerConfigBuilder {
 	return {
 		buildChatConfig: (input: any) => {
-			const mcpConfigKeys = input.mcpConfig ? Object.keys(input.mcpConfig) : [];
-			const mcpToolPermissions = mcpConfigKeys.map(
-				(server: string) => `mcp__${server}`,
-			);
 			const repositoryPaths = Array.from(
 				new Set((input.repositoryPaths ?? []).filter(Boolean)),
 			);
 			return {
 				workingDirectory: input.workspacePath,
 				allowedTools: [
-					...new Set([
-						...getReadOnlyTools(),
-						...mcpToolPermissions,
-						"Bash(git -C * pull)",
-					]),
+					...new Set([...getReadOnlyTools(), "Bash(git -C * pull)"]),
 				],
 				disallowedTools: [],
 				allowedDirectories: [input.workspacePath, ...repositoryPaths],
 				workspaceName: input.workspaceName,
 				cyrusHome: input.cyrusHome,
 				appendSystemPrompt: input.systemPrompt,
-				...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
 				...(input.resumeSessionId
 					? { resumeSessionId: input.resumeSessionId }
 					: {}),

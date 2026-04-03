@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type { SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -77,6 +77,7 @@ import {
 	extractRepoName,
 	extractRepoOwner,
 	extractSessionKey,
+	GitHubAppTokenProvider,
 	GitHubCommentService,
 	GitHubEventTransport,
 	type GitHubWebhookEvent,
@@ -182,6 +183,7 @@ export class EdgeWorker extends EventEmitter {
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
+	private gitHubAppTokenProvider: GitHubAppTokenProvider | null = null; // Self-hosted GitHub App token minting
 	private gitLabEventTransport: GitLabEventTransport | null = null; // GitLab event transport for forwarded GitLab webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
 	private chatSessionHandler: ChatSessionHandler<SlackWebhookEvent> | null =
@@ -715,6 +717,21 @@ export class EdgeWorker extends EventEmitter {
 		// Register the /github-webhook endpoint
 		this.gitHubEventTransport.register();
 
+		// Initialize GitHub App token provider for self-hosted users
+		const appId = process.env.GITHUB_APP_ID;
+		const installationId = process.env.GITHUB_APP_INSTALLATION_ID;
+		if (appId && installationId) {
+			const pemPath = join(this.cyrusHome, "github-app.pem");
+			this.gitHubAppTokenProvider = new GitHubAppTokenProvider({
+				appId,
+				installationId,
+				privateKeyPath: pemPath,
+			});
+			this.logger.info(
+				"GitHub App token provider initialized (self-hosted mode)",
+			);
+		}
+
 		this.logger.info(
 			`GitHub event transport registered (${verificationMode} mode)`,
 		);
@@ -787,15 +804,11 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// V1: Source MCP config from first available repo (all repos share the same MCPs today)
+		// V1: Source workspace/repo from first available (all repos share the same MCPs today)
 		const firstLinearWorkspaceId = Object.keys(
 			this.config.linearWorkspaces || {},
 		)[0];
 		const firstRepo = allRepos[0];
-		const mcpConfig =
-			firstLinearWorkspaceId && firstRepo
-				? this.buildMcpConfig(firstRepo.id, firstLinearWorkspaceId)
-				: undefined;
 
 		if (!firstLinearWorkspaceId || !firstRepo) {
 			this.logger.warn(
@@ -808,7 +821,7 @@ export class EdgeWorker extends EventEmitter {
 			{
 				cyrusHome: this.cyrusHome,
 				chatRepositoryPaths,
-				mcpConfig,
+				linearWorkspaceId: firstLinearWorkspaceId,
 				repository: firstRepo,
 				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
@@ -882,6 +895,29 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a new session for the GitHub PR comment, checks out the PR branch
 	 * via git worktree, and processes the comment as a task prompt.
 	 */
+	/**
+	 * Resolve a GitHub API token from (in priority order):
+	 * 1. Forwarded installation token from CYHOST (cloud/proxy mode)
+	 * 2. Self-minted installation token from GitHub App credentials (self-hosted)
+	 * 3. Personal access token from GITHUB_TOKEN env var (fallback)
+	 */
+	private async resolveGitHubToken(
+		event: GitHubWebhookEvent,
+	): Promise<string | undefined> {
+		if (event.installationToken) return event.installationToken;
+		if (this.gitHubAppTokenProvider) {
+			try {
+				return await this.gitHubAppTokenProvider.getToken();
+			} catch (error) {
+				this.logger.warn(
+					"Failed to mint GitHub App installation token, falling back to GITHUB_TOKEN",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
+		return process.env.GITHUB_TOKEN;
+	}
+
 	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {
 		this.activeWebhookCount++;
 
@@ -939,7 +975,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Add "eyes" reaction to acknowledge receipt (not for pull_request_review — we post a comment instead)
-			const reactionToken = event.installationToken || process.env.GITHUB_TOKEN;
+			const reactionToken = await this.resolveGitHubToken(event);
 			if (reactionToken && !isPullRequestReview) {
 				const commentId = extractCommentId(event);
 				if (commentId) {
@@ -1240,8 +1276,8 @@ export class EdgeWorker extends EventEmitter {
 				"X-GitHub-Api-Version": "2022-11-28",
 			};
 
-			// Prefer forwarded installation token, fall back to GITHUB_TOKEN
-			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			// Resolve GitHub token (installation token > App token > PAT)
+			const token = await this.resolveGitHubToken(event);
 			if (token) {
 				headers.Authorization = `Bearer ${token}`;
 			}
@@ -1453,9 +1489,8 @@ ${taskSection}`;
 				return;
 			}
 
-			// Prefer the forwarded installation token from CYHOST (1-hour expiry)
-			// Fall back to process.env.GITHUB_TOKEN if not provided
-			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			// Resolve GitHub token (installation token > App token > PAT)
+			const token = await this.resolveGitHubToken(event);
 			if (!token) {
 				this.logger.warn(
 					"Cannot post GitHub reply: no installation token or GITHUB_TOKEN configured",
@@ -4838,23 +4873,6 @@ ${taskSection}`;
 				? server.getPort()
 				: this.config.serverPort || this.config.webhookPort || 3456;
 		return `http://127.0.0.1:${port}${this.cyrusToolsMcpEndpoint}`;
-	}
-
-	/**
-	 * Build MCP configuration — delegates to McpConfigService.
-	 */
-	private buildMcpConfig(
-		repoId: string,
-		linearWorkspaceId: string,
-		parentSessionId?: string,
-		options?: { excludeSlackMcp?: boolean },
-	): Record<string, McpServerConfig> {
-		return this.mcpConfigService.buildMcpConfig(
-			repoId,
-			linearWorkspaceId,
-			parentSessionId,
-			options,
-		);
 	}
 
 	/**

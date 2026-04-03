@@ -93,11 +93,9 @@ export type {
 
 // Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']
 export type JsonSchema = JsonSchemaOutputFormat["schema"];
+export type { BetaMessage as APIAssistantMessage } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 // Re-export Anthropic API message types
-export type {
-	Message as APIAssistantMessage,
-	MessageParam as APIUserMessage,
-} from "@anthropic-ai/sdk/resources/messages.js";
+export type { MessageParam as APIUserMessage } from "@anthropic-ai/sdk/resources/messages.js";
 // Type aliases for re-export
 export type ClaudeSystemMessage = SDKSystemMessage;
 export type ClaudeUserMessage = SDKUserMessage;

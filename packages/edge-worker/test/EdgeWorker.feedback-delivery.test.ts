@@ -210,7 +210,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const parentSessionId = "parent-session-123";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				parentSessionId,
@@ -276,7 +276,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "Test feedback without known parent";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				undefined, // No parent session ID
@@ -310,7 +310,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This should fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",
@@ -340,7 +340,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This should also fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",
@@ -368,7 +368,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This will cause resume to fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",
@@ -406,7 +406,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "Test feedback across repositories";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				"parent-session-123",
@@ -439,7 +439,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const parentSessionId = "parent-session-123";
 
 			// Act
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 				mockRepository.id,
 				mockRepository.linearWorkspaceId,
 				parentSessionId,
@@ -468,7 +468,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			process.env.CYRUS_API_KEY = "test-cyrus-api-key";
 
 			try {
-				const mcpConfig = (edgeWorker as any).buildMcpConfig(
+				const mcpConfig = (edgeWorker as any).mcpConfigService.buildMcpConfig(
 					mockRepository.id,
 					mockRepository.linearWorkspaceId,
 					"parent-session-123",
