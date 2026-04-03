@@ -521,16 +521,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					this.writeReadableLogEntry(message);
 				}
 
-				// Emit appropriate events based on message type
-				// Defer result message emission until after loop completes to avoid race conditions
-				// where subroutine transitions start before the runner has fully cleaned up
-				if (message.type === "result") {
-					this.pendingResultMessage = message;
-					// Don't complete streamingPrompt here — keep the session warm for follow-up messages
-				} else {
-					this.emit("message", message);
-					this.processMessage(message);
-				}
+				// Emit all messages (including result) immediately in-loop.
+				// The streamingPrompt stays open for follow-up messages — we do NOT call
+				// streamingPrompt.complete() here, so the loop continues waiting.
+				this.emit("message", message);
+				this.processMessage(message);
 			}
 
 			this.activeQuery = null;

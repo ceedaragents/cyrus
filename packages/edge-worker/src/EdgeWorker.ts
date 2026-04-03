@@ -526,7 +526,20 @@ export class EdgeWorker extends EventEmitter {
 	private async initializeComponents(): Promise<void> {
 		// 1. Platform-specific initialization
 		if (this.config.platform === "cli") {
-			// CLI mode: find any available CLIIssueTrackerService
+			// CLI mode: ensure a CLIIssueTrackerService exists for each repo workspace.
+			// Repos from config.repositories don't go through linearWorkspaces init,
+			// so we create trackers here if missing.
+			for (const [repoId, repo] of this.repositories) {
+				const wsId = repo.linearWorkspaceId;
+				if (wsId && !this.issueTrackers.has(wsId)) {
+					const service = new CLIIssueTrackerService();
+					service.seedDefaultData();
+					this.issueTrackers.set(wsId, service);
+					const activitySink = new LinearActivitySink(service, wsId);
+					this.activitySinks.set(repoId, activitySink);
+				}
+			}
+
 			const firstCliTracker = Array.from(this.issueTrackers.values()).find(
 				(tracker): tracker is CLIIssueTrackerService =>
 					tracker instanceof CLIIssueTrackerService,
@@ -2326,9 +2339,6 @@ ${taskSection}`;
 
 				// Create issue tracker for this workspace if not already present
 				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					const linearToken = this.getLinearTokenForWorkspace(
-						requireLinearWorkspaceId(repo),
-					);
 					const issueTracker =
 						this.config.platform === "cli"
 							? (() => {
@@ -2336,12 +2346,16 @@ ${taskSection}`;
 									service.seedDefaultData();
 									return service;
 								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: linearToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
+							: (() => {
+									const linearToken =
+										this.getLinearTokenForWorkspace(
+											requireLinearWorkspaceId(repo),
+										) ?? "";
+									return new LinearIssueTrackerService(
+										new LinearClient({ accessToken: linearToken }),
+										this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
+									);
+								})();
 					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
 				}
 
@@ -2399,9 +2413,6 @@ ${taskSection}`;
 				this.repositories.set(repo.id, resolvedRepo);
 
 				// If workspace changed or token was updated, ensure issue tracker is current
-				const currentToken = this.getLinearTokenForWorkspace(
-					requireLinearWorkspaceId(repo),
-				);
 				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
 					this.logger.info(
 						`  🔑 Creating issue tracker for workspace ${requireLinearWorkspaceId(repo)}`,
@@ -2413,18 +2424,25 @@ ${taskSection}`;
 									service.seedDefaultData();
 									return service;
 								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: currentToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
+							: (() => {
+									const currentToken =
+										this.getLinearTokenForWorkspace(
+											requireLinearWorkspaceId(repo),
+										) ?? "";
+									return new LinearIssueTrackerService(
+										new LinearClient({ accessToken: currentToken }),
+										this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
+									);
+								})();
 					this.issueTrackers.set(
 						requireLinearWorkspaceId(repo),
 						newIssueTracker,
 					);
-				} else {
+				} else if (this.config.platform !== "cli") {
 					// Update token on existing issue tracker if it changed
+					const currentToken = this.getLinearTokenForWorkspace(
+						requireLinearWorkspaceId(repo),
+					);
 					const issueTracker = this.issueTrackers.get(
 						requireLinearWorkspaceId(repo),
 					);
@@ -3147,13 +3165,10 @@ ${taskSection}`;
 	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
-	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
+	private getLinearTokenForWorkspace(linearWorkspaceId: string): string | null {
 		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig) {
-			throw new Error(
-				`No Linear workspace config found for workspace ${linearWorkspaceId}. ` +
-					`Ensure linearWorkspaces.${linearWorkspaceId} is configured.`,
-			);
+			return null; // CLI platform or unconfigured workspace
 		}
 		return workspaceConfig.linearToken;
 	}
@@ -4612,7 +4627,7 @@ ${taskSection}`;
 	private async downloadCommentAttachments(
 		commentBody: string,
 		attachmentsDir: string,
-		linearToken: string,
+		linearToken: string | null,
 		existingAttachmentCount: number,
 	): Promise<{
 		newAttachmentMap: Record<string, string>;
