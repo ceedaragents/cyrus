@@ -490,6 +490,11 @@ export class EdgeWorker extends EventEmitter {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
+		// Each Claude SDK subprocess (startup/query) registers a process 'exit' listener for cleanup.
+		// With 30 pre-warmed sessions + live sessions, we can easily exceed the default limit of 10.
+		// Raise the limit to accommodate concurrent sessions without spurious memory-leak warnings.
+		process.setMaxListeners(100);
+
 		// Pre-warm the 30 most recent Claude sessions in the background
 		// so their first query after restart has near-zero cold-start latency
 		this.warmupRecentSessions(30).catch((err) => {
@@ -5589,12 +5594,20 @@ ${input.userComment}
 						(repoConfig.model as string | undefined) ||
 						"claude-opus-4-6";
 
+					// Build allowed/disallowed tools — same as what buildAgentRunnerConfig() uses.
+					// Without these, startup() inherits the user's defaultMode ("default"),
+					// which causes macOS permission prompts for file writes.
+					const allowedTools = this.buildAllowedTools(repo);
+					const disallowedTools = this.buildDisallowedTools(repo);
+
 					const warm = await startup({
 						options: {
 							resume: session.claudeSessionId,
 							model,
 							cwd: session.workspace.path,
 							...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+							...(allowedTools.length > 0 && { allowedTools }),
+							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
 							env: {
 								...process.env,
