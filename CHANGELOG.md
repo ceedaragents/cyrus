@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.91** - Upgrade from v0.2.90. v0.2.91 adds an optional `terminal_reason` field to result messages (exposed why the query loop ended: `"completed"`, `"aborted_tools"`, `"max_turns"`, or `"blocking_limit"`), adds `'auto'` to the public `PermissionMode` type, and changes sandbox behavior so `enabled: true` now defaults `failIfUnavailable` to `true` (set `failIfUnavailable: false` to restore previous graceful degradation). `@anthropic-ai/sdk` already at latest (v0.82.0). See changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#v0291). ([CYPACK-1033](https://linear.app/ceedar/issue/CYPACK-1033), [#1067](https://github.com/ceedaragents/cyrus/pull/1067))
+
 ## [0.2.40] - 2026-04-02
 
 ### Fixed
