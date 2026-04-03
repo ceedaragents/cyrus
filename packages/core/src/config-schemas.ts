@@ -3,7 +3,13 @@ import { z } from "zod";
 /**
  * Supported runner/harness types for agent execution.
  */
-export const RunnerTypeSchema = z.enum(["claude", "gemini", "codex", "cursor"]);
+export const RunnerTypeSchema = z.enum([
+	"claude",
+	"gemini",
+	"codex",
+	"cursor",
+	"opencode",
+]);
 export type RunnerType = z.infer<typeof RunnerTypeSchema>;
 
 /**
@@ -223,6 +229,12 @@ export const EdgeConfigSchema = z.object({
 
 	/** Default Codex model to use across all repositories (e.g., "gpt-5.3-codex", "gpt-5.2-codex") */
 	codexDefaultModel: z.string().optional(),
+
+	/** Default OpenCode model in "providerID/modelID" format (e.g., "anthropic/claude-opus-4-5", "openai/gpt-4o") */
+	openCodeDefaultModel: z.string().optional(),
+
+	/** Default OpenCode fallback model in "providerID/modelID" format */
+	openCodeDefaultFallbackModel: z.string().optional(),
 
 	/**
 	 * Default runner/harness to use when no runner is specified via labels or description tags.

@@ -41,6 +41,14 @@ export class RunnerSelectionService {
 		if (process.env.CURSOR_API_KEY) {
 			available.push("cursor");
 		}
+		if (process.env.OPENCODE_API_KEY || process.env.ANTHROPIC_API_KEY) {
+			// opencode is only added as a candidate when explicitly desired;
+			// ANTHROPIC_API_KEY already pushes "claude", so we rely on explicit
+			// OPENCODE_API_KEY to differentiate intent.
+			if (process.env.OPENCODE_API_KEY) {
+				available.push("opencode");
+			}
+		}
 
 		if (available.length === 1 && available[0]) {
 			return available[0];
@@ -63,6 +71,9 @@ export class RunnerSelectionService {
 		}
 		if (runnerType === "cursor") {
 			return "gpt-5";
+		}
+		if (runnerType === "opencode") {
+			return this.config.openCodeDefaultModel || "anthropic/claude-sonnet-4-5";
 		}
 		return this.config.codexDefaultModel || "gpt-5.3-codex";
 	}
@@ -87,6 +98,11 @@ export class RunnerSelectionService {
 		}
 		if (runnerType === "cursor") {
 			return "gpt-5";
+		}
+		if (runnerType === "opencode") {
+			return (
+				this.config.openCodeDefaultFallbackModel || "anthropic/claude-haiku-4-5"
+			);
 		}
 		return "gpt-5";
 	}
@@ -146,16 +162,24 @@ export class RunnerSelectionService {
 			gemini: this.getDefaultModelForRunner("gemini"),
 			codex: this.getDefaultModelForRunner("codex"),
 			cursor: this.getDefaultModelForRunner("cursor"),
+			opencode: this.getDefaultModelForRunner("opencode"),
 		};
 		const defaultFallbackByRunner: Record<RunnerType, string> = {
 			claude: this.getDefaultFallbackModelForRunner("claude"),
 			gemini: this.getDefaultFallbackModelForRunner("gemini"),
 			codex: this.getDefaultFallbackModelForRunner("codex"),
 			cursor: this.getDefaultFallbackModelForRunner("cursor"),
+			opencode: this.getDefaultFallbackModelForRunner("opencode"),
 		};
 
 		const isCodexModel = (model: string): boolean =>
 			/gpt-[a-z0-9.-]*codex$/i.test(model) || /^gpt-[a-z0-9.-]+$/i.test(model);
+
+		const isOpenCodeModel = (model: string): boolean =>
+			// "providerID/modelID" format explicitly targets opencode
+			model.includes("/") &&
+			!model.startsWith("gemini") &&
+			!isCodexModel(model);
 
 		const inferRunnerFromModel = (model?: string): RunnerType | undefined => {
 			if (!model) return undefined;
@@ -170,6 +194,8 @@ export class RunnerSelectionService {
 				return "claude";
 			}
 			if (isCodexModel(normalizedModel)) return "codex";
+			// "provider/model" format (e.g. "anthropic/claude-opus-4-5") → opencode
+			if (isOpenCodeModel(normalizedModel)) return "opencode";
 			return undefined;
 		};
 
@@ -210,6 +236,17 @@ export class RunnerSelectionService {
 			if (isCodexModel(normalizedModel)) {
 				return "gpt-5.2-codex";
 			}
+			// opencode "provider/model" format: fall back to haiku-tier
+			if (isOpenCodeModel(normalizedModel)) {
+				if (normalizedModel.includes("opus"))
+					return "anthropic/claude-sonnet-4-5";
+				if (normalizedModel.includes("sonnet"))
+					return "anthropic/claude-haiku-4-5";
+				return (
+					this.config.openCodeDefaultFallbackModel ||
+					"anthropic/claude-haiku-4-5"
+				);
+			}
 			return "gpt-5";
 		};
 
@@ -224,6 +261,9 @@ export class RunnerSelectionService {
 				lowercaseLabels.includes("openai")
 			) {
 				return "codex";
+			}
+			if (lowercaseLabels.includes("opencode")) {
+				return "opencode";
 			}
 			if (lowercaseLabels.includes("gemini")) {
 				return "gemini";
@@ -277,11 +317,13 @@ export class RunnerSelectionService {
 				? "cursor"
 				: agentFromDescription === "codex" || agentFromDescription === "openai"
 					? "codex"
-					: agentFromDescription === "gemini"
-						? "gemini"
-						: agentFromDescription === "claude"
-							? "claude"
-							: undefined;
+					: agentFromDescription === "opencode"
+						? "opencode"
+						: agentFromDescription === "gemini"
+							? "gemini"
+							: agentFromDescription === "claude"
+								? "claude"
+								: undefined;
 		const resolvedAgentFromLabels = resolveAgentFromLabel(normalizedLabels);
 
 		const modelFromDescription = descriptionModelTagRaw;
