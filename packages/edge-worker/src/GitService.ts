@@ -228,6 +228,92 @@ export class GitService {
 	}
 
 	/**
+	 * Run a teardown script before worktree deletion.
+	 * Mirrors runSetupScript but runs during cleanup. Non-blocking on failure
+	 * so worktree deletion always proceeds.
+	 */
+	private runTeardownScript(
+		scriptPath: string,
+		scriptType: "global" | "repository",
+		workspacePath: string,
+		issueIdentifier: string,
+	): void {
+		const expandedPath = scriptPath.replace(/^~/, homedir());
+
+		if (!existsSync(expandedPath)) {
+			this.logger.warn(
+				`⚠️  ${scriptType === "global" ? "Global" : "Repository"} teardown script not found: ${scriptPath}`,
+			);
+			return;
+		}
+
+		if (process.platform !== "win32") {
+			try {
+				const stats = statSync(expandedPath);
+				if (!(stats.mode & 0o100)) {
+					this.logger.warn(
+						`⚠️  ${scriptType === "global" ? "Global" : "Repository"} teardown script is not executable: ${scriptPath}`,
+					);
+					this.logger.warn(`   Run: chmod +x "${expandedPath}"`);
+					return;
+				}
+			} catch (error) {
+				this.logger.warn(
+					`⚠️  Cannot check permissions for ${scriptType} teardown script: ${(error as Error).message}`,
+				);
+				return;
+			}
+		}
+
+		const scriptName = basename(expandedPath);
+		this.logger.info(`ℹ️  Running ${scriptType} teardown script: ${scriptName}`);
+
+		try {
+			let command: string;
+			const isWindows = process.platform === "win32";
+
+			if (scriptPath.endsWith(".ps1")) {
+				command = `powershell -ExecutionPolicy Bypass -File "${expandedPath}"`;
+			} else if (scriptPath.endsWith(".cmd") || scriptPath.endsWith(".bat")) {
+				command = `"${expandedPath}"`;
+			} else if (isWindows) {
+				command = `bash "${expandedPath}"`;
+			} else {
+				command = `bash "${expandedPath}"`;
+			}
+
+			execSync(command, {
+				cwd: workspacePath,
+				stdio: "inherit",
+				env: {
+					...process.env,
+					LINEAR_ISSUE_IDENTIFIER: issueIdentifier,
+				},
+				timeout: 2 * 60 * 1000, // 2 minute timeout (teardown should be fast)
+			});
+
+			this.logger.info(
+				`✅ ${scriptType === "global" ? "Global" : "Repository"} teardown script completed successfully`,
+			);
+		} catch (error) {
+			const errorMessage =
+				(error as any).signal === "SIGTERM"
+					? "Script execution timed out (exceeded 2 minutes)"
+					: (error as Error).message;
+
+			this.logger.error(
+				`❌ ${scriptType === "global" ? "Global" : "Repository"} teardown script failed: ${errorMessage}`,
+			);
+
+			if ((error as any).stderr) {
+				this.logger.error("   stderr:", (error as any).stderr.toString());
+			}
+
+			this.logger.info(`   Continuing with worktree deletion...`);
+		}
+	}
+
+	/**
 	 * Find an existing worktree by its checked-out branch name.
 	 * Parses `git worktree list --porcelain` output and returns the worktree path
 	 * if a worktree is found with the given branch checked out, or null otherwise.
@@ -880,7 +966,10 @@ export class GitService {
 	 *
 	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
 	 */
-	deleteWorktree(issueIdentifier: string): void {
+	deleteWorktree(
+		issueIdentifier: string,
+		options?: { globalTeardownScript?: string },
+	): void {
 		const workspacePath = join(this.workspaceBaseDir, issueIdentifier);
 
 		if (!existsSync(workspacePath)) {
@@ -893,6 +982,16 @@ export class GitService {
 		this.logger.info(
 			`Deleting worktree directory for ${issueIdentifier} at ${workspacePath}`,
 		);
+
+		// Run teardown script before deletion so it can read worktree files (e.g. .env.local)
+		if (options?.globalTeardownScript) {
+			this.runTeardownScript(
+				options.globalTeardownScript,
+				"global",
+				workspacePath,
+				issueIdentifier,
+			);
+		}
 
 		// Find all git worktrees that are within this workspace path.
 		// In multi-repo layouts, there may be subdirectories that are each worktrees.

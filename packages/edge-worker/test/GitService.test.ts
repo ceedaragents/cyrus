@@ -683,6 +683,105 @@ describe("GitService", () => {
 				{ recursive: true, force: true },
 			);
 		});
+
+		it("runs global teardown script before deleting worktree", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				// Teardown script exists and is executable
+				if (p === "/home/user/scripts/teardown.sh") return true;
+				return false;
+			});
+
+			mockStatSync.mockImplementation(() => {
+				return { isFile: () => true, mode: 0o755 } as any;
+			});
+
+			mockReaddirSync.mockReturnValue([] as any);
+			mockExecSync.mockReturnValue(Buffer.from(""));
+
+			gitService.deleteWorktree("DEF-123", {
+				globalTeardownScript: "/home/user/scripts/teardown.sh",
+			});
+
+			// Teardown script should run before deletion, in the worktree directory
+			expect(mockExecSync).toHaveBeenCalledWith(
+				'bash "/home/user/scripts/teardown.sh"',
+				expect.objectContaining({
+					cwd: "/home/user/.cyrus/worktrees/DEF-123",
+					env: expect.objectContaining({
+						LINEAR_ISSUE_IDENTIFIER: "DEF-123",
+					}),
+				}),
+			);
+
+			// Should still delete the directory
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+		});
+
+		it("continues with deletion when teardown script fails", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				if (p === "/home/user/scripts/teardown.sh") return true;
+				return false;
+			});
+
+			mockStatSync.mockImplementation(() => {
+				return { isFile: () => true, mode: 0o755 } as any;
+			});
+
+			mockReaddirSync.mockReturnValue([] as any);
+
+			// First call (teardown script) fails, subsequent calls succeed
+			let callCount = 0;
+			mockExecSync.mockImplementation(() => {
+				callCount++;
+				if (callCount === 1) {
+					throw new Error("teardown script failed");
+				}
+				return Buffer.from("");
+			});
+
+			gitService.deleteWorktree("DEF-123", {
+				globalTeardownScript: "/home/user/scripts/teardown.sh",
+			});
+
+			// Should log the failure
+			expect(mockLogger.error).toHaveBeenCalledWith(
+				expect.stringContaining("teardown script failed"),
+			);
+
+			// Should still delete the directory despite teardown failure
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+		});
+
+		it("skips teardown when no script is configured", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				return false;
+			});
+
+			mockReaddirSync.mockReturnValue([] as any);
+
+			gitService.deleteWorktree("DEF-123");
+
+			// No teardown-related exec calls
+			expect(mockExecSync).not.toHaveBeenCalled();
+
+			// Should still delete
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+		});
 	});
 
 	describe("createGitWorktree - 0 repos", () => {
