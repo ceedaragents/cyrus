@@ -127,17 +127,11 @@ import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
+import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
 import { PromptBuilder } from "./PromptBuilder.js";
-import {
-	applyPlatformSubroutines,
-	ProcedureAnalyzer,
-	type ProcedureDefinition,
-	type RequestClassification,
-	type SubroutineDefinition,
-} from "./procedures/index.js";
 import type {
 	IssueContextResult,
 	PromptAssembly,
@@ -152,6 +146,7 @@ import {
 import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { SkillsPluginResolver } from "./SkillsPluginResolver.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
@@ -202,7 +197,6 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
-	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
@@ -222,6 +216,8 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	private defaultSkillsDeployer: DefaultSkillsDeployer;
+	private skillsPluginResolver: SkillsPluginResolver;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpRequestContext =
@@ -251,22 +247,6 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize global session registry (centralized session storage)
 		this.globalSessionRegistry = new GlobalSessionRegistry();
-
-		// Initialize procedure router for fast classification
-		// Use the configured default runner (or auto-detect from API keys)
-		const simpleRunnerType = this.resolveDefaultSimpleRunnerType();
-		const simpleRunnerModel =
-			simpleRunnerType === "claude"
-				? "haiku"
-				: simpleRunnerType === "gemini"
-					? "gemini-2.5-flash-lite"
-					: "gpt-5";
-		this.procedureAnalyzer = new ProcedureAnalyzer({
-			cyrusHome: this.cyrusHome,
-			model: simpleRunnerModel,
-			timeoutMs: 100000,
-			runnerType: simpleRunnerType,
-		});
 
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
@@ -353,77 +333,6 @@ export class EdgeWorker extends EventEmitter {
 					parentSessionId,
 					prompt,
 					childSessionId,
-					repo,
-					this.agentSessionManager,
-				);
-			},
-			this.procedureAnalyzer,
-			this.sharedApplicationServer,
-		);
-
-		// Subscribe to session events once on the single ASM
-		this.agentSessionManager.on(
-			"subroutineComplete",
-			async ({ sessionId, session }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during subroutine transition`,
-					);
-					return;
-				}
-				await this.handleSubroutineTransition(
-					sessionId,
-					session,
-					repo,
-					this.agentSessionManager,
-				);
-			},
-		);
-
-		this.agentSessionManager.on(
-			"validationLoopIteration",
-			async ({ sessionId, session, fixerPrompt, iteration, maxIterations }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during validation loop`,
-					);
-					return;
-				}
-				this.logger.info(
-					`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-				);
-				await this.handleValidationLoopFixer(
-					sessionId,
-					session,
-					repo,
-					this.agentSessionManager,
-					fixerPrompt,
-					iteration,
-				);
-			},
-		);
-
-		this.agentSessionManager.on(
-			"validationLoopRerun",
-			async ({ sessionId, session, iteration }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during validation rerun`,
-					);
-					return;
-				}
-				this.logger.info(
-					`Validation loop re-running verifications (iteration ${iteration})`,
-				);
-				await this.handleValidationLoopRerun(
-					sessionId,
-					session,
 					repo,
 					this.agentSessionManager,
 				);
@@ -549,6 +458,14 @@ export class EdgeWorker extends EventEmitter {
 			gitService: this.gitService,
 			config: this.config,
 		});
+		this.defaultSkillsDeployer = new DefaultSkillsDeployer(
+			this.cyrusHome,
+			this.logger,
+		);
+		this.skillsPluginResolver = new SkillsPluginResolver(
+			this.cyrusHome,
+			this.logger,
+		);
 
 		// Components will be initialized and registered in start() method before server starts
 	}
@@ -557,6 +474,12 @@ export class EdgeWorker extends EventEmitter {
 	 * Start the edge worker
 	 */
 	async start(): Promise<void> {
+		// Deploy default skills to cyrusHome if not already present (one-time setup)
+		await this.defaultSkillsDeployer.ensureDeployed();
+
+		// Scaffold user skills plugin manifest if needed (one-time setup)
+		await this.skillsPluginResolver.ensureUserPluginScaffolded();
+
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
@@ -569,32 +492,10 @@ export class EdgeWorker extends EventEmitter {
 				await this.addNewRepositories(changes.added);
 				// Detect and apply workspace token changes before overwriting config
 				this.updateLinearWorkspaceTokens(changes.newConfig);
-				const prevDefaultRunner = this.config.defaultRunner;
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
 				this.toolPermissionResolver.setConfig(changes.newConfig);
-
-				// Reconstruct ProcedureAnalyzer if the default runner changed,
-				// since its internal SimpleRunner is baked in at construction time.
-				if (changes.newConfig.defaultRunner !== prevDefaultRunner) {
-					const simpleRunnerType = this.resolveDefaultSimpleRunnerType();
-					const simpleRunnerModel =
-						simpleRunnerType === "claude"
-							? "haiku"
-							: simpleRunnerType === "gemini"
-								? "gemini-2.5-flash-lite"
-								: "gpt-5";
-					this.procedureAnalyzer = new ProcedureAnalyzer({
-						cyrusHome: this.cyrusHome,
-						model: simpleRunnerModel,
-						timeoutMs: 100000,
-						runnerType: simpleRunnerType,
-					});
-					this.logger.info(
-						`🔄 ProcedureAnalyzer reconstructed with runner type: ${simpleRunnerType}`,
-					);
-				}
 			},
 		);
 		this.configManager.startConfigWatcher();
@@ -1246,7 +1147,7 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Initialize procedure metadata
+			// Initialize session metadata
 			if (!session.metadata) {
 				session.metadata = {};
 			}
@@ -1272,22 +1173,21 @@ export class EdgeWorker extends EventEmitter {
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				githubSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				undefined, // issueDescription
-				200, // maxTurns
-				false, // singleTurn
-				undefined, // disallowAllTools
-				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					repository,
+					githubSessionId,
+					systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					undefined, // labels
+					undefined, // issueDescription
+					200, // maxTurns
+					{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
+				);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
@@ -1847,22 +1747,21 @@ ${taskSection}`;
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				gitlabSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				undefined, // issueDescription
-				200, // maxTurns
-				false, // singleTurn
-				undefined, // disallowAllTools
-				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitLab sessions
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					repository,
+					gitlabSessionId,
+					systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					undefined, // labels
+					undefined, // issueDescription
+					200, // maxTurns
+					{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitLab sessions
+				);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
@@ -2329,169 +2228,6 @@ ${taskSection}`;
 			log.error(
 				`Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
 			);
-		}
-	}
-
-	/**
-	 * Handle subroutine transition when a subroutine completes
-	 * This is triggered by the AgentSessionManager's 'subroutineComplete' event
-	 */
-	private async handleSubroutineTransition(
-		sessionId: string,
-		session: CyrusAgentSession,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
-	): Promise<void> {
-		const log = this.logger.withContext({ sessionId });
-		log.info(`Handling subroutine completion for session ${sessionId}`);
-
-		// Get next subroutine (advancement already handled by AgentSessionManager)
-		const nextSubroutine = this.procedureAnalyzer.getCurrentSubroutine(session);
-
-		if (!nextSubroutine) {
-			log.info(`Procedure complete for session ${sessionId}`);
-			return;
-		}
-
-		log.info(`Next subroutine: ${nextSubroutine.name}`);
-
-		// Post a visually distinct status update to Linear so the user knows what's happening next
-		await agentSessionManager.createThoughtActivity(
-			sessionId,
-			`---\n**${nextSubroutine.description}...**`,
-		);
-
-		// Load subroutine prompt
-		let subroutinePrompt: string | null;
-		try {
-			subroutinePrompt = await this.loadSubroutinePrompt(
-				nextSubroutine,
-				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
-			);
-			if (!subroutinePrompt) {
-				// Fallback if loadSubroutinePrompt returns null
-				subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
-			}
-		} catch (error) {
-			log.error(`Failed to load subroutine prompt:`, error);
-			// Fallback to simple prompt
-			subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
-		}
-
-		// Resume Claude session with subroutine prompt
-		try {
-			await this.resumeAgentSession(
-				session,
-				repo,
-				sessionId,
-				agentSessionManager,
-				subroutinePrompt,
-				"", // No attachment manifest
-				false, // Not a new session
-				[], // No additional allowed directories
-				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
-				nextSubroutine?.singleTurn ? 1 : undefined, // singleTurn mode
-			);
-			log.info(
-				`Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
-			);
-		} catch (error) {
-			log.error(
-				`Failed to resume session for ${nextSubroutine.name} subroutine:`,
-				error,
-			);
-		}
-	}
-
-	/**
-	 * Handle validation loop fixer - run the fixer prompt
-	 */
-	private async handleValidationLoopFixer(
-		sessionId: string,
-		session: CyrusAgentSession,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
-		fixerPrompt: string,
-		iteration: number,
-	): Promise<void> {
-		this.logger.info(
-			`Running fixer for session ${sessionId}, iteration ${iteration}`,
-		);
-
-		try {
-			await this.resumeAgentSession(
-				session,
-				repo,
-				sessionId,
-				agentSessionManager,
-				fixerPrompt,
-				"", // No attachment manifest
-				false, // Not a new session
-				[], // No additional allowed directories
-				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
-				undefined, // No maxTurns limit for fixer
-			);
-			this.logger.info(`Successfully started fixer for iteration ${iteration}`);
-		} catch (error) {
-			this.logger.error(
-				`Failed to run fixer for iteration ${iteration}:`,
-				error,
-			);
-		}
-	}
-
-	/**
-	 * Handle validation loop rerun - re-run the verifications subroutine
-	 */
-	private async handleValidationLoopRerun(
-		sessionId: string,
-		session: CyrusAgentSession,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
-	): Promise<void> {
-		this.logger.info(`Re-running verifications for session ${sessionId}`);
-
-		// Get the verifications subroutine definition
-		const verificationsSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
-
-		if (
-			!verificationsSubroutine ||
-			verificationsSubroutine.name !== "verifications"
-		) {
-			this.logger.error(
-				`Expected verifications subroutine, got: ${verificationsSubroutine?.name}`,
-			);
-			return;
-		}
-
-		try {
-			// Load the verifications prompt
-			const subroutinePrompt = await this.loadSubroutinePrompt(
-				verificationsSubroutine,
-				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
-			);
-
-			if (!subroutinePrompt) {
-				this.logger.error(`Failed to load verifications prompt`);
-				return;
-			}
-
-			await this.resumeAgentSession(
-				session,
-				repo,
-				sessionId,
-				agentSessionManager,
-				subroutinePrompt,
-				"", // No attachment manifest
-				false, // Not a new session
-				[], // No additional allowed directories
-				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
-				undefined, // No maxTurns limit
-			);
-			this.logger.info(`Successfully re-started verifications`);
-		} catch (error) {
-			this.logger.error(`Failed to re-run verifications:`, error);
 		}
 	}
 
@@ -3239,7 +2975,7 @@ ${taskSection}`;
 			`Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
 		);
 
-		// Find session(s) for this issue (may be running or paused between subroutines)
+		// Find session(s) for this issue
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
 		if (sessions.length === 0) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
@@ -3407,14 +3143,6 @@ ${taskSection}`;
 			);
 		}
 		return workspaceConfig.linearToken;
-	}
-
-	/**
-	 * Get the Linear workspace slug for a workspace from workspace-level config.
-	 */
-	private getWorkspaceSlug(linearWorkspaceId: string): string | undefined {
-		return this.config.linearWorkspaces?.[linearWorkspaceId]
-			?.linearWorkspaceSlug;
 	}
 
 	/**
@@ -3802,130 +3530,10 @@ ${taskSection}`;
 			allowedDirectories,
 		} = sessionData;
 
-		// Initialize procedure metadata using intelligent routing
-		if (!session.metadata) {
-			session.metadata = {};
-		}
-
-		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(sessionId);
-
-		// Fetch labels early (needed for label override check)
+		// Fetch labels early (needed for system prompt and runner selection)
 		const labels = await this.fetchIssueLabels(fullIssue);
-		// Lowercase labels for case-insensitive comparison
-		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
-		// Check for label overrides BEFORE AI routing (use primary repo for label config)
-		const debuggerConfig = primaryRepo.labelPrompts?.debugger;
-		const debuggerLabels = Array.isArray(debuggerConfig)
-			? debuggerConfig
-			: debuggerConfig?.labels;
-		const hasDebuggerLabel = debuggerLabels?.some((label: string) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
-
-		// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
-		// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
-		// goes to orchestrator procedure
-		const hasHardcodedOrchestratorLabel =
-			lowercaseLabels.includes("orchestrator");
-
-		// Also check any additional orchestrator labels from config
-		const orchestratorConfig = primaryRepo.labelPrompts?.orchestrator;
-		const orchestratorLabels = Array.isArray(orchestratorConfig)
-			? orchestratorConfig
-			: orchestratorConfig?.labels;
-		const hasConfiguredOrchestratorLabel =
-			orchestratorLabels?.some((label: string) =>
-				lowercaseLabels.includes(label.toLowerCase()),
-			) ?? false;
-
-		const hasOrchestratorLabel =
-			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
-
-		// Check for graphite label (for graphite-orchestrator combination)
-		const graphiteConfig = primaryRepo.labelPrompts?.graphite;
-		const graphiteLabels = Array.isArray(graphiteConfig)
-			? graphiteConfig
-			: (graphiteConfig?.labels ?? ["graphite"]);
-		const hasGraphiteLabel = graphiteLabels?.some((label: string) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
-
-		// Graphite-orchestrator requires BOTH graphite AND orchestrator labels
-		const hasGraphiteOrchestratorLabels =
-			hasGraphiteLabel && hasOrchestratorLabel;
-
-		let finalProcedure: ProcedureDefinition;
-		let finalClassification: RequestClassification;
-
-		// If labels indicate a specific procedure, use that instead of AI routing
-		if (hasDebuggerLabel) {
-			const debuggerProcedure =
-				this.procedureAnalyzer.getProcedure("debugger-full");
-			if (!debuggerProcedure) {
-				throw new Error("debugger-full procedure not found in registry");
-			}
-			finalProcedure = debuggerProcedure;
-			finalClassification = "debugger";
-			log.info(
-				`Using debugger-full procedure due to debugger label (skipping AI routing)`,
-			);
-		} else if (hasGraphiteOrchestratorLabels) {
-			// Graphite-orchestrator takes precedence over regular orchestrator when both labels present
-			const orchestratorProcedure =
-				this.procedureAnalyzer.getProcedure("orchestrator-full");
-			if (!orchestratorProcedure) {
-				throw new Error("orchestrator-full procedure not found in registry");
-			}
-			finalProcedure = orchestratorProcedure;
-			// Use orchestrator classification but the system prompt will be graphite-orchestrator
-			finalClassification = "orchestrator";
-			log.info(
-				`Using orchestrator-full procedure with graphite-orchestrator prompt (graphite + orchestrator labels)`,
-			);
-		} else if (hasOrchestratorLabel) {
-			const orchestratorProcedure =
-				this.procedureAnalyzer.getProcedure("orchestrator-full");
-			if (!orchestratorProcedure) {
-				throw new Error("orchestrator-full procedure not found in registry");
-			}
-			finalProcedure = orchestratorProcedure;
-			finalClassification = "orchestrator";
-			log.info(
-				`Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
-			);
-		} else {
-			// No label override - use AI routing
-			const issueDescription =
-				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
-			const routingDecision =
-				await this.procedureAnalyzer.determineRoutine(issueDescription);
-			finalProcedure = routingDecision.procedure;
-			finalClassification = routingDecision.classification;
-
-			log.info(
-				`AI routing: ${routingDecision.classification} → ${finalProcedure.name}`,
-			);
-		}
-
-		// Apply platform-specific subroutine substitution (e.g., gh-pr → glab-mr for GitLab repos)
-		const hostingPlatform = primaryRepo.gitlabUrl
-			? ("gitlab" as const)
-			: primaryRepo.githubUrl
-				? ("github" as const)
-				: undefined;
-		finalProcedure = applyPlatformSubroutines(finalProcedure, hostingPlatform);
-
-		// Initialize procedure metadata in session with final decision
-		this.procedureAnalyzer.initializeProcedureMetadata(session, finalProcedure);
-
-		// Post single procedure selection result (replaces ephemeral routing thought)
-		await agentSessionManager.postProcedureSelectionThought(
-			sessionId,
-			finalProcedure.name,
-			finalClassification,
-		);
+		log.info(`Starting agent session for issue ${fullIssue.identifier}`);
 
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
@@ -3981,37 +3589,17 @@ ${taskSection}`;
 				}
 			}
 
-			// Get current subroutine to check for singleTurn mode and disallowAllTools
-			const currentSubroutine =
-				this.procedureAnalyzer.getCurrentSubroutine(session);
-
 			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			// If subroutine has disallowAllTools: true, use empty array to disable all tools
-			const allowedTools = currentSubroutine?.disallowAllTools
-				? []
-				: this.buildAllowedTools(repositories, promptType);
-			const baseDisallowedTools = this.buildDisallowedTools(
+			const allowedTools = this.buildAllowedTools(repositories, promptType);
+			const disallowedTools = this.buildDisallowedTools(
 				repositories,
 				promptType,
 			);
 
-			// Merge subroutine-level disallowedTools if applicable
-			const disallowedTools = this.mergeSubroutineDisallowedTools(
-				session,
-				baseDisallowedTools,
-				"EdgeWorker",
+			log.debug(
+				`Configured allowed tools for ${fullIssue.identifier}:`,
+				allowedTools,
 			);
-
-			if (currentSubroutine?.disallowAllTools) {
-				log.debug(
-					`All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
-				);
-			} else {
-				log.debug(
-					`Configured allowed tools for ${fullIssue.identifier}:`,
-					allowedTools,
-				);
-			}
 			if (disallowedTools.length > 0) {
 				log.debug(
 					`Configured disallowed tools for ${fullIssue.identifier}:`,
@@ -4021,23 +3609,22 @@ ${taskSection}`;
 
 			// Create agent runner with system prompt from assembly
 			// buildAgentRunnerConfig now determines runner type from labels internally
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				primaryRepo,
-				sessionId,
-				assembly.systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				labels, // Pass labels for runner selection and model override
-				fullIssue.description || undefined, // Description tags can override label selectors
-				undefined, // maxTurns
-				currentSubroutine?.singleTurn, // singleTurn flag
-				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
-				undefined, // mcpOptions
-				linearWorkspaceId,
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					primaryRepo,
+					sessionId,
+					assembly.systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					labels, // Pass labels for runner selection and model override
+					fullIssue.description || undefined, // Description tags can override label selectors
+					undefined, // maxTurns
+					undefined, // mcpOptions
+					linearWorkspaceId,
+				);
 
 			log.debug(
 				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
@@ -4366,7 +3953,7 @@ ${taskSection}`;
 			}
 		}
 
-		// Note: Routing and streaming check happens later in handlePromptWithStreamingCheck
+		// Note: Streaming check happens later in handlePromptWithStreamingCheck
 		// after attachments are processed
 
 		// Ensure session is not null after creation/retrieval
@@ -5296,8 +4883,7 @@ ${taskSection}`;
 	 *
 	 * New session prompt structure:
 	 * 1. Issue context (from buildIssueContextPrompt)
-	 * 2. Initial subroutine prompt (if procedure initialized)
-	 * 3. User comment
+	 * 2. User comment
 	 *
 	 * Existing session prompt structure:
 	 * 1. User comment
@@ -5390,7 +4976,7 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Build prompt for new session - includes issue context, subroutine prompt, and user comment
+	 * Build prompt for new session - includes issue context and user comment
 	 */
 	private async buildNewSessionPrompt(
 		input: PromptAssemblyInput,
@@ -5423,7 +5009,13 @@ ${taskSection}`;
 			systemPrompt = sharedInstructions;
 		}
 
-		// 3. Build issue context using appropriate builder
+		// 3. Append skills guidance — instruct the agent to use skills based on context
+		systemPrompt += await this.skillsPluginResolver.buildSkillsGuidance();
+
+		// 4. Append agent context — dynamic values for skills to reference
+		systemPrompt += this.buildAgentContextBlock();
+
+		// 5. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
 		const promptType = this.determinePromptType(
 			input,
@@ -5442,26 +5034,7 @@ ${taskSection}`;
 		parts.push(issueContext.prompt);
 		components.push("issue-context");
 
-		// 4. Load and append initial subroutine prompt
-		const currentSubroutine = this.procedureAnalyzer.getCurrentSubroutine(
-			input.session,
-		);
-		let subroutineName: string | undefined;
-		if (currentSubroutine) {
-			const resolvedWsId =
-				input.linearWorkspaceId ?? requireLinearWorkspaceId(input.repository);
-			const subroutinePrompt = await this.loadSubroutinePrompt(
-				currentSubroutine,
-				this.getWorkspaceSlug(resolvedWsId),
-			);
-			if (subroutinePrompt) {
-				parts.push(subroutinePrompt);
-				components.push("subroutine-prompt");
-				subroutineName = currentSubroutine.name;
-			}
-		}
-
-		// 5. Add user comment (if present)
+		// 4. Add user comment (if present)
 		// Skip for mention-triggered prompts since the comment is already in the mention block
 		if (input.userComment.trim() && !input.isMentionTriggered) {
 			// If we have author/timestamp metadata, include it for multi-player context
@@ -5492,12 +5065,37 @@ ${input.userComment}
 			userPrompt: parts.join("\n\n"),
 			metadata: {
 				components,
-				subroutineName,
 				promptType,
 				isNewSession: true,
 				isStreaming: false,
 			},
 		};
+	}
+
+	/**
+	 * Build an <agent_context> block with dynamic values that skills can reference.
+	 *
+	 * Provides bot usernames so skills (e.g. verify-and-ship) can refer to the
+	 * correct bot account without hardcoding.
+	 */
+	private buildAgentContextBlock(): string {
+		const githubBot = process.env.GITHUB_BOT_USERNAME || "";
+		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "";
+
+		if (!githubBot && !gitlabBot) {
+			return "";
+		}
+
+		const lines: string[] = ["\n\n<agent_context>"];
+		if (githubBot) {
+			lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
+		}
+		if (gitlabBot) {
+			lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
+		}
+		lines.push("</agent_context>");
+
+		return lines.join("\n");
 	}
 
 	/**
@@ -5555,17 +5153,6 @@ ${input.userComment}
 			return "label-based";
 		}
 		return "fallback";
-	}
-
-	/**
-	 * Load a subroutine prompt file
-	 * Extracted helper to make prompt assembly more readable
-	 */
-	private async loadSubroutinePrompt(
-		subroutine: SubroutineDefinition,
-		workspaceSlug?: string,
-	): Promise<string | null> {
-		return this.promptBuilder.loadSubroutinePrompt(subroutine, workspaceSlug);
 	}
 
 	/**
@@ -5629,48 +5216,12 @@ ${input.userComment}
 	 * Uses config.defaultRunner if set, otherwise auto-detects from API keys,
 	 * falling back to "claude".
 	 */
-	private resolveDefaultSimpleRunnerType():
-		| "claude"
-		| "gemini"
-		| "codex"
-		| "cursor"
-		| "opencode" {
-		if (this.config.defaultRunner) {
-			this.logger.info(
-				`🏃 SimpleRunner type resolved from config.defaultRunner: ${this.config.defaultRunner}`,
-			);
-			return this.config.defaultRunner;
-		}
-
-		// Auto-detect: if exactly one runner has API keys set, use it
-		const available: Array<RunnerType> = [];
-		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
-			available.push("claude");
-		}
-		if (process.env.GEMINI_API_KEY) {
-			available.push("gemini");
-		}
-		if (process.env.OPENAI_API_KEY) {
-			available.push("codex");
-		}
-		if (process.env.CURSOR_API_KEY) {
-			available.push("cursor");
-		}
-
-		const result =
-			available.length === 1 && available[0] ? available[0] : "claude";
-		this.logger.info(
-			`🏃 SimpleRunner type auto-detected: ${result} (available: ${available.join(", ") || "none"}, config.defaultRunner not set)`,
-		);
-		return result;
-	}
-
 	/**
 	 * Build agent runner configuration with common settings.
 	 * Delegates to RunnerConfigBuilder for shared config assembly.
 	 * @returns Object containing the runner config and runner type to use
 	 */
-	private buildAgentRunnerConfig(
+	private async buildAgentRunnerConfig(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		sessionId: string,
@@ -5682,14 +5233,12 @@ ${input.userComment}
 		labels?: string[],
 		issueDescription?: string,
 		maxTurns?: number,
-		singleTurn?: boolean,
-		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): {
+	): Promise<{
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
-	} {
+	}> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
@@ -5708,12 +5257,11 @@ ${input.userComment}
 			labels,
 			issueDescription,
 			maxTurns,
-			singleTurn,
-			disallowAllTools,
 			mcpOptions,
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
+			plugins: await this.skillsPluginResolver.resolve(),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
@@ -5764,26 +5312,6 @@ ${input.userComment}
 		return this.toolPermissionResolver.buildDisallowedTools(
 			repositories,
 			promptType,
-		);
-	}
-
-	/**
-	 * Merge subroutine-level disallowedTools with base disallowedTools
-	 * @param session Current agent session
-	 * @param baseDisallowedTools Base disallowed tools from repository/global config
-	 * @param logContext Context string for logging (e.g., "EdgeWorker", "resumeClaudeSession")
-	 * @returns Merged disallowed tools list
-	 */
-	private mergeSubroutineDisallowedTools(
-		session: CyrusAgentSession,
-		baseDisallowedTools: string[],
-		logContext: string,
-	): string[] {
-		return this.toolPermissionResolver.mergeSubroutineDisallowedTools(
-			session,
-			baseDisallowedTools,
-			logContext,
-			this.procedureAnalyzer,
 		);
 	}
 
@@ -6081,121 +5609,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Re-route procedure for a session (used when resuming from child or give feedback)
-	 * This ensures the currentSubroutine is reset to avoid suppression issues
-	 */
-	private async rerouteProcedureForSession(
-		session: CyrusAgentSession,
-		sessionId: string,
-		agentSessionManager: AgentSessionManager,
-		promptBody: string,
-		repository: RepositoryConfig,
-		linearWorkspaceId: string,
-	): Promise<void> {
-		// Initialize procedure metadata using intelligent routing
-		if (!session.metadata) {
-			session.metadata = {};
-		}
-
-		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(sessionId);
-
-		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
-		let hasOrchestratorLabel = false;
-
-		// Get issueId from issueContext (preferred) or deprecated issueId field
-		const issueId = session.issueContext?.issueId ?? session.issueId;
-		if (issueTracker && issueId) {
-			try {
-				const fullIssue = await issueTracker.fetchIssue(issueId);
-				const labels = await this.fetchIssueLabels(fullIssue);
-
-				// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
-				// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
-				// goes to orchestrator procedure
-				const lowercaseLabels = labels.map((label) => label.toLowerCase());
-				const hasHardcodedOrchestratorLabel =
-					lowercaseLabels.includes("orchestrator");
-
-				// Also check any additional orchestrator labels from config
-				const orchestratorConfig = repository.labelPrompts?.orchestrator;
-				const orchestratorLabels = Array.isArray(orchestratorConfig)
-					? orchestratorConfig
-					: orchestratorConfig?.labels;
-				const hasConfiguredOrchestratorLabel =
-					orchestratorLabels?.some((label: string) =>
-						lowercaseLabels.includes(label.toLowerCase()),
-					) ?? false;
-
-				hasOrchestratorLabel =
-					hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
-			} catch (error) {
-				this.logger.error(`Failed to fetch issue labels for routing:`, error);
-				// Continue with AI routing if label fetch fails
-			}
-		}
-
-		let selectedProcedure: ProcedureDefinition;
-		let finalClassification: RequestClassification;
-
-		// If Orchestrator label is present, ALWAYS use orchestrator-full procedure
-		if (hasOrchestratorLabel) {
-			const orchestratorProcedure =
-				this.procedureAnalyzer.getProcedure("orchestrator-full");
-			if (!orchestratorProcedure) {
-				throw new Error("orchestrator-full procedure not found in registry");
-			}
-			selectedProcedure = orchestratorProcedure;
-			finalClassification = "orchestrator";
-			this.logger.info(
-				`Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
-			);
-		} else {
-			// No Orchestrator label - use AI routing based on prompt content
-			const routingDecision = await this.procedureAnalyzer.determineRoutine(
-				promptBody.trim(),
-			);
-			selectedProcedure = routingDecision.procedure;
-			finalClassification = routingDecision.classification;
-
-			this.logger.info(
-				`AI routing: ${routingDecision.classification} → ${selectedProcedure.name}`,
-			);
-		}
-
-		// Apply platform-specific subroutine substitution (e.g., gh-pr → glab-mr for GitLab repos)
-		const hostingPlatform = repository.gitlabUrl
-			? ("gitlab" as const)
-			: repository.githubUrl
-				? ("github" as const)
-				: undefined;
-		selectedProcedure = applyPlatformSubroutines(
-			selectedProcedure,
-			hostingPlatform,
-		);
-
-		// Initialize procedure metadata in session (resets currentSubroutine)
-		this.procedureAnalyzer.initializeProcedureMetadata(
-			session,
-			selectedProcedure,
-		);
-
-		// Post procedure selection result (replaces ephemeral routing thought)
-		await agentSessionManager.postProcedureSelectionThought(
-			sessionId,
-			selectedProcedure.name,
-			finalClassification,
-		);
-	}
-
-	/**
 	 * Handle prompt with streaming check - centralized logic for all input types
 	 *
 	 * This method implements the unified pattern for handling prompts:
 	 * 1. Check if runner is actively streaming
-	 * 2. Route procedure if NOT streaming (resets currentSubroutine)
-	 * 3. Add to stream if streaming, OR resume session if not
+	 * 2. Add to stream if streaming, OR resume session if not
 	 *
 	 * @param session The Cyrus agent session
 	 * @param repository Repository configuration
@@ -6223,26 +5641,7 @@ ${input.userComment}
 		commentTimestamp?: string,
 	): Promise<boolean> {
 		const log = this.logger.withContext({ sessionId });
-		// Check if runner is actively running before routing
 		const existingRunner = session.agentRunner;
-		const isRunning = existingRunner?.isRunning() || false;
-
-		// Always route procedure for new input, UNLESS actively running
-		if (!isRunning) {
-			await this.rerouteProcedureForSession(
-				session,
-				sessionId,
-				agentSessionManager,
-				promptBody,
-				repository,
-				linearWorkspaceId,
-			);
-			log.debug(`Routed procedure for ${logContext}`);
-		} else {
-			log.debug(
-				`Skipping routing for ${sessionId} (${logContext}) - runner is actively running`,
-			);
-		}
 
 		// Handle running case - add message to existing stream (if supported)
 		if (
@@ -6395,30 +5794,9 @@ ${input.userComment}
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
 
-		// Get current subroutine to check for singleTurn mode and disallowAllTools
-		const currentSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
-
-		// Build allowed tools list
-		// If subroutine has disallowAllTools: true, use empty array to disable all tools
-		const allowedTools = currentSubroutine?.disallowAllTools
-			? []
-			: this.buildAllowedTools(repository, promptType);
-		const baseDisallowedTools = this.buildDisallowedTools(
-			repository,
-			promptType,
-		);
-
-		// Merge subroutine-level disallowedTools if applicable
-		const disallowedTools = this.mergeSubroutineDisallowedTools(
-			session,
-			baseDisallowedTools,
-			"resumeClaudeSession",
-		);
-
-		if (currentSubroutine?.disallowAllTools) {
-			log.debug(`All tools disabled for subroutine: ${currentSubroutine.name}`);
-		}
+		// Build allowed and disallowed tools lists
+		const allowedTools = this.buildAllowedTools(repository, promptType);
+		const disallowedTools = this.buildDisallowedTools(repository, promptType);
 
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
@@ -6455,23 +5833,22 @@ ${input.userComment}
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
 		// For existing sessions, we still need labels for model override but ignore runner type
-		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-			session,
-			repository,
-			sessionId,
-			systemPrompt,
-			allowedTools,
-			allowedDirectories,
-			disallowedTools,
-			resumeSessionId,
-			labels, // Always pass labels to preserve model override
-			fullIssue.description || undefined, // Description tags can override label selectors
-			maxTurns, // Pass maxTurns if specified
-			currentSubroutine?.singleTurn, // singleTurn flag
-			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
-			undefined, // mcpOptions
-			resolvedWorkspaceId,
-		);
+		const { config: runnerConfig, runnerType } =
+			await this.buildAgentRunnerConfig(
+				session,
+				repository,
+				sessionId,
+				systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				resumeSessionId,
+				labels, // Always pass labels to preserve model override
+				fullIssue.description || undefined, // Description tags can override label selectors
+				maxTurns, // Pass maxTurns if specified
+				undefined, // mcpOptions
+				resolvedWorkspaceId,
+			);
 
 		// Create the appropriate runner based on session state
 		const runner = this.createRunnerForType(runnerType, runnerConfig);

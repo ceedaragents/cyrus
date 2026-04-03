@@ -4,6 +4,10 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Replaced rigid procedure-based agent session architecture with skills-based approach. Procedures (ProcedureAnalyzer, subroutine sequencing, validation loop) removed in favor of SKILL.md files delivered via Claude Agent SDK plugin (`cyrus-skills-plugin`). Added `plugins` field to `AgentRunnerConfig`, `ClaudeRunnerConfig`, and `IssueRunnerConfigInput`; wired through `ClaudeRunner` to SDK `query()` options. Added Stop hook to `RunnerConfigBuilder` with `stop_hook_active` guard to ensure PRs/summaries are created before session ends. Simplified `AgentSessionManager` by removing procedure completion routing and validation loop logic. Re-exported `SdkPluginConfig` from `claude-runner`. Removed ~7000 lines of procedure/validation/subroutine code. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
+- Extracted `SkillsPluginResolver` from `EdgeWorker` (SRP refactor). Skills plugin resolution, user plugin manifest auto-scaffolding, and `buildSkillsGuidance()` now live in a dedicated module instead of being inline in the 5400-line EdgeWorker. Removed stale `postProcedureSelectionThought` mocks from 7 test files and updated procedure-referencing comments across source and docs. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
+
 ## [0.2.40] - 2026-04-02
 
 ### Changed
