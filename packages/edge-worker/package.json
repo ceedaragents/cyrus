@@ -10,11 +10,12 @@
 		"prompt-template-v2.md",
 		"prompt-template.md",
 		"label-prompt-template.md",
-		"prompts"
+		"prompts",
+		"cyrus-skills-plugin"
 	],
 	"scripts": {
 		"build": "tsc && npm run copy-prompts",
-		"copy-prompts": "mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/ && cp label-prompt-template.md dist/ && cp -r prompts dist/",
+		"copy-prompts": "cp label-prompt-template.md dist/ && cp -r prompts dist/ && cp -rL cyrus-skills-plugin dist/cyrus-skills-plugin",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",

@@ -97,8 +97,6 @@ export class ChatSessionHandler<TEvent> {
 		this.sessionManager = new AgentSessionManager(
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
-			undefined, // No procedure analyzer
-			undefined, // No shared application server
 		);
 	}
 
@@ -220,7 +218,7 @@ export class ChatSessionHandler<TEvent> {
 			// Track this thread → session mapping for follow-up messages
 			this.threadSessions.set(threadKey, sessionId);
 
-			// Initialize procedure metadata
+			// Initialize session metadata
 			if (!session.metadata) {
 				session.metadata = {};
 			}

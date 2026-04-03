@@ -22,6 +22,7 @@ export type {
 	ChatSessionHandlerDeps,
 } from "./ChatSessionHandler.js";
 export { ChatSessionHandler } from "./ChatSessionHandler.js";
+export { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 export { EdgeWorker } from "./EdgeWorker.js";
 export type { CreateGitWorktreeOptions } from "./GitService.js";
 export { GitService } from "./GitService.js";
@@ -39,6 +40,7 @@ export type {
 } from "./RunnerConfigBuilder.js";
 export { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
+export { SkillsPluginResolver } from "./SkillsPluginResolver.js";
 export { SlackChatAdapter } from "./SlackChatAdapter.js";
 export type {
 	ActivityPostOptions,
@@ -56,14 +58,5 @@ export {
 	DEFAULT_BLOCK_MESSAGE,
 	UserAccessControl,
 } from "./UserAccessControl.js";
-// Export validation loop module
-export {
-	DEFAULT_VALIDATION_LOOP_CONFIG,
-	parseValidationResult,
-	VALIDATION_RESULT_SCHEMA,
-	type ValidationFixerContext,
-	type ValidationLoopConfig,
-	type ValidationLoopState,
-	type ValidationResult,
-} from "./validation/index.js";
+
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";
