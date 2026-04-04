@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.92** - Upgrades from v0.2.90. v0.2.91 adds an optional `terminal_reason` field to result messages (values: `completed`, `aborted_tools`, `max_turns`, `blocking_limit`), expands the public `PermissionMode` type to include `'auto'`, and changes `sandbox: { enabled: true }` to default `failIfUnavailable: true`. v0.2.92 syncs with Claude Code v2.1.92. See changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1039](https://linear.app/ceedar/issue/CYPACK-1039), [#1068](https://github.com/ceedaragents/cyrus/pull/1068))
+
 ## [0.2.40] - 2026-04-02
 
 ### Fixed
