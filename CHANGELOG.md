@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.41] - 2026-04-06
+
+### Changed
+- **Skills replace rigid procedure workflows** - Agent sessions now use flexible, customizable skills instead of fixed procedure sequences. Skills are discoverable at runtime, giving the agent more natural control over its workflow. A Stop hook ensures PRs and summaries are always created before sessions end. Users can add custom skills to `~/.cyrus/skills/`. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.41
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.41
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.41
+
+#### cyrus-core
+- cyrus-core@0.2.41
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.41
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.41
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.41
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.41
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.41
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.41
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.41
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.41
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.41
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.41
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.41
+
 ## [0.2.40] - 2026-04-02
 
 ### Fixed
