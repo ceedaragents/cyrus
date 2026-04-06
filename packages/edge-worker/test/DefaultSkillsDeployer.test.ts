@@ -1,9 +1,18 @@
 import { access, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ILogger } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultSkillsDeployer } from "../src/DefaultSkillsDeployer.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const BUNDLED_SKILLS_DIR = join(
+	__dirname,
+	"..",
+	"cyrus-skills-plugin",
+	"skills",
+);
 
 function createTestLogger(): ILogger {
 	return {
@@ -34,7 +43,11 @@ describe("DefaultSkillsDeployer", () => {
 			`cyrus-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		);
 		await mkdir(testHome, { recursive: true });
-		deployer = new DefaultSkillsDeployer(testHome, createTestLogger());
+		deployer = new DefaultSkillsDeployer(
+			testHome,
+			createTestLogger(),
+			BUNDLED_SKILLS_DIR,
+		);
 	});
 
 	afterEach(async () => {
