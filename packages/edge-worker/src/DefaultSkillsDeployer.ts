@@ -16,6 +16,7 @@ import type { ILogger } from "cyrus-core";
  */
 export class DefaultSkillsDeployer {
 	private readonly bundledSkillsPath: string;
+	private readonly bundledSkillsFallbackPath: string;
 	private readonly deployedPluginPath: string;
 	private readonly deployedSkillsPath: string;
 	private readonly manifestDir: string;
@@ -25,8 +26,14 @@ export class DefaultSkillsDeployer {
 		private readonly cyrusHome: string,
 		private readonly logger: ILogger,
 	) {
-		this.bundledSkillsPath = join(
-			dirname(fileURLToPath(import.meta.url)),
+		// In production (dist/), skills are copied alongside the compiled JS by
+		// the copy-prompts build step. In development (src/), the skills live at
+		// the package root as symlinks. We resolve at construction time so
+		// ensureDeployed() uses whichever path actually exists.
+		const currentDir = dirname(fileURLToPath(import.meta.url));
+		this.bundledSkillsPath = join(currentDir, "cyrus-skills-plugin", "skills");
+		this.bundledSkillsFallbackPath = join(
+			currentDir,
 			"..",
 			"cyrus-skills-plugin",
 			"skills",
@@ -52,9 +59,18 @@ export class DefaultSkillsDeployer {
 			return;
 		}
 
-		if (!(await this.exists(this.bundledSkillsPath))) {
+		// Resolve the bundled skills source: prefer the sibling path (production
+		// dist/ layout) and fall back to the parent path (development src/ layout).
+		let sourcePath: string | undefined;
+		if (await this.exists(this.bundledSkillsPath)) {
+			sourcePath = this.bundledSkillsPath;
+		} else if (await this.exists(this.bundledSkillsFallbackPath)) {
+			sourcePath = this.bundledSkillsFallbackPath;
+		}
+
+		if (!sourcePath) {
 			this.logger.warn(
-				`Bundled skills not found at ${this.bundledSkillsPath} — cannot deploy defaults`,
+				`Bundled skills not found at ${this.bundledSkillsPath} or ${this.bundledSkillsFallbackPath} — cannot deploy defaults`,
 			);
 			return;
 		}
@@ -78,13 +94,13 @@ export class DefaultSkillsDeployer {
 
 		// Copy each skill directory from bundled to deployed.
 		// Entries may be directories or symlinks to directories (dev vs build).
-		const entries = await readdir(this.bundledSkillsPath, {
+		const entries = await readdir(sourcePath, {
 			withFileTypes: true,
 		});
 		let deployedCount = 0;
 		for (const entry of entries) {
 			if (entry.isDirectory() || entry.isSymbolicLink()) {
-				const src = join(this.bundledSkillsPath, entry.name);
+				const src = join(sourcePath, entry.name);
 				const dest = join(this.deployedSkillsPath, entry.name);
 				await cp(src, dest, { recursive: true, dereference: true });
 				deployedCount++;
