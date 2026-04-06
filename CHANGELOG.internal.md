@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-04-06
+
 ### Fixed
 - Fixed bundled skills not being included in published npm package. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046), [#1073](https://github.com/ceedaragents/cyrus/pull/1073))
 
