@@ -32,6 +32,18 @@ import type {
 } from "./sinks/index.js";
 
 /**
+ * Callback fired when a tool result is processed by the session manager.
+ * Allows consumers (e.g. ChatSessionHandler) to react to specific tool completions.
+ */
+export type ToolResultCallback = (info: {
+	sessionId: string;
+	toolName: string;
+	toolInput: any;
+	toolResultContent: string;
+	isError: boolean;
+}) => void;
+
+/**
  * Events emitted by AgentSessionManager
  */
 // biome-ignore lint/complexity/noBannedTypes: Empty events type (events removed in CYPACK-996 skill refactor)
@@ -71,6 +83,7 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	private toolResultCallbacks: ToolResultCallback[] = [];
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -99,6 +112,13 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	setActivitySink(sessionId: string, sink: IActivitySink): void {
 		this.activitySinks.set(sessionId, sink);
+	}
+
+	/**
+	 * Register a callback that fires whenever a tool result is processed.
+	 */
+	onToolResult(callback: ToolResultCallback): void {
+		this.toolResultCallbacks.push(callback);
 	}
 
 	/**
@@ -709,6 +729,32 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Fire registered tool result callbacks (fire-and-forget, errors are logged).
+	 */
+	private fireToolResultCallbacks(
+		sessionId: string,
+		toolName: string,
+		toolInput: any,
+		toolResult: { content: string; isError: boolean },
+	): void {
+		for (const cb of this.toolResultCallbacks) {
+			try {
+				cb({
+					sessionId,
+					toolName,
+					toolInput,
+					toolResultContent: toolResult.content,
+					isError: toolResult.isError,
+				});
+			} catch (err) {
+				this.logger.warn(
+					`Tool result callback error: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
+	}
+
+	/**
 	 * Sync session entry to external tracker (create AgentActivity)
 	 */
 	private async syncEntryToActivitySink(
@@ -750,6 +796,14 @@ export class AgentSessionManager extends EventEmitter {
 							);
 							const toolName = originalTool?.name || "Tool";
 							const toolInput = originalTool?.input || "";
+
+							// Fire tool result callbacks (async, fire-and-forget)
+							this.fireToolResultCallbacks(
+								sessionId,
+								toolName,
+								toolInput,
+								toolResult,
+							);
 
 							// Clean up the tool call from our tracking map
 							if (entry.metadata.toolUseId) {

@@ -48,6 +48,9 @@ export interface ChatPlatformAdapter<TEvent> {
 
 	/** Notify the user that a previous request is still processing */
 	notifyBusy(event: TEvent, threadKey: string): Promise<void>;
+
+	/** Post a mid-session notification message to the thread (e.g. issue creation alerts) */
+	postThreadMessage?(event: TEvent, message: string): Promise<void>;
 }
 
 /**
@@ -81,6 +84,7 @@ export class ChatSessionHandler<TEvent> {
 	private adapter: ChatPlatformAdapter<TEvent>;
 	private sessionManager: AgentSessionManager;
 	private threadSessions: Map<string, string> = new Map();
+	private sessionEvents: Map<string, TEvent> = new Map();
 	private deps: ChatSessionHandlerDeps;
 	private logger: ILogger;
 
@@ -98,6 +102,15 @@ export class ChatSessionHandler<TEvent> {
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
 		);
+
+		// Listen for tool results to post mid-session notifications (e.g. issue creation links)
+		this.sessionManager.onToolResult((info) => {
+			this.handleToolResultNotification(info).catch((err) => {
+				this.logger.warn(
+					`Failed to handle tool result notification: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			});
+		});
 	}
 
 	/**
@@ -132,6 +145,8 @@ export class ChatSessionHandler<TEvent> {
 					this.sessionManager.getAgentRunner(existingSessionId);
 
 				if (existingSession && existingRunner?.isRunning()) {
+					// Keep event reference up to date for mid-session notifications
+					this.sessionEvents.set(existingSessionId, event);
 					// Session is actively running — inject the follow-up via streaming input
 					if (
 						existingRunner.addStreamMessage &&
@@ -217,6 +232,7 @@ export class ChatSessionHandler<TEvent> {
 
 			// Track this thread → session mapping for follow-up messages
 			this.threadSessions.set(threadKey, sessionId);
+			this.sessionEvents.set(sessionId, event);
 
 			// Initialize session metadata
 			if (!session.metadata) {
@@ -283,6 +299,102 @@ export class ChatSessionHandler<TEvent> {
 		} finally {
 			this.deps.onWebhookEnd();
 		}
+	}
+
+	/**
+	 * Handle tool result notifications — post mid-session messages to the thread
+	 * when the agent creates a Linear issue via MCP.
+	 */
+	private async handleToolResultNotification(info: {
+		sessionId: string;
+		toolName: string;
+		toolInput: any;
+		toolResultContent: string;
+		isError: boolean;
+	}): Promise<void> {
+		// Only handle successful Linear issue creation
+		if (info.toolName !== "mcp__linear__save_issue" || info.isError) {
+			return;
+		}
+
+		// Only post if the adapter supports mid-session thread messages
+		if (!this.adapter.postThreadMessage) {
+			return;
+		}
+
+		const event = this.sessionEvents.get(info.sessionId);
+		if (!event) {
+			return;
+		}
+
+		// Extract issue URL from the tool result
+		const issueUrl = this.extractLinearIssueUrl(info.toolResultContent);
+		if (!issueUrl) {
+			this.logger.warn(
+				`Could not extract Linear issue URL from save_issue result for session ${info.sessionId}`,
+			);
+			return;
+		}
+
+		const issueIdentifier = this.extractLinearIssueIdentifier(
+			info.toolResultContent,
+		);
+		const displayText = issueIdentifier ? `${issueIdentifier}` : "Linear issue";
+
+		try {
+			await this.adapter.postThreadMessage(
+				event,
+				`Created ${displayText}: ${issueUrl}`,
+			);
+			this.logger.info(
+				`Posted issue creation notification for session ${info.sessionId}: ${issueUrl}`,
+			);
+		} catch (err) {
+			this.logger.warn(
+				`Failed to post issue creation notification: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
+	/**
+	 * Extract a Linear issue URL from MCP tool result content.
+	 * Handles both JSON responses and plain text containing URLs.
+	 */
+	private extractLinearIssueUrl(content: string): string | null {
+		// Try JSON parse first
+		try {
+			const parsed = JSON.parse(content);
+			if (parsed.url && typeof parsed.url === "string") {
+				return parsed.url;
+			}
+		} catch {
+			// Not JSON — fall through to regex
+		}
+
+		// Match Linear issue URLs in text
+		const urlMatch = content.match(
+			/https:\/\/linear\.app\/[^/\s]+\/issue\/[A-Z]+-\d+[^\s)"]*/,
+		);
+		return urlMatch?.[0] ?? null;
+	}
+
+	/**
+	 * Extract a Linear issue identifier (e.g. "CYPACK-1234") from MCP tool result content.
+	 */
+	private extractLinearIssueIdentifier(content: string): string | null {
+		// Try JSON parse first
+		try {
+			const parsed = JSON.parse(content);
+			if (parsed.identifier && typeof parsed.identifier === "string") {
+				return parsed.identifier;
+			}
+		} catch {
+			// Not JSON — fall through to regex
+		}
+
+		// Match identifier patterns in text
+		const identifierMatch = content.match(/\b[A-Z]+-\d+\b/);
+		return identifierMatch?.[0] ?? null;
 	}
 
 	/** Returns true if any runner managed by this handler is currently busy */
