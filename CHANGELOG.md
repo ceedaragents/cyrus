@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Slack sessions now post a message with the Linear issue link when Cyrus creates an issue via the Linear MCP tool ([CYPACK-1048](https://linear.app/ceedar/issue/CYPACK-1048))
+- Slack sessions now post a message with the Linear issue link when Cyrus creates an issue via the Linear MCP tool ([CYPACK-1048](https://linear.app/ceedar/issue/CYPACK-1048), [#1075](https://github.com/ceedaragents/cyrus/pull/1075))
 
 ## [0.2.41] - 2026-04-06
 
