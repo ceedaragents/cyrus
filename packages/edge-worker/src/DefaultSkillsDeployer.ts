@@ -24,13 +24,17 @@ export class DefaultSkillsDeployer {
 	constructor(
 		private readonly cyrusHome: string,
 		private readonly logger: ILogger,
+		bundledSkillsDir?: string,
 	) {
-		this.bundledSkillsPath = join(
-			dirname(fileURLToPath(import.meta.url)),
-			"..",
-			"cyrus-skills-plugin",
-			"skills",
-		);
+		// Default: skills live alongside the compiled JS in dist/, placed there
+		// by the copy-prompts build step. Callers (e.g. tests) can override.
+		this.bundledSkillsPath =
+			bundledSkillsDir ??
+			join(
+				dirname(fileURLToPath(import.meta.url)),
+				"cyrus-skills-plugin",
+				"skills",
+			);
 		this.deployedPluginPath = join(this.cyrusHome, "cyrus-skills-plugin");
 		this.deployedSkillsPath = join(this.deployedPluginPath, "skills");
 		this.manifestDir = join(this.deployedPluginPath, ".claude-plugin");
