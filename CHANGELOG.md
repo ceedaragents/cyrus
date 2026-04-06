@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-04-06
+
+### Fixed
+- **Bundled skills now resolve correctly for npm installs** - Skills shipped with the CLI were not found when installed via npm because symlinks were stripped during publishing. Skills are now resolved from the correct compiled path. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046), [#1073](https://github.com/ceedaragents/cyrus/pull/1073))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.42
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.42
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.42
+
+#### cyrus-core
+- cyrus-core@0.2.42
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.42
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.42
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.42
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.42
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.42
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.42
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.42
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.42
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.42
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.42
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.42
+
 ## [0.2.41] - 2026-04-06
 
 ### Changed
