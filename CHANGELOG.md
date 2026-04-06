@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Default skills now deploy correctly from npm package** — Bundled skills were stored as symlinks that npm strips during publishing, so they were missing at runtime. Skills are now resolved from the compiled `dist/` directory where they exist as real files. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046))
+- **Default skills now deploy correctly from npm package** — Bundled skills were stored as symlinks that npm strips during publishing, so they were missing at runtime. Skills are now resolved from the compiled `dist/` directory where they exist as real files. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046), [#1073](https://github.com/ceedaragents/cyrus/pull/1073))
 
 ## [0.2.41] - 2026-04-06
 
