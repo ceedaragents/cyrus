@@ -247,6 +247,8 @@ function buildUsage(
  * The final "freeze" updatePart() call for an assistant part also has
  * delta === undefined, but by that point the full text has already been
  * accumulated through the preceding delta events, so skipping it is safe.
+ * For non-streaming model configurations where deltas are never emitted,
+ * use extractFreezeText() as a fallback to capture the full part text.
  */
 export function extractTextDelta(
 	event: EventMessagePartUpdated,
@@ -264,6 +266,34 @@ export function extractTextDelta(
 	}
 	// Return null for empty-string deltas — nothing to accumulate.
 	return delta || null;
+}
+
+/**
+ * Extract the full text from a freeze (non-delta) message.part.updated event.
+ *
+ * Some model configurations (e.g. non-streaming providers) never emit
+ * updatePartDelta() events. In those cases, the assistant response is only
+ * available on the final updatePart() call where delta === undefined and
+ * TextPart.text contains the complete response.
+ *
+ * This function returns the full TextPart.text only for freeze events
+ * (delta === undefined). When streaming deltas are in use, this returns null
+ * so that the caller can choose not to override already-accumulated text.
+ */
+export function extractFreezeText(
+	event: EventMessagePartUpdated,
+): string | null {
+	const { part } = event.properties;
+	if (part.type !== "text") {
+		return null;
+	}
+	// Only handle freeze events (no delta = full-part snapshot).
+	if (event.properties.delta !== undefined) {
+		return null;
+	}
+	// TextPart.text holds the authoritative full text of the part.
+	const text = (part as { text?: string }).text;
+	return text || null;
 }
 
 /**

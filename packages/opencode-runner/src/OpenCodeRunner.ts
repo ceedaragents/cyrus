@@ -18,6 +18,7 @@ import {
 	buildErrorResultMessage,
 	buildResultMessage,
 	convertToolPartToMessages,
+	extractFreezeText,
 	extractSessionErrorMessage,
 	extractTextDelta,
 	isMessagePartUpdatedEvent,
@@ -392,6 +393,24 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				} else {
 					this.lastAssistantText += textDelta;
 				}
+				const msg = buildAssistantTextMessage(
+					this.lastAssistantText,
+					event.properties.part.messageID,
+					this.config.model ?? "opencode",
+				);
+				this.emitMessage(msg);
+				return false;
+			}
+
+			// Freeze event fallback: some model configurations (e.g. non-streaming
+			// providers) never emit updatePartDelta() events, so lastAssistantText
+			// stays null even after the LLM has responded. In those cases the full
+			// response is available on the final updatePart() freeze event via
+			// TextPart.text. Use it only when no deltas have been captured yet to
+			// avoid double-counting when both deltas and a freeze event are fired.
+			const freezeText = extractFreezeText(event);
+			if (freezeText !== null && this.lastAssistantText === null) {
+				this.lastAssistantText = freezeText;
 				const msg = buildAssistantTextMessage(
 					this.lastAssistantText,
 					event.properties.part.messageID,

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **OpenCode runner text capture for non-streaming models** - OpenCode sessions with non-streaming model configurations were producing empty "Session completed" responses instead of actual LLM output. The issue was that freeze events (full-part snapshots with `TextPart.text`) were being ignored when deltas weren't emitted. Added `extractFreezeText()` to capture full text from freeze events as a fallback when streaming deltas are unavailable, ensuring OpenCode correctly captures and posts LLM responses regardless of model configuration.
+
+### Changed
+- **Skills guidance language for non-Claude runners** - `buildSkillsGuidance()` now accepts an `isClaudeRunner` parameter to adapt messaging for runners like OpenCode and Gemini that don't have a native `Skill` tool. When `isClaudeRunner=false`, skills are described informally as available workflows rather than as callable tool invocations, preventing confusion about capabilities.
+
 ## [0.2.40] - 2026-04-02
 
 ### Fixed

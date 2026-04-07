@@ -3565,6 +3565,15 @@ ${taskSection}`;
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
 		try {
+			// Pre-determine runner type so that prompt assembly can adapt skills
+			// guidance language for non-Claude runners (e.g. OpenCode, Gemini).
+			const previewRunnerSelection =
+				this.runnerSelectionService.determineRunnerSelection(
+					labels,
+					fullIssue.description || undefined,
+				);
+			const isClaudeRunner = previewRunnerSelection.runnerType === "claude";
+
 			// Create input for unified prompt assembly
 			const input: PromptAssemblyInput = {
 				session,
@@ -3582,6 +3591,7 @@ ${taskSection}`;
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
 				resolvedBaseBranches: sessionData.workspace.resolvedBaseBranches,
 				linearWorkspaceId,
+				isClaudeRunner,
 			};
 
 			// Use unified prompt assembly
@@ -5037,7 +5047,13 @@ ${taskSection}`;
 		}
 
 		// 3. Append skills guidance — instruct the agent to use skills based on context
-		systemPrompt += await this.skillsPluginResolver.buildSkillsGuidance();
+		// Non-Claude runners (OpenCode, Gemini, etc.) do not have the Skill tool so
+		// the guidance is adjusted to describe skills informally instead of as tool calls.
+		const isClaudeRunner = input.isClaudeRunner !== false;
+		systemPrompt += await this.skillsPluginResolver.buildSkillsGuidance(
+			undefined,
+			isClaudeRunner,
+		);
 
 		// 4. Append agent context — dynamic values for skills to reference
 		systemPrompt += this.buildAgentContextBlock();

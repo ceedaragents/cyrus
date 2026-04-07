@@ -127,8 +127,15 @@ export class SkillsPluginResolver {
 	 *
 	 * Accepts pre-resolved plugins to avoid redundant filesystem access
 	 * when resolve() is also called separately for the runner config.
+	 *
+	 * When `isClaudeRunner` is false (e.g. OpenCode, Gemini), the guidance
+	 * omits references to the Claude-specific `Skill` tool and instead
+	 * describes skills as slash commands available in the CLI harness.
 	 */
-	async buildSkillsGuidance(plugins?: SdkPluginConfig[]): Promise<string> {
+	async buildSkillsGuidance(
+		plugins?: SdkPluginConfig[],
+		isClaudeRunner = true,
+	): Promise<string> {
 		const resolvedPlugins = plugins ?? (await this.resolve());
 		const availableSkills = await this.discoverSkillNames(resolvedPlugins);
 
@@ -137,6 +144,23 @@ export class SkillsPluginResolver {
 		}
 
 		const skillsList = availableSkills.map((s) => `\`${s}\``).join(", ");
+
+		if (!isClaudeRunner) {
+			// Non-Claude runners (OpenCode, Gemini, etc.) do not have the Skill
+			// tool. List the skills for informational purposes only.
+			return (
+				"\n\n## Available Skills\n\n" +
+				`The following workflow skills are available: ${skillsList}\n\n` +
+				"These represent the named workflows used by this agent system. " +
+				"You do not need to invoke them explicitly — they are referenced here " +
+				"so you can describe them accurately when asked.\n\n" +
+				"Choose the appropriate workflow based on the context:\n\n" +
+				"- **Code changes requested** (feature, bug fix, refactor): `implementation` → `verify-and-ship` → `summarize`\n" +
+				"- **Bug report or error**: `debug` → `verify-and-ship` → `summarize`\n" +
+				"- **Question or research request**: `investigate` → `summarize`\n" +
+				"- **PR review feedback** (changes requested): `implementation` → `verify-and-ship`"
+			);
+		}
 
 		return (
 			"\n\n## Skills\n\n" +

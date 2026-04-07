@@ -121,6 +121,17 @@ export interface PromptAssemblyInput {
 
 	/** Linear workspace ID (from webhook.organizationId). When provided, avoids extracting from repo config. */
 	linearWorkspaceId?: string;
+
+	/**
+	 * Whether the target runner is a Claude Code runner.
+	 *
+	 * When false (e.g. OpenCode, Gemini), skills guidance is adjusted to omit
+	 * references to Claude Code's native `Skill` tool and instead describes
+	 * skills for informational purposes only.
+	 *
+	 * Defaults to true when not specified.
+	 */
+	isClaudeRunner?: boolean;
 }
 
 /**
