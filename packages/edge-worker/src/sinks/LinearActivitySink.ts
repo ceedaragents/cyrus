@@ -106,6 +106,28 @@ export class LinearActivitySink implements IActivitySink {
 	}
 
 	/**
+	 * Post a threaded reply to an existing comment on a Linear issue.
+	 *
+	 * Used for mention-triggered sessions where the final response should appear
+	 * as a reply in the comment thread (parentId) rather than as a new top-level
+	 * comment.
+	 *
+	 * @param issueId - The Linear issue ID
+	 * @param body - The reply body text
+	 * @param parentCommentId - The ID of the comment to reply under
+	 */
+	async postCommentReply(
+		issueId: string,
+		body: string,
+		parentCommentId: string,
+	): Promise<void> {
+		await this.issueTracker.createComment(issueId, {
+			body,
+			parentId: parentCommentId,
+		});
+	}
+
+	/**
 	 * Create a new agent session on an issue.
 	 *
 	 * Wraps IIssueTrackerService.createAgentSessionOnIssue() to provide a simplified

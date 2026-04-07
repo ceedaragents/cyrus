@@ -239,6 +239,11 @@ export class RunnerConfigBuilder {
 			modelOverride = this.runnerSelector.getDefaultModelForRunner("cursor");
 			fallbackModelOverride =
 				this.runnerSelector.getDefaultFallbackModelForRunner("cursor");
+		} else if (input.session.opencodeSessionId && runnerType !== "opencode") {
+			runnerType = "opencode";
+			modelOverride = this.runnerSelector.getDefaultModelForRunner("opencode");
+			fallbackModelOverride =
+				this.runnerSelector.getDefaultFallbackModelForRunner("opencode");
 		}
 
 		// Log model override if found
@@ -265,6 +270,16 @@ export class RunnerConfigBuilder {
 			input.repository,
 		);
 
+		// For OpenCode runner, append an instruction to prevent the LLM from posting
+		// Linear comments directly (which would appear under the user's name instead of
+		// the app's name). With Claude runner, the skills system handles this explicitly.
+		// Without this, OpenCode may call mcp__linear__create_comment or use bash to
+		// call the Linear API, creating a comment attributed to the user's token.
+		const openCodeSystemPromptSuffix =
+			runnerType === "opencode"
+				? "\n\n**CRITICAL**: Your text responses are automatically captured and posted to the Linear agent session under the Cyrus app account. Do NOT call any Linear MCP comment tools — this includes `linear_save_comment`, `linear_create_comment`, `create_comment`, `update_comment`, or any similar tool — and do NOT use bash/curl to post to Linear. Simply write your final response as plain text output and the system will handle posting it."
+				: "";
+
 		const config: AgentRunnerConfig & Record<string, unknown> = {
 			workingDirectory: input.session.workspace.path,
 			allowedTools: input.allowedTools,
@@ -274,7 +289,8 @@ export class RunnerConfigBuilder {
 			cyrusHome: input.cyrusHome,
 			mcpConfigPath,
 			mcpConfig,
-			appendSystemPrompt: input.systemPrompt || "",
+			appendSystemPrompt:
+				(input.systemPrompt || "") + openCodeSystemPromptSuffix,
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:

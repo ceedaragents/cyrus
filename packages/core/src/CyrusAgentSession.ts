@@ -94,6 +94,7 @@ export interface CyrusAgentSession {
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
 	codexSessionId?: string; // Codex-specific session ID (assigned once it initializes)
 	cursorSessionId?: string; // Cursor-specific session ID (assigned once it initializes)
+	opencodeSessionId?: string; // OpenCode-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
 	metadata?: {
 		model?: string;
@@ -103,6 +104,12 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/**
+		 * The Linear comment ID that triggered this session (set for mention-triggered sessions).
+		 * When set, the final response is posted as a threaded reply to this comment
+		 * rather than as a new top-level issue comment.
+		 */
+		triggeringCommentId?: string;
 	};
 }
 
@@ -111,6 +118,7 @@ export interface CyrusAgentSessionEntry {
 	geminiSessionId?: string; // originated in this Gemini session (if using Gemini)
 	codexSessionId?: string; // originated in this Codex session (if using Codex)
 	cursorSessionId?: string; // originated in this Cursor session (if using Cursor)
+	opencodeSessionId?: string; // originated in this OpenCode session (if using OpenCode)
 	linearAgentActivityId?: string; // got assigned this ID in linear, after creation, for this 'agent activity'
 	type: "user" | "assistant" | "system" | "result";
 	content: string;

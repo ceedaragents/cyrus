@@ -219,6 +219,11 @@ export class ConfigManager extends EventEmitter {
 					parsedConfig.geminiDefaultModel || this.config.geminiDefaultModel,
 				codexDefaultModel:
 					parsedConfig.codexDefaultModel || this.config.codexDefaultModel,
+				openCodeDefaultModel:
+					parsedConfig.openCodeDefaultModel || this.config.openCodeDefaultModel,
+				openCodeDefaultFallbackModel:
+					parsedConfig.openCodeDefaultFallbackModel ||
+					this.config.openCodeDefaultFallbackModel,
 				defaultRunner: parsedConfig.defaultRunner || this.config.defaultRunner,
 				promptDefaults:
 					parsedConfig.promptDefaults || this.config.promptDefaults,
@@ -235,6 +240,8 @@ export class ConfigManager extends EventEmitter {
 				// otherwise keep current or default to true
 				issueUpdateTrigger:
 					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
+				// User access control: use parsed value (undefined means no restriction)
+				userAccessControl: parsedConfig.userAccessControl,
 			};
 
 			// Basic validation
@@ -317,6 +324,8 @@ export class ConfigManager extends EventEmitter {
 			"claudeDefaultFallbackModel",
 			"geminiDefaultModel",
 			"codexDefaultModel",
+			"openCodeDefaultModel",
+			"openCodeDefaultFallbackModel",
 			"defaultModel",
 			"defaultFallbackModel",
 			"defaultAllowedTools",

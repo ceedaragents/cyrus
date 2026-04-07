@@ -6,6 +6,7 @@ import type {
 } from "cyrus-core";
 import type {
 	EventMessagePartUpdated,
+	EventMessageUpdated,
 	EventPermissionUpdated,
 	EventSessionError,
 	EventSessionIdle,
@@ -231,7 +232,21 @@ function buildUsage(
 
 /**
  * Extract text delta from a message.part.updated event.
- * Returns the text string if the part is of type "text", otherwise null.
+ * Returns the delta string only when an explicit streaming delta is present.
+ *
+ * OpenCode emits message.part.updated in two ways:
+ *  - updatePart()      → delta is undefined; fires for ALL part updates including
+ *                        user message parts (the prompt/context text).
+ *  - updatePartDelta() → delta is a non-empty string; fires only for streaming
+ *                        LLM response tokens (assistant text parts).
+ *
+ * We must only accumulate text when delta is explicitly provided so that
+ * user message parts (which always have delta === undefined) are ignored and
+ * never leaked into the assistant response that gets posted to Linear.
+ *
+ * The final "freeze" updatePart() call for an assistant part also has
+ * delta === undefined, but by that point the full text has already been
+ * accumulated through the preceding delta events, so skipping it is safe.
  */
 export function extractTextDelta(
 	event: EventMessagePartUpdated,
@@ -240,8 +255,15 @@ export function extractTextDelta(
 	if (part.type !== "text") {
 		return null;
 	}
-	// delta is a partial update string; fall back to full text
-	return event.properties.delta ?? part.text ?? null;
+	const delta = event.properties.delta;
+	// Only process events that carry an explicit streaming delta.
+	// delta === undefined means this is a full-part updatePart() event
+	// (either a user message part or an assistant "freeze" event).
+	if (delta === undefined) {
+		return null;
+	}
+	// Return null for empty-string deltas — nothing to accumulate.
+	return delta || null;
 }
 
 /**
@@ -341,4 +363,13 @@ export function isMessagePartUpdatedEvent(
 	event: OpenCodeEvent,
 ): event is EventMessagePartUpdated {
 	return event.type === "message.part.updated";
+}
+
+/**
+ * Type guard: checks if an event is EventMessageUpdated.
+ */
+export function isMessageUpdatedEvent(
+	event: OpenCodeEvent,
+): event is EventMessageUpdated {
+	return event.type === "message.updated";
 }

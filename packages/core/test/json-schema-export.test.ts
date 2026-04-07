@@ -67,6 +67,7 @@ describe("JSON Schema export", () => {
 				"gemini",
 				"codex",
 				"cursor",
+				"opencode",
 			]);
 		});
 

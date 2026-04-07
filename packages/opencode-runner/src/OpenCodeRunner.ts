@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
+import net from "node:net";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import {
 	type AgentConfig,
@@ -8,6 +9,7 @@ import {
 	createOpencodeServer,
 	type GlobalEvent,
 	type McpLocalConfig,
+	type McpRemoteConfig,
 	type Event as OpenCodeEvent,
 } from "@opencode-ai/sdk";
 import type { IAgentRunner, IMessageFormatter, SDKMessage } from "cyrus-core";
@@ -19,6 +21,7 @@ import {
 	extractSessionErrorMessage,
 	extractTextDelta,
 	isMessagePartUpdatedEvent,
+	isMessageUpdatedEvent,
 	isPermissionUpdatedEvent,
 	isSessionErrorEvent,
 	isSessionIdleEvent,
@@ -68,6 +71,24 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private wasStopped = false;
 	private abortController: AbortController | null = null;
 	private serverClose: (() => void) | null = null;
+	/**
+	 * Tracks message IDs that belong to the user (prompt) turn so that
+	 * message.part.updated events for those messages are not mistakenly
+	 * accumulated as assistant response text.
+	 */
+	private userMessageIds: Set<string> = new Set();
+	/**
+	 * Tracks the ID of the most recent assistant message seen via message.updated.
+	 * When a new assistant message starts, lastAssistantText is reset so that
+	 * any user-prompt content accumulated before the assistant responds is cleared.
+	 */
+	private currentAssistantMessageId: string | null = null;
+	/**
+	 * Per-message token usage keyed by message ID. Updated on each
+	 * message.updated event; summed when building the final result.
+	 */
+	private messageTokens: Map<string, { input: number; output: number }> =
+		new Map();
 
 	constructor(config: OpenCodeRunnerConfig) {
 		super();
@@ -144,6 +165,9 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		this.totalInputTokens = 0;
 		this.totalOutputTokens = 0;
 		this.wasStopped = false;
+		this.userMessageIds = new Set();
+		this.currentAssistantMessageId = null;
+		this.messageTokens = new Map();
 		this.abortController = new AbortController();
 
 		let caughtError: unknown;
@@ -167,9 +191,12 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		const serverConfig = this.buildServerConfig();
 
 		console.log("[OpenCodeRunner] Starting opencode server...");
+		const port = await findFreePort();
+		console.log(`[OpenCodeRunner] Using port ${port}`);
 		const server = await createOpencodeServer({
 			config: serverConfig,
 			signal,
+			port,
 		});
 		this.serverClose = server.close;
 		console.log(`[OpenCodeRunner] Server started at ${server.url}`);
@@ -213,22 +240,31 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		return new Promise<void>((resolve, reject) => {
+			let settled = false;
+			const settle = (outcome: "resolve" | "reject", err?: unknown) => {
+				if (settled) return;
+				settled = true;
+				signal.removeEventListener("abort", onAbort);
+				if (outcome === "resolve") resolve();
+				else reject(err);
+			};
+
 			// Abort handler
 			const onAbort = () => {
-				reject(new Error("OpenCode session aborted"));
+				settle("reject", new Error("OpenCode session aborted"));
 			};
 			signal.addEventListener("abort", onAbort, { once: true });
 
 			// Send the prompt asynchronously after subscribing
 			this.sendPrompt(client, opencodeSessionId, prompt).catch((err) => {
-				reject(err);
+				settle("reject", err);
 			});
 
 			// Process events
 			(async () => {
 				try {
 					for await (const sseItem of sseResult.stream) {
-						if (signal.aborted) {
+						if (signal.aborted || settled) {
 							break;
 						}
 
@@ -250,13 +286,9 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 							break;
 						}
 					}
-					resolve();
+					settle("resolve");
 				} catch (err) {
-					if (!signal.aborted) {
-						reject(err);
-					}
-				} finally {
-					signal.removeEventListener("abort", onAbort);
+					settle("reject", err);
 				}
 			})();
 		});
@@ -305,10 +337,50 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		opencodeSessionId: string,
 		client: OpencodeClient,
 	): Promise<boolean> {
+		// --- Track user/assistant message boundaries ---
+		if (isMessageUpdatedEvent(event)) {
+			const info = event.properties.info;
+			if (info.sessionID !== opencodeSessionId) return false;
+
+			if (info.role === "user") {
+				// Track user message IDs so that message.part.updated events for the
+				// user prompt are skipped and not accumulated as assistant text.
+				this.userMessageIds.add(info.id);
+			} else if (info.role === "assistant") {
+				if (info.id !== this.currentAssistantMessageId) {
+					// A new assistant message is starting.
+					// Reset lastAssistantText so any user-prompt content that may have
+					// been accumulated before this point (due to event-ordering races or
+					// OpenCode sending user-part deltas) is discarded.
+					this.currentAssistantMessageId = info.id;
+					this.lastAssistantText = null;
+				}
+				// Accumulate token usage from assistant messages.
+				// Each assistant message carries its own token counts. OpenCode fires
+				// message.updated multiple times per message; we track the latest
+				// per-message values and sum across messages in finalizeSession.
+				const tokens = (info as Record<string, unknown>).tokens as
+					| { input?: number; output?: number }
+					| undefined;
+				if (tokens) {
+					this.messageTokens.set(info.id, {
+						input: typeof tokens.input === "number" ? tokens.input : 0,
+						output: typeof tokens.output === "number" ? tokens.output : 0,
+					});
+				}
+			}
+			return false;
+		}
+
 		// --- Text / tool parts ---
 		if (isMessagePartUpdatedEvent(event)) {
 			// Filter to our session
 			if (event.properties.part.sessionID !== opencodeSessionId) {
+				return false;
+			}
+
+			// Skip parts that belong to user (prompt) messages
+			if (this.userMessageIds.has(event.properties.part.messageID)) {
 				return false;
 			}
 
@@ -343,6 +415,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		// --- Permission request: auto-approve ---
+		// OpenCode may still prompt for permissions beyond the server config's
+		// edit/bash/webfetch allow-list (e.g., MCP tools, new tool categories).
+		// In headless Cyrus mode we auto-approve to avoid hanging, similar to
+		// Gemini's --yolo and Cursor's pre-set project permissions.
 		if (isPermissionUpdatedEvent(event)) {
 			if (event.properties.sessionID !== opencodeSessionId) {
 				return false;
@@ -374,6 +450,11 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				return false;
 			}
 			console.log("[OpenCodeRunner] Session idle — completing");
+			// Sum per-message token counts
+			for (const t of this.messageTokens.values()) {
+				this.totalInputTokens += t.input;
+				this.totalOutputTokens += t.output;
+			}
 			const resultMsg = buildResultMessage(
 				this.lastAssistantText,
 				this.totalInputTokens,
@@ -461,11 +542,35 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		if (mcpServers && Object.keys(mcpServers).length > 0) {
 			cfg.mcp = {};
 			for (const [name, serverConfig] of Object.entries(mcpServers)) {
-				// Only stdio-style MCP servers have `command` — skip SSE/HTTP servers
-				// Use type narrowing via `in` operator instead of unsafe cast
 				if ("type" in serverConfig && serverConfig.type === "sse") {
+					// SSE-type servers are not supported by OpenCode — skip
 					continue;
 				}
+
+				if ("type" in serverConfig && serverConfig.type === "http") {
+					// Map Cyrus http-type servers to OpenCode's remote config
+					const url =
+						"url" in serverConfig && typeof serverConfig.url === "string"
+							? serverConfig.url
+							: null;
+					if (!url) continue;
+
+					const headers =
+						"headers" in serverConfig &&
+						serverConfig.headers != null &&
+						typeof serverConfig.headers === "object"
+							? (serverConfig.headers as Record<string, string>)
+							: undefined;
+
+					const mcpEntry: McpRemoteConfig = {
+						type: "remote",
+						url,
+						...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+					};
+					cfg.mcp[name] = mcpEntry;
+					continue;
+				}
+
 				if (!("command" in serverConfig) || !serverConfig.command) {
 					continue;
 				}
@@ -523,4 +628,22 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		// No slash: treat as anthropic model alias or pass as-is
 		return { providerID: "anthropic", modelID: model };
 	}
+}
+
+/**
+ * Find a free TCP port by binding to port 0 (OS assigns an available port).
+ */
+function findFreePort(): Promise<number> {
+	return new Promise((resolve, reject) => {
+		const server = net.createServer();
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address();
+			const port = typeof address === "object" && address ? address.port : 0;
+			server.close((err) => {
+				if (err) reject(err);
+				else resolve(port);
+			});
+		});
+		server.on("error", reject);
+	});
 }

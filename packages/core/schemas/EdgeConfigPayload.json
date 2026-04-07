@@ -527,9 +527,15 @@
 		"codexDefaultModel": {
 			"type": "string"
 		},
+		"openCodeDefaultModel": {
+			"type": "string"
+		},
+		"openCodeDefaultFallbackModel": {
+			"type": "string"
+		},
 		"defaultRunner": {
 			"type": "string",
-			"enum": ["claude", "gemini", "codex", "cursor"]
+			"enum": ["claude", "gemini", "codex", "cursor", "opencode"]
 		},
 		"defaultModel": {
 			"type": "string"

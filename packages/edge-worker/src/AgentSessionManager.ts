@@ -109,6 +109,28 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Set the triggering comment ID for a mention-triggered session.
+	 * When set, the final response is posted as a threaded comment reply
+	 * instead of an agent activity, so it appears in the issue comment thread.
+	 *
+	 * @param sessionId - The session ID to update
+	 * @param commentId - The Linear comment ID that triggered this session
+	 */
+	setSessionTriggeringCommentId(sessionId: string, commentId: string): void {
+		const session = this.sessions.get(sessionId);
+		if (!session) {
+			this.logger.warn(
+				`setSessionTriggeringCommentId: no session found for ${sessionId}`,
+			);
+			return;
+		}
+		session.metadata = {
+			...session.metadata,
+			triggeringCommentId: commentId,
+		};
+	}
+
+	/**
 	 * Get a session-scoped logger with context (sessionId, platform, issueIdentifier).
 	 */
 	private sessionLog(sessionId: string): ILogger {
@@ -234,7 +256,9 @@ export class AgentSessionManager extends EventEmitter {
 					? "codex"
 					: runner?.constructor.name === "CursorRunner"
 						? "cursor"
-						: "claude";
+						: runner?.constructor.name === "OpenCodeRunner"
+							? "opencode"
+							: "claude";
 
 		// Update the appropriate session ID based on runner type
 		if (runnerType === "gemini") {
@@ -243,6 +267,8 @@ export class AgentSessionManager extends EventEmitter {
 			linearSession.codexSessionId = claudeSystemMessage.session_id;
 		} else if (runnerType === "cursor") {
 			linearSession.cursorSessionId = claudeSystemMessage.session_id;
+		} else if (runnerType === "opencode") {
+			linearSession.opencodeSessionId = claudeSystemMessage.session_id;
 		} else {
 			linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		}
@@ -290,7 +316,9 @@ export class AgentSessionManager extends EventEmitter {
 					? "codex"
 					: runner?.constructor.name === "CursorRunner"
 						? "cursor"
-						: "claude";
+						: runner?.constructor.name === "OpenCodeRunner"
+							? "opencode"
+							: "claude";
 
 		const sessionEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
@@ -300,7 +328,9 @@ export class AgentSessionManager extends EventEmitter {
 					? { codexSessionId: sdkMessage.session_id }
 					: runnerType === "cursor"
 						? { cursorSessionId: sdkMessage.session_id }
-						: { claudeSessionId: sdkMessage.session_id }),
+						: runnerType === "opencode"
+							? { opencodeSessionId: sdkMessage.session_id }
+							: { claudeSessionId: sdkMessage.session_id }),
 			type: sdkMessage.type,
 			content: this.extractContent(sdkMessage),
 			metadata: {
@@ -558,7 +588,9 @@ export class AgentSessionManager extends EventEmitter {
 					? "codex"
 					: runner?.constructor.name === "CursorRunner"
 						? "cursor"
-						: "claude";
+						: runner?.constructor.name === "OpenCodeRunner"
+							? "opencode"
+							: "claude";
 
 		// For error results, content may be in errors[] rather than result
 		const content =
@@ -579,7 +611,9 @@ export class AgentSessionManager extends EventEmitter {
 					? { codexSessionId: resultMessage.session_id }
 					: runnerType === "cursor"
 						? { cursorSessionId: resultMessage.session_id }
-						: { claudeSessionId: resultMessage.session_id }),
+						: runnerType === "opencode"
+							? { opencodeSessionId: resultMessage.session_id }
+							: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
 			content,
 			metadata: {
@@ -1131,6 +1165,36 @@ export class AgentSessionManager extends EventEmitter {
 					`Skipping activity sync - no activity sink registered for session`,
 				);
 				return;
+			}
+
+			// For successful result entries in mention-triggered sessions, post the final
+			// response as a threaded comment reply instead of an agent activity.
+			// This makes conversational responses appear in the comment thread (like the
+			// screenshot shows), while work artifacts remain as new top-level comments.
+			const triggeringCommentId = session.metadata?.triggeringCommentId;
+			const isSuccessfulResponse =
+				entry.type === "result" && !entry.metadata?.isError;
+
+			if (
+				isSuccessfulResponse &&
+				triggeringCommentId &&
+				session.issueContext?.issueId &&
+				activitySink.postCommentReply
+			) {
+				// Post as a threaded reply to the triggering comment so the response
+				// appears in the comment thread for the user.
+				await activitySink.postCommentReply(
+					session.issueContext.issueId,
+					entry.content,
+					triggeringCommentId,
+				);
+				log.info(
+					`Result posted as comment reply to ${triggeringCommentId} on issue ${session.issueContext.issueId}`,
+				);
+				// Fall through to also post the agent activity below.
+				// Linear requires a "response" type agent activity to mark the session
+				// as complete and exit the "Working" state — without it the session
+				// stays spinning indefinitely.
 			}
 
 			const result = await activitySink.postActivity(

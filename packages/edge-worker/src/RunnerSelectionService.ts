@@ -41,13 +41,8 @@ export class RunnerSelectionService {
 		if (process.env.CURSOR_API_KEY) {
 			available.push("cursor");
 		}
-		if (process.env.OPENCODE_API_KEY || process.env.ANTHROPIC_API_KEY) {
-			// opencode is only added as a candidate when explicitly desired;
-			// ANTHROPIC_API_KEY already pushes "claude", so we rely on explicit
-			// OPENCODE_API_KEY to differentiate intent.
-			if (process.env.OPENCODE_API_KEY) {
-				available.push("opencode");
-			}
+		if (process.env.OPENCODE_API_KEY) {
+			available.push("opencode");
 		}
 
 		if (available.length === 1 && available[0]) {
@@ -175,11 +170,20 @@ export class RunnerSelectionService {
 		const isCodexModel = (model: string): boolean =>
 			/gpt-[a-z0-9.-]*codex$/i.test(model) || /^gpt-[a-z0-9.-]+$/i.test(model);
 
-		const isOpenCodeModel = (model: string): boolean =>
-			// "providerID/modelID" format explicitly targets opencode
-			model.includes("/") &&
-			!model.startsWith("gemini") &&
-			!isCodexModel(model);
+		const isOpenCodeModel = (model: string): boolean => {
+			// "providerID/modelID" format explicitly targets opencode.
+			// Exclude models that other runners would claim based on provider or model name.
+			if (!model.includes("/")) return false;
+			const [provider, modelId] = model.split("/", 2);
+			if (!provider || !modelId) return false;
+			// Gemini models (e.g. "google/gemini-2.0-flash")
+			if (provider === "google" || modelId.startsWith("gemini")) {
+				return false;
+			}
+			// Codex models
+			if (isCodexModel(model) || isCodexModel(modelId)) return false;
+			return true;
+		};
 
 		const inferRunnerFromModel = (model?: string): RunnerType | undefined => {
 			if (!model) return undefined;

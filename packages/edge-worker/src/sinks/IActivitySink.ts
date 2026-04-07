@@ -66,4 +66,21 @@ export interface IActivitySink {
 	 * @returns Promise that resolves with the created session ID
 	 */
 	createAgentSession(issueId: string): Promise<string>;
+
+	/**
+	 * Post a threaded reply to an existing comment on an issue.
+	 *
+	 * Used for mention-triggered (conversational) sessions where the final
+	 * response should appear as a reply in the comment thread rather than
+	 * as a new top-level comment.
+	 *
+	 * @param issueId - The issue ID containing the parent comment
+	 * @param body - The reply body text
+	 * @param parentCommentId - The ID of the comment to reply to
+	 */
+	postCommentReply?(
+		issueId: string,
+		body: string,
+		parentCommentId: string,
+	): Promise<void>;
 }

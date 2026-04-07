@@ -1,5 +1,6 @@
 import type {
 	EventMessagePartUpdated,
+	EventMessageUpdated,
 	EventPermissionUpdated,
 	EventSessionError,
 	EventSessionIdle,
@@ -16,6 +17,7 @@ import type {
  */
 export type {
 	EventMessagePartUpdated,
+	EventMessageUpdated,
 	EventPermissionUpdated,
 	EventSessionError,
 	EventSessionIdle,
