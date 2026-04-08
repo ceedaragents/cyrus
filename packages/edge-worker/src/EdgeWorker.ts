@@ -124,6 +124,7 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
+import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
@@ -794,23 +795,24 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const allRepos = Array.from(this.repositories.values());
-		const chatRepositoryPaths = allRepos.map((repo) => repo.repositoryPath);
+		// Live provider reads from the repository map on demand — no snapshot needed
+		const chatRepositoryProvider = new LiveChatRepositoryProvider(
+			this.repositories,
+			() => this.config.linearWorkspaces || {},
+		);
+
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
-			chatRepositoryPaths,
+			chatRepositoryProvider,
 			this.logger,
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// V1: Source workspace/repo from first available (all repos share the same MCPs today)
-		const firstLinearWorkspaceId = Object.keys(
-			this.config.linearWorkspaces || {},
-		)[0];
-		const firstRepo = allRepos[0];
-
-		if (!firstLinearWorkspaceId || !firstRepo) {
+		if (
+			!chatRepositoryProvider.getDefaultLinearWorkspaceId() ||
+			!chatRepositoryProvider.getDefaultRepository()
+		) {
 			this.logger.warn(
 				"No repositories or workspaces configured — Slack sessions will not have access to MCP tools",
 			);
@@ -820,9 +822,7 @@ export class EdgeWorker extends EventEmitter {
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
-				chatRepositoryPaths,
-				linearWorkspaceId: firstLinearWorkspaceId,
-				repository: firstRepo,
+				chatRepositoryProvider,
 				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();
