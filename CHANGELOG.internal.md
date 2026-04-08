@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-04-08
+
 ### Changed
 - Introduced `ChatRepositoryProvider` interface and `LiveChatRepositoryProvider` implementation to decouple `SlackChatAdapter` and `ChatSessionHandler` from frozen boot-time repository snapshots. Both now read live repository state on demand at session-build time via the provider abstraction. Removed `chatRepositoryPaths`, `repository`, and `linearWorkspaceId` from `ChatSessionHandlerDeps` in favor of a single `chatRepositoryProvider` field. ([CYPACK-1051](https://linear.app/ceedar/issue/CYPACK-1051), [#1078](https://github.com/ceedaragents/cyrus/pull/1078))
 
