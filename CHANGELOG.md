@@ -4,8 +4,57 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-04-08
+
 ### Fixed
 - **Slack chat sessions now see repositories added or removed at runtime** — Previously, Slack sessions used a stale snapshot of configured repositories from boot time, causing Cyrus to report missing access to repos that were actually configured. New sessions now always reflect the current repository configuration. ([CYPACK-1051](https://linear.app/ceedar/issue/CYPACK-1051), [#1078](https://github.com/ceedaragents/cyrus/pull/1078))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.43
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.43
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.43
+
+#### cyrus-core
+- cyrus-core@0.2.43
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.43
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.43
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.43
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.43
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.43
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.43
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.43
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.43
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.43
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.43
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.43
 
 ## [0.2.42] - 2026-04-06
 
