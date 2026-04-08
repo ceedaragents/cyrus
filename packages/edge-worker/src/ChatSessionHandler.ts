@@ -7,10 +7,10 @@ import type {
 	CyrusAgentSession,
 	IAgentRunner,
 	ILogger,
-	RepositoryConfig,
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import type { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 
 /**
@@ -55,11 +55,8 @@ export interface ChatPlatformAdapter<TEvent> {
  */
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
-	/** Linear workspace ID for building fresh MCP config per session */
-	linearWorkspaceId?: string;
-	/** Repository to source user-configured MCP paths from (V1: first available repo) */
-	repository?: RepositoryConfig;
-	chatRepositoryPaths?: string[];
+	/** Provider for live repository paths, default repo, and workspace ID */
+	chatRepositoryProvider: ChatRepositoryProvider;
 	/** Shared RunnerConfigBuilder for constructing runner configs */
 	runnerConfigBuilder: RunnerConfigBuilder;
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
@@ -397,6 +394,9 @@ export class ChatSessionHandler<TEvent> {
 			platform: this.adapter.platformName,
 		});
 
+		// Read live values from the provider at session-build time
+		const provider = this.deps.chatRepositoryProvider;
+
 		return this.deps.runnerConfigBuilder.buildChatConfig({
 			workspacePath,
 			workspaceName,
@@ -404,9 +404,9 @@ export class ChatSessionHandler<TEvent> {
 			sessionId,
 			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
-			linearWorkspaceId: this.deps.linearWorkspaceId,
-			repository: this.deps.repository,
-			repositoryPaths: this.deps.chatRepositoryPaths,
+			linearWorkspaceId: provider.getDefaultLinearWorkspaceId(),
+			repository: provider.getDefaultRepository(),
+			repositoryPaths: provider.getRepositoryPaths(),
 			logger: sessionLogger,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),

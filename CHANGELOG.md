@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Slack chat sessions now see repositories added or removed at runtime** — Previously, Slack sessions used a stale snapshot of configured repositories from boot time, causing Cyrus to report missing access to repos that were actually configured. New sessions now always reflect the current repository configuration. ([CYPACK-1051](https://linear.app/ceedar/issue/CYPACK-1051), [#1078](https://github.com/ceedaragents/cyrus/pull/1078))
+
 ## [0.2.42] - 2026-04-06
 
 ### Fixed
