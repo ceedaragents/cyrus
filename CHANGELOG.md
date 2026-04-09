@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Skills directories no longer fail with permission denied on startup** — Directories created under `~/.cyrus` by root processes (e.g. `user-skills-plugin`, `backups`) are now chowned to the cyrus user, preventing `EACCES` errors when the edge worker scaffolds plugin manifests. ([CYSV-59](https://linear.app/ceedar/issue/CYSV-59))
+
 ## [0.2.43] - 2026-04-08
 
 ### Fixed

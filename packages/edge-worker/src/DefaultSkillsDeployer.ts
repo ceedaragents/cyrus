@@ -2,6 +2,7 @@ import { access, cp, mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ILogger } from "cyrus-core";
+import { ensureCyrusOwnership } from "./ensureCyrusOwnership.js";
 
 /**
  * Deploys bundled default skills to the cyrusHome directory.
@@ -94,6 +95,8 @@ export class DefaultSkillsDeployer {
 				deployedCount++;
 			}
 		}
+
+		ensureCyrusOwnership(this.deployedPluginPath);
 
 		this.logger.info(
 			`Deployed default skills to ${this.deployedPluginPath} (${deployedCount} skills)`,

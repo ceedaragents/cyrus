@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Added `ensureCyrusOwnership()` helper to `SkillsPluginResolver`, `DefaultSkillsDeployer`, and config-updater `skills.ts`. When the process runs as root (uid 0), directories created under `~/.cyrus` are now chowned to `cyrus:cyrus` to prevent EACCES errors on subsequent runs as the cyrus user. ([CYSV-59](https://linear.app/ceedar/issue/CYSV-59))
+
 ## [0.2.43] - 2026-04-08
 
 ### Changed

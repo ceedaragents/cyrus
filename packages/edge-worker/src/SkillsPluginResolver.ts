@@ -2,6 +2,7 @@ import { access, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SdkPluginConfig } from "cyrus-claude-runner";
 import type { ILogger } from "cyrus-core";
+import { ensureCyrusOwnership } from "./ensureCyrusOwnership.js";
 
 /**
  * Resolves skills plugins for agent sessions.
@@ -49,6 +50,7 @@ export class SkillsPluginResolver {
 		}
 
 		await mkdir(manifestDir, { recursive: true });
+		ensureCyrusOwnership(this.userPluginPath);
 		await writeFile(
 			manifestPath,
 			JSON.stringify(

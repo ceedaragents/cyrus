@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type {
@@ -8,6 +9,19 @@ import type {
 } from "../types.js";
 
 const USER_SKILLS_DIR = "user-skills-plugin/skills";
+
+/**
+ * Ensure a path is owned by the cyrus user when the process is running as root.
+ * Prevents directories created by a root process from blocking the cyrus user.
+ */
+function ensureCyrusOwnership(path: string): void {
+	if (process.getuid?.() !== 0) return;
+	try {
+		execFileSync("chown", ["-R", "cyrus:cyrus", path], { stdio: "ignore" });
+	} catch {
+		// Best-effort ownership fix
+	}
+}
 
 /** Only lowercase letters, numbers, hyphens, underscores allowed */
 const VALID_SKILL_NAME = /^[a-z0-9_-]+$/;
@@ -125,6 +139,7 @@ export async function handleUpdateSkill(
 		].join("\n");
 
 		await mkdir(dirResult.path, { recursive: true });
+		ensureCyrusOwnership(resolve(cyrusHome, "user-skills-plugin"));
 		await writeFile(skillPath, skillContent, "utf-8");
 
 		return {
