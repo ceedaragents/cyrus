@@ -93,7 +93,12 @@ Choose the appropriate skill based on the context:
 - **Question or research request**: Use \`investigate\` to search the codebase and provide an answer, then \`summarize\`.
 - **PR review feedback** (changes requested): Use \`implementation\` to address review comments, then \`verify-and-ship\`.
 
-Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.`)
+Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.
+
+<agent_context>
+  <github_bot_username>cyrusagent</github_bot_username>
+  <gitlab_bot_username>cyrusagent</gitlab_bot_username>
+</agent_context>`)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context")
 			.verify();
@@ -188,7 +193,12 @@ Choose the appropriate skill based on the context:
 - **Question or research request**: Use \`investigate\` to search the codebase and provide an answer, then \`summarize\`.
 - **PR review feedback** (changes requested): Use \`implementation\` to address review comments, then \`verify-and-ship\`.
 
-Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.`)
+Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.
+
+<agent_context>
+  <github_bot_username>cyrusagent</github_bot_username>
+  <gitlab_bot_username>cyrusagent</gitlab_bot_username>
+</agent_context>`)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context", "user-comment")
 			.verify();

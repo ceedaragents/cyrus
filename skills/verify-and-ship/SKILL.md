@@ -63,7 +63,7 @@ Update the PR/MR with a comprehensive description:
 - **Summary** of changes, implementation approach, and testing performed
 - **Link** to the Linear issue
 - **Cyrus marker**: Include `<!-- generated-by-cyrus -->` as a hidden HTML comment at the end of the body
-- **Interaction tip**: Add this at the end (before the marker), using the bot username from `<github_bot_username>` or `<gitlab_bot_username>` in the `<agent_context>` block of the system prompt:
+- **Interaction tip**: Add this at the end (before the marker), using the bot username from `<github_bot_username>` or `<gitlab_bot_username>` in the `<agent_context>` block of the system prompt. If `<agent_context>` is not present, default to `cyrusagent`:
   ```
   ---
   > **Tip:** I will respond to comments that @ mention @<bot_username> on this PR/MR. You can also submit a review with all your feedback at once, and I will automatically wake up to address each comment.
