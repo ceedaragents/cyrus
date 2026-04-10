@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Secret redaction for all outbound messages** — Environment variable values (API keys, tokens, secrets) are now automatically scrubbed from all outbound content before it reaches Linear, Slack, GitHub, or GitLab. A centralized `SecretRedactor` catches both explicitly registered secrets and well-known token patterns (e.g., `sk-ant-*`, `ghp_*`, `xoxb-*`). ([CYPACK-1061](https://linear.app/ceedar/issue/CYPACK-1061))
+- **Secret redaction for all outbound messages** — Environment variable values (API keys, tokens, secrets) are now automatically scrubbed from all outbound content before it reaches Linear, Slack, GitHub, or GitLab. A centralized `SecretRedactor` catches both explicitly registered secrets and well-known token patterns (e.g., `sk-ant-*`, `ghp_*`, `xoxb-*`). ([CYPACK-1061](https://linear.app/ceedar/issue/CYPACK-1061), [#1089](https://github.com/ceedaragents/cyrus/pull/1089))
 
 ## [0.2.44] - 2026-04-10
 
