@@ -26,17 +26,21 @@ export class SlackChatAdapter
 	private logger: ILogger;
 	private selfBotId: string | undefined;
 
+	private scrubContent: ((text: string) => string) | undefined;
+
 	constructor(
 		repositoryProvider: ChatRepositoryProvider,
 		logger?: ILogger,
 		options?: {
 			repositoryRoutingContext?: string;
+			scrubContent?: (text: string) => string;
 		},
 	) {
 		this.repositoryProvider = repositoryProvider;
 		this.repositoryRoutingContext =
 			options?.repositoryRoutingContext?.trim() || "";
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
+		this.scrubContent = options?.scrubContent;
 	}
 
 	/**
@@ -233,7 +237,9 @@ Supported mrkdwn syntax:
 			// Thread the reply under the original message
 			const threadTs = event.payload.thread_ts || event.payload.ts;
 
-			await new SlackMessageService().postMessage({
+			await new SlackMessageService({
+				scrubContent: this.scrubContent,
+			}).postMessage({
 				token,
 				channel: event.payload.channel,
 				text: summary,
@@ -276,7 +282,9 @@ Supported mrkdwn syntax:
 
 		const threadTs = event.payload.thread_ts || event.payload.ts;
 
-		await new SlackMessageService().postMessage({
+		await new SlackMessageService({
+			scrubContent: this.scrubContent,
+		}).postMessage({
 			token,
 			channel: event.payload.channel,
 			text: "I'm still working on the previous request in this thread. I'll pick up your new message once I'm done.",

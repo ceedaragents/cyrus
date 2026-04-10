@@ -153,6 +153,10 @@ import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
 import { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
+import {
+	type ISecretRedactor,
+	SecretRedactor,
+} from "./utils/SecretRedactor.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -229,6 +233,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Key format: `${createdAt}:${issueId}`
 	 */
 	private processedIssueUpdateKeys = new Set<string>();
+	private secretRedactor: ISecretRedactor;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -239,11 +244,18 @@ export class EdgeWorker extends EventEmitter {
 			join(this.cyrusHome, "state"),
 		);
 
+		// Initialize centralized secret redactor for all outbound messages
+		this.secretRedactor = this.buildSecretRedactor(config);
+
 		// Initialize GitHub comment service for posting replies to GitHub PRs
-		this.gitHubCommentService = new GitHubCommentService();
+		this.gitHubCommentService = new GitHubCommentService({
+			scrubContent: (text) => this.secretRedactor.redact(text),
+		});
 
 		// Initialize GitLab comment service for posting replies to GitLab MRs
-		this.gitLabCommentService = new GitLabCommentService();
+		this.gitLabCommentService = new GitLabCommentService({
+			scrubContent: (text) => this.secretRedactor.redact(text),
+		});
 
 		// Initialize global session registry (centralized session storage)
 		this.globalSessionRegistry = new GlobalSessionRegistry();
@@ -391,6 +403,7 @@ export class EdgeWorker extends EventEmitter {
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					repo.linearWorkspaceId,
+					this.secretRedactor,
 				);
 				this.activitySinks.set(repoId, activitySink);
 			}
@@ -806,7 +819,10 @@ export class EdgeWorker extends EventEmitter {
 		const slackAdapter = new SlackChatAdapter(
 			chatRepositoryProvider,
 			this.logger,
-			{ repositoryRoutingContext: routingContext },
+			{
+				repositoryRoutingContext: routingContext,
+				scrubContent: (text) => this.secretRedactor.redact(text),
+			},
 		);
 
 		if (
@@ -2338,6 +2354,7 @@ ${taskSection}`;
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					requireLinearWorkspaceId(repo),
+					this.secretRedactor,
 				);
 				this.activitySinks.set(repo.id, activitySink);
 
@@ -5947,6 +5964,49 @@ ${input.userComment}
 	 * Uses workspace-level token storage.
 	 * Returns undefined if OAuth credentials are not available.
 	 */
+
+	/**
+	 * Build and populate the secret redactor with all known secret values.
+	 * Collects API keys, tokens, and other sensitive env vars plus workspace tokens.
+	 */
+	private buildSecretRedactor(config: EdgeWorkerConfig): ISecretRedactor {
+		const redactor = new SecretRedactor();
+
+		// Collect well-known secret env vars
+		const secretEnvVars = [
+			"ANTHROPIC_API_KEY",
+			"CLAUDE_CODE_OAUTH_TOKEN",
+			"OPENAI_API_KEY",
+			"GEMINI_API_KEY",
+			"GITHUB_TOKEN",
+			"SLACK_BOT_TOKEN",
+			"CURSOR_API_KEY",
+			"LINEAR_CLIENT_SECRET",
+			"LINEAR_WEBHOOK_SECRET",
+			"GITHUB_WEBHOOK_SECRET",
+			"GITLAB_WEBHOOK_SECRET",
+			"GITLAB_ACCESS_TOKEN",
+			"SLACK_SIGNING_SECRET",
+			"CYRUS_API_KEY",
+			"CLOUDFLARE_TOKEN",
+		];
+
+		const envSecrets = secretEnvVars
+			.map((key) => process.env[key])
+			.filter((v): v is string => v != null && v.length > 0);
+		redactor.addSecrets(envSecrets);
+
+		// Collect Linear workspace tokens from config
+		if (config.linearWorkspaces) {
+			const workspaceTokens = Object.values(config.linearWorkspaces)
+				.map((ws) => (ws as { linearToken?: string }).linearToken)
+				.filter((v): v is string => v != null && v.length > 0);
+			redactor.addSecrets(workspaceTokens);
+		}
+
+		return redactor;
+	}
+
 	private buildOAuthConfig(
 		linearWorkspaceId: string,
 	): LinearOAuthConfig | undefined {

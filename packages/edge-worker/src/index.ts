@@ -60,5 +60,10 @@ export {
 	DEFAULT_BLOCK_MESSAGE,
 	UserAccessControl,
 } from "./UserAccessControl.js";
+export type { ISecretRedactor } from "./utils/SecretRedactor.js";
+export {
+	redactActivityContent,
+	SecretRedactor,
+} from "./utils/SecretRedactor.js";
 
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";

@@ -8,6 +8,8 @@
 export interface GitLabCommentServiceConfig {
 	/** GitLab API base URL (default: https://gitlab.com) */
 	apiBaseUrl?: string;
+	/** Optional function to scrub sensitive content before posting. */
+	scrubContent?: (text: string) => string;
 }
 
 /**
@@ -72,9 +74,11 @@ export interface GitLabNoteResponse {
 
 export class GitLabCommentService {
 	private apiBaseUrl: string;
+	private scrubContent: ((text: string) => string) | undefined;
 
 	constructor(config?: GitLabCommentServiceConfig) {
 		this.apiBaseUrl = config?.apiBaseUrl ?? "https://gitlab.com";
+		this.scrubContent = config?.scrubContent;
 	}
 
 	/**
@@ -84,6 +88,7 @@ export class GitLabCommentService {
 	 */
 	async postMRNote(params: PostMRNoteParams): Promise<GitLabNoteResponse> {
 		const { token, projectId, mrIid, body } = params;
+		const scrubbedBody = this.scrubContent ? this.scrubContent(body) : body;
 		const url = `${this.apiBaseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/notes`;
 
 		const response = await fetch(url, {
@@ -92,7 +97,7 @@ export class GitLabCommentService {
 				"PRIVATE-TOKEN": token,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ body }),
+			body: JSON.stringify({ body: scrubbedBody }),
 		});
 
 		if (!response.ok) {
@@ -114,6 +119,7 @@ export class GitLabCommentService {
 		params: PostDiscussionReplyParams,
 	): Promise<GitLabNoteResponse> {
 		const { token, projectId, mrIid, discussionId, body } = params;
+		const scrubbedBody = this.scrubContent ? this.scrubContent(body) : body;
 		const url = `${this.apiBaseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/discussions/${discussionId}/notes`;
 
 		const response = await fetch(url, {
@@ -122,7 +128,7 @@ export class GitLabCommentService {
 				"PRIVATE-TOKEN": token,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ body }),
+			body: JSON.stringify({ body: scrubbedBody }),
 		});
 
 		if (!response.ok) {

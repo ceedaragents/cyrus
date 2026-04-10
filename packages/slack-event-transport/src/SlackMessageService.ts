@@ -49,11 +49,27 @@ export interface SlackPostMessageParams {
 	thread_ts?: string;
 }
 
+/**
+ * Optional configuration for SlackMessageService.
+ */
+export interface SlackMessageServiceConfig {
+	/** Slack API base URL (default: https://slack.com/api) */
+	apiBaseUrl?: string;
+	/** Optional function to scrub sensitive content before posting. */
+	scrubContent?: (text: string) => string;
+}
+
 export class SlackMessageService {
 	private apiBaseUrl: string;
+	private scrubContent: ((text: string) => string) | undefined;
 
-	constructor(apiBaseUrl?: string) {
-		this.apiBaseUrl = apiBaseUrl ?? "https://slack.com/api";
+	constructor(config?: string | SlackMessageServiceConfig) {
+		if (typeof config === "string" || config === undefined) {
+			this.apiBaseUrl = config ?? "https://slack.com/api";
+		} else {
+			this.apiBaseUrl = config.apiBaseUrl ?? "https://slack.com/api";
+			this.scrubContent = config.scrubContent;
+		}
 	}
 
 	/**
@@ -65,8 +81,9 @@ export class SlackMessageService {
 		const { token, channel, text, thread_ts } = params;
 
 		const url = `${this.apiBaseUrl}/chat.postMessage`;
+		const scrubbedText = this.scrubContent ? this.scrubContent(text) : text;
 
-		const body: Record<string, string> = { channel, text };
+		const body: Record<string, string> = { channel, text: scrubbedText };
 		if (thread_ts) {
 			body.thread_ts = thread_ts;
 		}

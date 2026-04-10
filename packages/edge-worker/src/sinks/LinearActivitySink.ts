@@ -3,6 +3,8 @@ import {
 	AgentActivitySignal,
 	type IIssueTrackerService,
 } from "cyrus-core";
+import type { ISecretRedactor } from "../utils/SecretRedactor.js";
+import { redactActivityContent } from "../utils/SecretRedactor.js";
 import type {
 	ActivityPostOptions,
 	ActivityPostResult,
@@ -43,16 +45,23 @@ export class LinearActivitySink implements IActivitySink {
 	public readonly id: string;
 
 	private readonly issueTracker: IIssueTrackerService;
+	private readonly redactor: ISecretRedactor | undefined;
 
 	/**
 	 * Create a new LinearActivitySink.
 	 *
 	 * @param issueTracker - The IIssueTrackerService instance to delegate to
 	 * @param workspaceId - The Linear workspace ID (used as sink ID)
+	 * @param redactor - Optional secret redactor to scrub outbound content
 	 */
-	constructor(issueTracker: IIssueTrackerService, workspaceId: string) {
+	constructor(
+		issueTracker: IIssueTrackerService,
+		workspaceId: string,
+		redactor?: ISecretRedactor,
+	) {
 		this.issueTracker = issueTracker;
 		this.id = workspaceId;
+		this.redactor = redactor;
 	}
 
 	/**
@@ -87,9 +96,13 @@ export class LinearActivitySink implements IActivitySink {
 		activity: AgentActivityContent,
 		options?: ActivityPostOptions,
 	): Promise<ActivityPostResult> {
+		const content = this.redactor
+			? redactActivityContent(this.redactor, activity)
+			: activity;
+
 		const result = await this.issueTracker.createAgentActivity({
 			agentSessionId: sessionId,
-			content: activity,
+			content,
 			...(options?.ephemeral !== undefined && { ephemeral: options.ephemeral }),
 			...(options?.signal && { signal: this.mapSignal(options.signal) }),
 			...(options?.signalMetadata && {

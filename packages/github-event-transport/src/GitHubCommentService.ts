@@ -8,6 +8,8 @@
 export interface GitHubCommentServiceConfig {
 	/** GitHub API base URL (default: https://api.github.com) */
 	apiBaseUrl?: string;
+	/** Optional function to scrub sensitive content before posting. */
+	scrubContent?: (text: string) => string;
 }
 
 /**
@@ -73,9 +75,11 @@ export interface AddReactionParams {
 
 export class GitHubCommentService {
 	private apiBaseUrl: string;
+	private scrubContent: ((text: string) => string) | undefined;
 
 	constructor(config?: GitHubCommentServiceConfig) {
 		this.apiBaseUrl = config?.apiBaseUrl ?? "https://api.github.com";
+		this.scrubContent = config?.scrubContent;
 	}
 
 	/**
@@ -88,6 +92,7 @@ export class GitHubCommentService {
 		params: PostCommentParams,
 	): Promise<GitHubCommentResponse> {
 		const { token, owner, repo, issueNumber, body } = params;
+		const scrubbedBody = this.scrubContent ? this.scrubContent(body) : body;
 		const url = `${this.apiBaseUrl}/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
 
 		const response = await fetch(url, {
@@ -98,7 +103,7 @@ export class GitHubCommentService {
 				"Content-Type": "application/json",
 				"X-GitHub-Api-Version": "2022-11-28",
 			},
-			body: JSON.stringify({ body }),
+			body: JSON.stringify({ body: scrubbedBody }),
 		});
 
 		if (!response.ok) {
@@ -121,6 +126,7 @@ export class GitHubCommentService {
 		params: PostReviewCommentReplyParams,
 	): Promise<GitHubCommentResponse> {
 		const { token, owner, repo, pullNumber, commentId, body } = params;
+		const scrubbedBody = this.scrubContent ? this.scrubContent(body) : body;
 		const url = `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/comments/${commentId}/replies`;
 
 		const response = await fetch(url, {
@@ -131,7 +137,7 @@ export class GitHubCommentService {
 				"Content-Type": "application/json",
 				"X-GitHub-Api-Version": "2022-11-28",
 			},
-			body: JSON.stringify({ body }),
+			body: JSON.stringify({ body: scrubbedBody }),
 		});
 
 		if (!response.ok) {
