@@ -5076,20 +5076,12 @@ ${input.userComment}
 	 * correct bot account without hardcoding.
 	 */
 	private buildAgentContextBlock(): string {
-		const githubBot = process.env.GITHUB_BOT_USERNAME || "";
-		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "";
-
-		if (!githubBot && !gitlabBot) {
-			return "";
-		}
+		const githubBot = process.env.GITHUB_BOT_USERNAME || "cyrusagent";
+		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "cyrusagent";
 
 		const lines: string[] = ["\n\n<agent_context>"];
-		if (githubBot) {
-			lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
-		}
-		if (gitlabBot) {
-			lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
-		}
+		lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
+		lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
 		lines.push("</agent_context>");
 
 		return lines.join("\n");
