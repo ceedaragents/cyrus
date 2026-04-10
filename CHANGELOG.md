@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Repository `.env` variables are now scoped per session** — Previously, `.env` values were loaded into the EdgeWorker's `process.env`, causing environment poisoning across sessions and repositories. Variables are now isolated per session, always reflect the latest `.env` contents, and no longer leak between repos. ([CYPACK-1057](https://linear.app/ceedar/issue/CYPACK-1057))
+- **Repository `.env` variables are now scoped per session** — Previously, `.env` values were loaded into the EdgeWorker's `process.env`, causing environment poisoning across sessions and repositories. Variables are now isolated per session, always reflect the latest `.env` contents, and no longer leak between repos. ([CYPACK-1057](https://linear.app/ceedar/issue/CYPACK-1057), [#1085](https://github.com/ceedaragents/cyrus/pull/1085))
 - **PR/MR interaction tips now correctly reference `@cyrusagent`** — Previously, when `GITHUB_BOT_USERNAME` or `GITLAB_BOT_USERNAME` environment variables were not set, PR/MR descriptions could show an incorrect bot username. The system now defaults to `cyrusagent`. ([CYPACK-1054](https://linear.app/ceedar/issue/CYPACK-1054), [#1082](https://github.com/ceedaragents/cyrus/pull/1082))
 
 ## [0.2.43] - 2026-04-08
