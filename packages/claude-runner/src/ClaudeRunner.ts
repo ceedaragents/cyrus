@@ -71,6 +71,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
 	private canUseToolCallback: CanUseTool | undefined;
+	private repositoryEnv: Record<string, string> = {};
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -436,6 +437,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
 					env: {
+						...this.repositoryEnv,
 						...process.env,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 						CLAUDE_CODE_ENABLE_TASKS: "true",
@@ -753,25 +755,26 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
-	 * Load environment variables from repository .env file
-	 * Does not override existing process.env values
+	 * Load environment variables from repository .env file into an isolated object.
+	 * Variables are merged only into the child subprocess env, never into process.env.
+	 * Each call re-reads the file so updated/removed values are always reflected.
 	 */
 	private loadRepositoryEnv(workingDirectory: string): void {
 		try {
 			const envPath = join(workingDirectory, ".env");
 
 			if (existsSync(envPath)) {
-				// Load but don't override existing env vars
-				const result = dotenv.config({
-					path: envPath,
-					override: false, // Existing process.env takes precedence
-				});
+				const fileContent = readFileSync(envPath, "utf-8");
+				const parsed = dotenv.parse(fileContent);
 
-				if (result.error) {
-					this.logger.warn("Failed to parse .env file:", result.error);
-				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
+				if (Object.keys(parsed).length > 0) {
 					this.logger.debug("Loaded environment variables from .env");
 				}
+
+				// Replace entirely so removed vars don't carry forward
+				this.repositoryEnv = parsed;
+			} else {
+				this.repositoryEnv = {};
 			}
 		} catch (error) {
 			this.logger.warn("Error loading repository .env:", error);

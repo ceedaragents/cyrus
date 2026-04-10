@@ -23,6 +23,7 @@ vi.mock("os", () => ({
 	homedir: vi.fn(() => "/mock/home"),
 }));
 
+import { existsSync, readFileSync } from "node:fs";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { AbortError, ClaudeRunner } from "../src/ClaudeRunner";
 import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
@@ -841,6 +842,126 @@ describe("ClaudeRunner", () => {
 
 			// Readable log logic would filter out TodoWrite but keep Read
 			// (This tests the filtering logic in writeReadableLogEntry)
+		});
+	});
+
+	describe("loadRepositoryEnv - per-session .env isolation", () => {
+		const mockExistsSync = vi.mocked(existsSync);
+		const mockReadFileSync = vi.mocked(readFileSync);
+
+		const mockMessages: SDKMessage[] = [
+			{
+				type: "assistant",
+				message: { content: [{ type: "text", text: "Hello!" }] },
+				parent_tool_use_id: null,
+				session_id: "test-session",
+			} as any,
+		];
+
+		function setupQueryMock() {
+			vi.mocked(query).mockImplementation(async function* () {
+				for (const message of mockMessages) {
+					yield message;
+				}
+			});
+		}
+
+		function getEnvPassedToQuery(): Record<string, string> {
+			const calls = vi.mocked(query).mock.calls;
+			const lastCall = calls[calls.length - 1];
+			return (lastCall[0] as any).options.env;
+		}
+
+		it("should pass .env vars to subprocess env without polluting process.env", async () => {
+			mockExistsSync.mockImplementation((p: any) => String(p).endsWith(".env"));
+			mockReadFileSync.mockImplementation((p: any) => {
+				if (String(p).endsWith(".env"))
+					return "DOCKER_HOST=unix:///run/podman/podman.sock\nCUSTOM_VAR=hello";
+				return "";
+			});
+			setupQueryMock();
+
+			const envRunner = new ClaudeRunner({ ...defaultConfig });
+			await envRunner.start("test");
+
+			const env = getEnvPassedToQuery();
+			expect(env.DOCKER_HOST).toBe("unix:///run/podman/podman.sock");
+			expect(env.CUSTOM_VAR).toBe("hello");
+
+			// process.env must NOT be polluted
+			expect(process.env.DOCKER_HOST).toBeUndefined();
+			expect(process.env.CUSTOM_VAR).toBeUndefined();
+		});
+
+		it("should pick up updated .env values and drop removed vars on new session", async () => {
+			// First session: .env has VAR_A and VAR_B
+			mockExistsSync.mockImplementation((p: any) => String(p).endsWith(".env"));
+			mockReadFileSync.mockImplementation((p: any) => {
+				if (String(p).endsWith(".env")) return "VAR_A=1\nVAR_B=2";
+				return "";
+			});
+			setupQueryMock();
+
+			const runner1 = new ClaudeRunner({ ...defaultConfig });
+			await runner1.start("test");
+
+			const env1 = getEnvPassedToQuery();
+			expect(env1.VAR_A).toBe("1");
+			expect(env1.VAR_B).toBe("2");
+
+			// Second session: .env updated — VAR_A changed, VAR_B removed, VAR_C added
+			mockReadFileSync.mockImplementation((p: any) => {
+				if (String(p).endsWith(".env")) return "VAR_A=updated\nVAR_C=3";
+				return "";
+			});
+
+			const runner2 = new ClaudeRunner({ ...defaultConfig });
+			await runner2.start("test");
+
+			const env2 = getEnvPassedToQuery();
+			expect(env2.VAR_A).toBe("updated");
+			expect(env2.VAR_C).toBe("3");
+			// VAR_B was removed from .env — must not appear
+			expect(env2.VAR_B).toBeUndefined();
+		});
+
+		it("should let process.env take precedence over .env values", async () => {
+			// Set a process.env value that also appears in .env
+			const originalValue = process.env.TEST_PRECEDENCE;
+			process.env.TEST_PRECEDENCE = "from-process";
+
+			mockExistsSync.mockImplementation((p: any) => String(p).endsWith(".env"));
+			mockReadFileSync.mockImplementation((p: any) => {
+				if (String(p).endsWith(".env")) return "TEST_PRECEDENCE=from-dotenv";
+				return "";
+			});
+			setupQueryMock();
+
+			const envRunner = new ClaudeRunner({ ...defaultConfig });
+			await envRunner.start("test");
+
+			const env = getEnvPassedToQuery();
+			// process.env should win
+			expect(env.TEST_PRECEDENCE).toBe("from-process");
+
+			// Clean up
+			if (originalValue === undefined) {
+				delete process.env.TEST_PRECEDENCE;
+			} else {
+				process.env.TEST_PRECEDENCE = originalValue;
+			}
+		});
+
+		it("should handle missing .env file gracefully", async () => {
+			mockExistsSync.mockReturnValue(false);
+			setupQueryMock();
+
+			const envRunner = new ClaudeRunner({ ...defaultConfig });
+			await envRunner.start("test");
+
+			const env = getEnvPassedToQuery();
+			// Should still have the standard Cyrus env vars
+			expect(env.CLAUDE_CODE_ENABLE_TASKS).toBe("true");
 		});
 	});
 });
