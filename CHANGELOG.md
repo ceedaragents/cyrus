@@ -4,9 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.44] - 2026-04-10
+
 ### Fixed
 - **Repository `.env` variables are now scoped per-session** — Previously, `.env` files were loaded into the EdgeWorker's `process.env`, causing environment poisoning across sessions and repositories. Variables are now parsed into an isolated object and merged only into the child subprocess env, so updated or removed values take effect immediately and one repo's `.env` cannot leak into another. ([CYPACK-1059](https://linear.app/ceedar/issue/CYPACK-1059), [#1086](https://github.com/ceedaragents/cyrus/pull/1086))
 - **PR/MR interaction tips now correctly reference `@cyrusagent`** — Previously, when `GITHUB_BOT_USERNAME` or `GITLAB_BOT_USERNAME` environment variables were not set, PR/MR descriptions could show an incorrect bot username. The system now defaults to `cyrusagent`. ([CYPACK-1054](https://linear.app/ceedar/issue/CYPACK-1054), [#1082](https://github.com/ceedaragents/cyrus/pull/1082))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.44
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.44
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.44
+
+#### cyrus-core
+- cyrus-core@0.2.44
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.44
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.44
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.44
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.44
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.44
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.44
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.44
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.44
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.44
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.44
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.44
 
 ## [0.2.43] - 2026-04-08
 
