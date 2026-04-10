@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.98 and `@anthropic-ai/sdk` to v0.87.0** — Keeps the agent SDK and Anthropic SDK on their latest released versions. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1055](https://linear.app/ceedar/issue/CYPACK-1055))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.98 and `@anthropic-ai/sdk` to v0.87.0** — Keeps the agent SDK and Anthropic SDK on their latest released versions. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1055](https://linear.app/ceedar/issue/CYPACK-1055), [#1083](https://github.com/ceedaragents/cyrus/pull/1083))
 
 ### Fixed
 - **PR/MR interaction tips now correctly reference `@cyrusagent`** — Previously, when `GITHUB_BOT_USERNAME` or `GITLAB_BOT_USERNAME` environment variables were not set, PR/MR descriptions could show an incorrect bot username. The system now defaults to `cyrusagent`. ([CYPACK-1054](https://linear.app/ceedar/issue/CYPACK-1054), [#1082](https://github.com/ceedaragents/cyrus/pull/1082))
