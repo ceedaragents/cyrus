@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.104 and `@anthropic-ai/sdk` to v0.88.0** — Bumped both Anthropic SDK dependencies to their latest versions to pick up recent improvements and fixes. ([CYPACK-1064](https://linear.app/ceedar/issue/CYPACK-1064))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.104 and `@anthropic-ai/sdk` to v0.88.0** — Bumped both Anthropic SDK dependencies to their latest versions to pick up recent improvements and fixes. ([CYPACK-1064](https://linear.app/ceedar/issue/CYPACK-1064), [#1092](https://github.com/ceedaragents/cyrus/pull/1092))
 
 ## [0.2.44] - 2026-04-10
 
