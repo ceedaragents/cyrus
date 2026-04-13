@@ -58,9 +58,9 @@ Violation of these rules should be considered a failure.
 </task_first_workflow>
 
 <task_management_instructions>
-**Three-Tool Symphony: TodoWrite, TodoRead, and Task**
+**Two-Tool Symphony: TodoWrite and Task**
 
-1. **TodoWrite/TodoRead (Planning & Tracking):**
+1. **TodoWrite (Planning & Tracking):**
    - Create task list FIRST THING
    - Track Task results and insights
 

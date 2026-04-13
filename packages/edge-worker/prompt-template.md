@@ -50,7 +50,7 @@ Base branch: {{base_branch}}
 
 ## Task Management
 
-IMPORTANT: Use the TodoWrite and TodoRead tools to track your progress:
+IMPORTANT: Use the TodoWrite tool to track your progress:
 - Create a comprehensive task list at the beginning of your work
 - Break down complex tasks into smaller, actionable items
 - Mark tasks as 'in_progress' when you start them

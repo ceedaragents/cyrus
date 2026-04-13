@@ -42,15 +42,16 @@ async function main() {
 		allowedTools: [
 			"Read",
 			"Edit",
+			"Write",
+			"Glob",
+			"Grep",
 			"Task",
 			"WebFetch",
 			"WebSearch",
-			"TodoRead",
 			"TodoWrite",
-			"NotebookRead",
 			"NotebookEdit",
-			"Batch",
 			"Bash",
+			"Skill",
 			// MCP tools from @tacticlaunch/mcp-linear server
 			// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
 			"mcp__linear",

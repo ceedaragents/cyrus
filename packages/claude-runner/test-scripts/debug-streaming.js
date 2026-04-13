@@ -31,10 +31,9 @@ async function main() {
 			"Task",
 			"WebFetch",
 			"WebSearch",
-			"TodoRead",
 			"TodoWrite",
-			"NotebookRead",
 			"NotebookEdit",
+			"Skill",
 		],
 		continueSession: true, // EdgeWorker sets this!
 		workspaceName: "CEE-739",
