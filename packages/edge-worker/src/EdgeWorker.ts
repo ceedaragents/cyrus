@@ -61,6 +61,7 @@ import {
 	PersistenceManager,
 	requireLinearWorkspaceId,
 	resolvePath,
+	WebhookIpValidator,
 } from "cyrus-core";
 import { CursorRunner } from "cyrus-cursor-runner";
 import { GeminiRunner } from "cyrus-gemini-runner";
@@ -223,6 +224,8 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
+	/** Validates webhook source IPs against known provider allowlists */
+	private webhookIpValidator: WebhookIpValidator;
 	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
@@ -296,6 +299,23 @@ export class EdgeWorker extends EventEmitter {
 				return this.getIssueTrackerForWorkspace(linearWorkspaceId) ?? null;
 			},
 		});
+
+		// Initialize webhook IP validator
+		// Enabled by default in self-hosted mode (CYRUS_HOST_EXTERNAL=true),
+		// can be overridden with WEBHOOK_IP_VALIDATION=false to disable
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const ipValidationEnv =
+			process.env.WEBHOOK_IP_VALIDATION?.toLowerCase().trim();
+		const ipValidationEnabled =
+			ipValidationEnv === "true" ||
+			(ipValidationEnv !== "false" && isExternalHost);
+		this.webhookIpValidator = new WebhookIpValidator({
+			enabled: ipValidationEnabled,
+		});
+		if (ipValidationEnabled) {
+			this.logger.info("Webhook IP validation enabled");
+		}
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
@@ -503,6 +523,16 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize and register components BEFORE starting server (routes must be registered before listen())
 		await this.initializeComponents();
 
+		// Refresh GitHub webhook allowlist from /meta API (non-blocking)
+		if (this.webhookIpValidator.isEnabled()) {
+			this.webhookIpValidator.refreshGitHubAllowlist().catch((error) => {
+				this.logger.warn(
+					"Failed to refresh GitHub webhook allowlist",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		}
+
 		// Start shared application server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.sharedApplicationServer.start();
 	}
@@ -572,6 +602,10 @@ export class EdgeWorker extends EventEmitter {
 				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 				verificationMode,
 				secret,
+				ipAllowlist:
+					verificationMode === "direct" && this.webhookIpValidator.isEnabled()
+						? this.webhookIpValidator.getAllowlist("linear")
+						: undefined,
 			});
 
 			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
@@ -693,6 +727,10 @@ export class EdgeWorker extends EventEmitter {
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode,
 			secret,
+			ipAllowlist:
+				useSignatureVerification && this.webhookIpValidator.isEnabled()
+					? this.webhookIpValidator.getAllowlist("github")
+					: undefined,
 		});
 
 		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
@@ -759,6 +797,10 @@ export class EdgeWorker extends EventEmitter {
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode,
 			secret,
+			ipAllowlist:
+				useSignatureVerification && this.webhookIpValidator.isEnabled()
+					? this.webhookIpValidator.getAllowlist("gitlab")
+					: undefined,
 		});
 
 		// Listen for legacy GitLab webhook events

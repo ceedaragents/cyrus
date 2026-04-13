@@ -7,6 +7,9 @@ This changelog documents internal development changes, refactors, tooling update
 ### Changed
 - PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
 
+### Added
+- Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
+
 ## [0.2.44] - 2026-04-10
 
 ### Fixed
