@@ -52,6 +52,7 @@ describe("JSON Schema export", () => {
 				"issueUpdateTrigger",
 				"userAccessControl",
 				"promptDefaults",
+				"sandbox",
 				"ngrokAuthToken",
 				"stripeCustomerId",
 				"linearWorkspaceSlug",

@@ -127,8 +127,10 @@ import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
 import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
+import { ClaudeSettingsWriter } from "./ClaudeSettingsWriter.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
+import { EgressProxy } from "./EgressProxy.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
@@ -226,6 +228,10 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpSessions = new Sessions<any>();
 	/** Validates webhook source IPs against known provider allowlists */
 	private webhookIpValidator: WebhookIpValidator;
+	/** Egress proxy for sandbox network traffic filtering and header injection */
+	private egressProxy: EgressProxy | null = null;
+	/** Writer for Claude Code's ~/.claude/settings.json sandbox config */
+	private claudeSettingsWriter: ClaudeSettingsWriter;
 	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
@@ -241,6 +247,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize Claude settings writer and egress proxy
+		this.claudeSettingsWriter = new ClaudeSettingsWriter(this.logger);
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
 		this.gitHubCommentService = new GitHubCommentService();
@@ -519,6 +528,25 @@ export class EdgeWorker extends EventEmitter {
 			},
 		);
 		this.configManager.startConfigWatcher();
+
+		// Start egress proxy if sandbox is enabled
+		if (this.config.sandbox?.enabled) {
+			this.egressProxy = new EgressProxy(
+				this.config.sandbox,
+				this.cyrusHome,
+				this.logger,
+			);
+			await this.egressProxy.start();
+
+			// Update ~/.claude/settings.json to route sandbox traffic through proxy
+			this.claudeSettingsWriter.writeSandboxPorts(
+				this.egressProxy.getHttpProxyPort(),
+				this.egressProxy.getSocksProxyPort(),
+			);
+
+			// Set NODE_EXTRA_CA_CERTS so child processes trust our MITM CA
+			process.env.NODE_EXTRA_CA_CERTS = this.egressProxy.getCACertPath();
+		}
 
 		// Initialize and register components BEFORE starting server (routes must be registered before listen())
 		await this.initializeComponents();
@@ -2155,6 +2183,13 @@ ${taskSection}`;
 		this.mcpConfigService.clearAllContexts();
 		this.cyrusToolsMcpSessions.removeAllListeners();
 		this.cyrusToolsMcpRegistered = false;
+
+		// Stop egress proxy and clean up settings.json
+		if (this.egressProxy) {
+			await this.egressProxy.stop();
+			this.egressProxy = null;
+			this.claudeSettingsWriter.removeSandboxPorts();
+		}
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();

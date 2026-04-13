@@ -351,6 +351,9 @@ importers:
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
+      node-forge:
+        specifier: ^1.4.0
+        version: 1.4.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -358,6 +361,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
+      '@types/node-forge':
+        specifier: ^1.3.14
+        version: 1.3.14
       '@vitest/coverage-v8':
         specifier: ^3.1.4
         version: 3.2.4(vitest@3.2.4)
@@ -1795,6 +1801,9 @@ packages:
   '@types/minimatch@5.1.2':
     resolution: {integrity: sha512-K0VQKziLUWkVKiRVrx4a40iPaxTUefQmjtkQofBkYRcoaaL/8rhwDWww9qWbrgicNOgnpIsMxyNIUM4+n6dUIA==}
 
+  '@types/node-forge@1.3.14':
+    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
+
   '@types/node@20.19.21':
     resolution: {integrity: sha512-CsGG2P3I5y48RPMfprQGfy4JPRZ6csfC3ltBZSRItG3ngggmNY/qs2uZKp4p9VbrpqNNSMzUZNFZKzgOGnd/VA==}
 
@@ -2902,6 +2911,10 @@ packages:
     peerDependenciesMeta:
       encoding:
         optional: true
+
+  node-forge@1.4.0:
+    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+    engines: {node: '>= 6.13.0'}
 
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
@@ -4882,6 +4895,10 @@ snapshots:
 
   '@types/minimatch@5.1.2': {}
 
+  '@types/node-forge@1.3.14':
+    dependencies:
+      '@types/node': 20.19.21
+
   '@types/node@20.19.21':
     dependencies:
       undici-types: 6.21.0
@@ -6134,6 +6151,8 @@ snapshots:
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
+
+  node-forge@1.4.0: {}
 
   node-gyp-build@4.8.4: {}
 

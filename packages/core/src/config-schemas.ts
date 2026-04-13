@@ -114,6 +114,92 @@ const PromptTypeDefaultsSchema = z.object({
 });
 
 /**
+ * Header transform rule for egress proxy.
+ * Injects or overrides HTTP headers on outgoing requests to a specific domain.
+ * Follows the Vercel Sandbox Firewall transform interface.
+ *
+ * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall
+ */
+const HeaderTransformSchema = z.object({
+	/** Headers to inject/override on outgoing requests */
+	headers: z.record(z.string(), z.string()),
+});
+
+/**
+ * Per-domain allow rule with optional header transforms.
+ * When transforms are specified, TLS is terminated for that domain
+ * so headers can be inspected and modified (credentials brokering).
+ */
+const DomainRuleSchema = z.array(
+	z.object({
+		transform: z.array(HeaderTransformSchema).optional(),
+	}),
+);
+
+/**
+ * Network policy for egress sandboxing.
+ * Controls which domains/subnets the sandboxed agent can reach and
+ * enables per-domain header injection (credentials brokering).
+ *
+ * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall
+ */
+export const NetworkPolicySchema = z.object({
+	/**
+	 * Domain allow rules with optional transforms.
+	 * Keys are domain patterns:
+	 * - Exact match: "api.example.com"
+	 * - Wildcard subdomain: "*.example.com" (matches any subdomain, NOT parent)
+	 * - Wildcard segment: "www.*.com" (matches one segment)
+	 */
+	allow: z.record(z.string(), DomainRuleSchema).optional(),
+
+	/** Subnet-based rules */
+	subnets: z
+		.object({
+			/** IP ranges to allow (bypasses domain matching) */
+			allow: z.array(z.string()).optional(),
+			/** IP ranges to deny (takes precedence over all allow rules) */
+			deny: z.array(z.string()).optional(),
+		})
+		.optional(),
+});
+
+/**
+ * Sandbox configuration for network egress control.
+ * Configures the egress proxy that intercepts outbound traffic from agent sessions.
+ *
+ * When enabled, Claude Code's sandbox routes all network traffic through the proxy,
+ * allowing domain filtering, header injection, and request logging.
+ */
+export const SandboxConfigSchema = z.object({
+	/**
+	 * Enable or disable the egress proxy.
+	 * When true, the proxy starts on EdgeWorker boot and Claude's settings.json
+	 * is updated to route traffic through it.
+	 * @default false
+	 */
+	enabled: z.boolean().optional(),
+
+	/** HTTP proxy port for Claude Code sandbox.network.httpProxyPort */
+	httpProxyPort: z.number().optional().default(9080),
+
+	/** SOCKS proxy port for Claude Code sandbox.network.socksProxyPort */
+	socksProxyPort: z.number().optional().default(9081),
+
+	/**
+	 * Network policy controlling allowed domains, transforms, and subnets.
+	 * If omitted, all traffic is allowed (passthrough mode with logging).
+	 */
+	networkPolicy: NetworkPolicySchema.optional(),
+
+	/**
+	 * Log all proxied requests (method, URL, domain, status).
+	 * @default true
+	 */
+	logRequests: z.boolean().optional(),
+});
+
+/**
  * Global defaults for prompt types
  */
 const PromptDefaultsSchema = z.object({
@@ -267,6 +353,13 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/**
+	 * Sandbox configuration for network egress control.
+	 * When enabled, starts an egress proxy and configures Claude Code to route
+	 * all agent network traffic through it for inspection and filtering.
+	 */
+	sandbox: SandboxConfigSchema.optional(),
 });
 
 /**
@@ -373,6 +466,8 @@ export type UserAccessControlConfig = z.infer<
 export type LinearWorkspaceConfig = z.infer<typeof LinearWorkspaceConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type NetworkPolicy = z.infer<typeof NetworkPolicySchema>;
 export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema
 >;
