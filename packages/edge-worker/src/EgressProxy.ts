@@ -11,8 +11,7 @@ import {
 	connect as netConnect,
 } from "node:net";
 import { join } from "node:path";
-import type { TLSSocket } from "node:tls";
-import { createServer as createTlsServer } from "node:tls";
+import { TLSSocket } from "node:tls";
 import type { NetworkPolicy, SandboxConfig } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import forge from "node-forge";
@@ -544,8 +543,9 @@ export class EgressProxy {
 
 	/**
 	 * TLS termination for domains with transform rules.
-	 * Generates an on-the-fly cert, terminates TLS from client,
-	 * then forwards requests to the real server with injected headers.
+	 * Spins up a local HTTPS server on an ephemeral port, bridges
+	 * the client socket to it, then forwards decrypted HTTP upstream
+	 * with injected headers.
 	 */
 	private handleTlsTermination(
 		hostname: string,
@@ -555,66 +555,8 @@ export class EgressProxy {
 	): void {
 		const serverCert = this.generateServerCert(hostname);
 
-		// Create a TLS server that will accept the client connection
-		const tlsServer = createTlsServer(
-			{
-				key: serverCert.key,
-				cert: serverCert.cert,
-			},
-			(clearSocket: TLSSocket) => {
-				this.handleDecryptedConnection(hostname, port, clearSocket);
-			},
-		);
-
-		// Listen on a random port, connect the client socket to it
-		tlsServer.listen(0, "127.0.0.1", () => {
-			const addr = tlsServer.address();
-			if (!addr || typeof addr === "string") {
-				clientSocket.destroy();
-				tlsServer.close();
-				return;
-			}
-
-			// Tell client the tunnel is established
-			clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-
-			// Connect client socket to our TLS server
-			const internalSocket = netConnect(addr.port, "127.0.0.1", () => {
-				if (head.length > 0) {
-					internalSocket.write(head);
-				}
-				internalSocket.pipe(clientSocket);
-				clientSocket.pipe(internalSocket);
-			});
-
-			internalSocket.on("error", () => {
-				clientSocket.destroy();
-			});
-			clientSocket.on("error", () => {
-				internalSocket.destroy();
-			});
-			clientSocket.on("close", () => {
-				tlsServer.close();
-			});
-		});
-
-		tlsServer.on("error", (err) => {
-			this.logger.error(`TLS termination server error for ${hostname}:`, err);
-			clientSocket.destroy();
-		});
-	}
-
-	/**
-	 * Handle a decrypted HTTP connection after TLS termination.
-	 * Parses HTTP requests, applies header transforms, and forwards to the real server.
-	 */
-	private handleDecryptedConnection(
-		hostname: string,
-		port: number,
-		clearSocket: TLSSocket,
-	): void {
-		// Create an HTTP server to parse the decrypted stream
-		const httpParser = createHttpServer((req, res) => {
+		// Create a local HTTPS server to terminate TLS
+		const httpsServer = createHttpServer((req, res) => {
 			const transforms = this.getTransformsForDomain(hostname);
 
 			if (this.logRequests) {
@@ -626,41 +568,94 @@ export class EgressProxy {
 				);
 			}
 
-			// Build headers for upstream request
 			const headers = { ...req.headers };
 			delete headers["proxy-connection"];
-			// Override host header to match the actual target
 			headers.host = hostname + (port !== 443 ? `:${port}` : "");
 
 			if (transforms) {
 				Object.assign(headers, transforms.headers);
 			}
 
-			const options = {
-				hostname,
-				port,
-				path: req.url,
-				method: req.method,
-				headers,
-				rejectUnauthorized: true,
-			};
+			const upstreamReq = httpsRequest(
+				{
+					hostname,
+					port,
+					path: req.url,
+					method: req.method,
+					headers,
+					rejectUnauthorized: true,
+				},
+				(upstreamRes) => {
+					res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+					upstreamRes.pipe(res);
+				},
+			);
 
-			const upstreamReq = httpsRequest(options, (upstreamRes) => {
-				res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
-				upstreamRes.pipe(res);
-			});
-
-			upstreamReq.on("error", (err) => {
+			upstreamReq.on("error", (err: Error) => {
 				this.logger.error(`MITM upstream error for ${hostname}:`, err);
-				res.writeHead(502);
-				res.end("Bad Gateway");
+				if (!res.headersSent) {
+					res.writeHead(502);
+					res.end("Bad Gateway");
+				}
 			});
 
 			req.pipe(upstreamReq);
 		});
 
-		// Emit the clearSocket as a connection to the HTTP parser
-		httpParser.emit("connection", clearSocket);
+		// Upgrade the HTTP server connection to TLS by wrapping incoming sockets
+		const originalEmit = httpsServer.emit.bind(httpsServer);
+		httpsServer.emit = (event: string, ...args: unknown[]) => {
+			if (event === "connection") {
+				const socket = args[0] as Socket;
+				const tlsSocket = new TLSSocket(socket, {
+					isServer: true,
+					key: serverCert.key,
+					cert: serverCert.cert,
+				});
+				tlsSocket.on("error", (err: Error) => {
+					this.logger.error(
+						`TLS handshake error for ${hostname}:`,
+						err.message,
+					);
+					socket.destroy();
+				});
+				return originalEmit("connection", tlsSocket);
+			}
+			return originalEmit(event, ...args);
+		};
+
+		httpsServer.listen(0, "127.0.0.1", () => {
+			const addr = httpsServer.address();
+			if (!addr || typeof addr === "string") {
+				clientSocket.destroy();
+				httpsServer.close();
+				return;
+			}
+
+			// Tell client the tunnel is established
+			clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+
+			// Bridge client socket to our local HTTPS server
+			const bridge = netConnect(addr.port, "127.0.0.1", () => {
+				if (head.length > 0) {
+					bridge.write(head);
+				}
+				bridge.pipe(clientSocket);
+				clientSocket.pipe(bridge);
+			});
+
+			bridge.on("error", () => clientSocket.destroy());
+			clientSocket.on("error", () => bridge.destroy());
+			clientSocket.on("close", () => {
+				bridge.destroy();
+				httpsServer.close();
+			});
+		});
+
+		httpsServer.on("error", (err: Error) => {
+			this.logger.error(`TLS termination server error for ${hostname}:`, err);
+			clientSocket.destroy();
+		});
 	}
 
 	// ---------------------------------------------------------------------------

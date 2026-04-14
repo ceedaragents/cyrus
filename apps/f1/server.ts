@@ -165,6 +165,22 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		claudeDefaultFallbackModel: "haiku",
 		// Enable all tools including Edit(**), Bash, etc. for full testing capability
 		defaultAllowedTools: getAllTools(),
+		// CLI platform needs a linearWorkspaces entry so the CLIIssueTrackerService
+		// gets created for the workspace ID referenced in the repository configs
+		linearWorkspaces: {
+			"cli-workspace": {
+				linearToken: "cli-mode-no-token-needed",
+			},
+		},
+		// Enable egress proxy sandbox when CYRUS_SANDBOX=1 is set
+		...(process.env.CYRUS_SANDBOX === "1" && {
+			sandbox: {
+				enabled: true,
+				httpProxyPort: 19080,
+				socksProxyPort: 19081,
+				logRequests: true,
+			},
+		}),
 	};
 
 	return config;
