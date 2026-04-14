@@ -153,8 +153,11 @@ describe("Environment variable isolation", () => {
 
 		const env2 = getQueryEnv();
 		expect(env2.VAR_A).toBe("updated");
-		// VAR_B should NOT be present (it was removed from .env)
-		expect(env2.VAR_B).toBeUndefined();
+		// VAR_B should NOT be present from .env (it was removed)
+		// It may still exist if process.env happens to have it
+		if (!("VAR_B" in process.env)) {
+			expect(env2.VAR_B).toBeUndefined();
+		}
 	});
 
 	it("should isolate env vars between different repositories", async () => {
@@ -171,7 +174,9 @@ describe("Environment variable isolation", () => {
 
 		const envA = getQueryEnv();
 		expect(envA.REPO_VAR).toBe("from-repo-a");
-		expect(envA.OTHER).toBeUndefined();
+		if (!("OTHER" in process.env)) {
+			expect(envA.OTHER).toBeUndefined();
+		}
 
 		// Start session for repo-b
 		mockSuccessfulQuery();
@@ -183,22 +188,19 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
-	it("should not include process.env in child env", async () => {
-		envFileContents.set("/repo-a/.env", "MY_CUSTOM_VAR=from-dotenv");
+	it("should let repositoryEnv and additionalEnv override process.env", async () => {
+		envFileContents.set("/repo-a/.env", "PATH=/from-dotenv");
 
 		mockSuccessfulQuery();
-		const runner = new ClaudeRunner(makeConfig("/repo-a"));
+		const runner = new ClaudeRunner(
+			Object.assign(makeConfig("/repo-a"), {
+				additionalEnv: { PATH: "/from-additional-env" },
+			}),
+		);
 		await runner.start("test");
 
 		const env = getQueryEnv();
-		// Only .env vars and explicit Cyrus vars should be present — not process.env
-		expect(env.MY_CUSTOM_VAR).toBe("from-dotenv");
-		expect(env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
-		// process.env vars should NOT be spread into child env
-		// (SDK defaults to process.env when no env is provided,
-		// but our explicit env object replaces it entirely)
-		expect(Object.keys(env).length).toBeLessThan(
-			Object.keys(process.env).length,
-		);
+		// additionalEnv wins over both process.env and repositoryEnv
+		expect(env.PATH).toBe("/from-additional-env");
 	});
 });
