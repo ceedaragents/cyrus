@@ -47,6 +47,7 @@ describe("ClaudeSettingsWriter", () => {
 			writer.writeSandboxPorts(9080, 9081);
 
 			const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+			expect(settings.sandbox.enabled).toBe(true);
 			expect(settings.sandbox.network).toEqual({
 				httpProxyPort: 9080,
 				socksProxyPort: 9081,
@@ -74,7 +75,7 @@ describe("ClaudeSettingsWriter", () => {
 			});
 		});
 
-		it("preserves existing sandbox settings other than network", () => {
+		it("preserves existing sandbox settings other than enabled/network", () => {
 			const settingsPath = join(TEST_HOME, ".claude", "settings.json");
 			writeFileSync(
 				settingsPath,
@@ -89,6 +90,7 @@ describe("ClaudeSettingsWriter", () => {
 			writer.writeSandboxPorts(9080, 9081);
 
 			const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+			expect(settings.sandbox.enabled).toBe(true);
 			expect(settings.sandbox.allowedDomains).toEqual(["example.com"]);
 			expect(settings.sandbox.allowManagedDomainsOnly).toBe(true);
 			expect(settings.sandbox.network).toEqual({
@@ -119,13 +121,14 @@ describe("ClaudeSettingsWriter", () => {
 	});
 
 	describe("removeSandboxPorts", () => {
-		it("removes network from sandbox config", () => {
+		it("removes enabled and network from sandbox config", () => {
 			const settingsPath = join(TEST_HOME, ".claude", "settings.json");
 			writeFileSync(
 				settingsPath,
 				JSON.stringify({
 					model: "opus",
 					sandbox: {
+						enabled: true,
 						allowedDomains: ["example.com"],
 						network: { httpProxyPort: 9080, socksProxyPort: 9081 },
 					},
@@ -137,16 +140,18 @@ describe("ClaudeSettingsWriter", () => {
 			const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 			expect(settings.model).toBe("opus");
 			expect(settings.sandbox.allowedDomains).toEqual(["example.com"]);
+			expect(settings.sandbox.enabled).toBeUndefined();
 			expect(settings.sandbox.network).toBeUndefined();
 		});
 
-		it("removes sandbox key entirely if empty after removing network", () => {
+		it("removes sandbox key entirely if empty after cleanup", () => {
 			const settingsPath = join(TEST_HOME, ".claude", "settings.json");
 			writeFileSync(
 				settingsPath,
 				JSON.stringify({
 					model: "opus",
 					sandbox: {
+						enabled: true,
 						network: { httpProxyPort: 9080, socksProxyPort: 9081 },
 					},
 				}),

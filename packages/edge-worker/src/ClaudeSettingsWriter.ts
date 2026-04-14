@@ -45,7 +45,7 @@ export class ClaudeSettingsWriter {
 			}
 		}
 
-		// Preserve existing sandbox settings, only update network
+		// Preserve existing sandbox settings, set enabled + network ports
 		const existingSandbox =
 			typeof settings.sandbox === "object" && settings.sandbox !== null
 				? (settings.sandbox as Record<string, unknown>)
@@ -53,6 +53,7 @@ export class ClaudeSettingsWriter {
 
 		settings.sandbox = {
 			...existingSandbox,
+			enabled: true,
 			network: {
 				httpProxyPort,
 				socksProxyPort,
@@ -77,6 +78,7 @@ export class ClaudeSettingsWriter {
 			const settings = JSON.parse(content);
 
 			if (typeof settings.sandbox === "object" && settings.sandbox !== null) {
+				delete settings.sandbox.enabled;
 				delete settings.sandbox.network;
 
 				// Clean up empty sandbox object
