@@ -22,8 +22,6 @@ export interface GitLabEventTransportConfig {
 	verificationMode: GitLabVerificationMode;
 	/** Secret for verification (CYRUS_API_KEY for proxy, GITLAB_WEBHOOK_SECRET for signature) */
 	secret: string;
-	/** Optional IP allowlist for webhook source validation (only used in signature mode) */
-	ipAllowlist?: readonly string[];
 }
 
 /**

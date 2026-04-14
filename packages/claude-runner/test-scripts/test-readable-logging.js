@@ -145,12 +145,12 @@ This will generate different types of messages for our logging test.`;
 			readableLogContent.includes("## ") &&
 			readableLogContent.includes("- Session Complete");
 
-		// Should NOT contain system noise or TodoWrite calls
+		// Should NOT contain system noise or TaskCreate calls
 		const hasSystemNoise =
 			readableLogContent.includes('"type":"system"') ||
 			readableLogContent.includes("tool_use_id") ||
 			readableLogContent.includes("parent_tool_use_id");
-		const hasTodoWriteNoise = readableLogContent.includes("Tool: TodoWrite");
+		const hasTaskCreateNoise = readableLogContent.includes("Tool: TaskCreate");
 
 		console.log(`- Has markdown header: ${hasMarkdownHeader ? "✅" : "❌"}`);
 		console.log(`- Has session info: ${hasSessionInfo ? "✅" : "❌"}`);
@@ -160,7 +160,7 @@ This will generate different types of messages for our logging test.`;
 		);
 		console.log(`- Free of system noise: ${!hasSystemNoise ? "✅" : "❌"}`);
 		console.log(
-			`- Free of TodoWrite noise: ${!hasTodoWriteNoise ? "✅" : "❌"}`,
+			`- Free of TaskCreate noise: ${!hasTaskCreateNoise ? "✅" : "❌"}`,
 		);
 
 		// Sample readable log content
@@ -184,7 +184,7 @@ This will generate different types of messages for our logging test.`;
 			hasSessionInfo &&
 			hasClaudeResponse &&
 			!hasSystemNoise &&
-			!hasTodoWriteNoise;
+			!hasTaskCreateNoise;
 
 		console.log(`\n🎯 Overall Result:`);
 		if (allTestsPassed) {
@@ -203,8 +203,8 @@ This will generate different types of messages for our logging test.`;
 				console.log("   - Readable log missing proper format");
 			if (hasSystemNoise)
 				console.log("   - Readable log contains system noise");
-			if (hasTodoWriteNoise)
-				console.log("   - Readable log contains TodoWrite noise");
+			if (hasTaskCreateNoise)
+				console.log("   - Readable log contains TaskCreate noise");
 		}
 
 		return allTestsPassed;

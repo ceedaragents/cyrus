@@ -10,6 +10,10 @@ This changelog documents internal development changes, refactors, tooling update
 ### Added
 - Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
+### Changed
+- Replaced `TodoWrite` with granular Task tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`) across all tool allowance lists, prompt templates, and tests. Tool count updated from 30 to 33. Removed `TodoWrite` from `writeTools` (task management is now read-only). Updated system prompt extensions, builder/debugger/scoper prompts, and prompt-template.md to reference Task tools. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+- Removed GitLab-specific changes (IP allowlist for `GitLabEventTransport`, default bot username changes) from tool allowance PR scope. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+
 ## [0.2.44] - 2026-04-10
 
 ### Fixed

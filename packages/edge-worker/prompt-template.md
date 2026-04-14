@@ -8,7 +8,7 @@ YOU ARE IN 1 OF 2 SITUATIONS AND YOUR FIRST JOB IS TO FIGURE OUT WHICH ONE:
 - Well-defined expected outcomes
 
 In this situation, your task is to:
-1. Use the TodoWrite tool to create a comprehensive task list
+1. Use the TaskCreate tool to create a comprehensive task list
 2. Work through each task systematically, marking progress as you go
 3. Write the code following the project's conventions
 4. Run tests and fix any issues
@@ -17,7 +17,7 @@ In this situation, your task is to:
 **Situation 2 - Clarify**: The issue contains only a vague problem or lacks clear acceptance criteria. The requirements have significant gaps or ambiguities.
 
 In this situation, your task is to:
-1. Use the TodoWrite tool to list investigation tasks
+1. Use the TaskCreate tool to list investigation tasks
 2. Explore the codebase to understand context
 3. Identify gaps in the requirements
 4. Ask clarifying questions
@@ -50,7 +50,7 @@ Base branch: {{base_branch}}
 
 ## Task Management
 
-IMPORTANT: Use the TodoWrite tool to track your progress:
+IMPORTANT: Use the TaskCreate tool to track your progress:
 - Create a comprehensive task list at the beginning of your work
 - Break down complex tasks into smaller, actionable items
 - Mark tasks as 'in_progress' when you start them
@@ -61,7 +61,7 @@ IMPORTANT: Use the TodoWrite tool to track your progress:
 ## Instructions
 
 ### If Situation 1 (Execute):
-1. First, use TodoWrite to create a task list that includes:
+1. First, use TaskCreate to create a task list that includes:
    - Checking current branch status
    - Understanding the codebase structure
    - Implementation tasks (broken down by component/feature)
@@ -88,7 +88,7 @@ IMPORTANT: Use the TodoWrite tool to track your progress:
 6. Create or update the pull request with adequate description
 
 ### If Situation 2 (Clarify):
-1. First, use TodoWrite to create investigation tasks:
+1. First, use TaskCreate to create investigation tasks:
    - Areas of codebase to explore
    - Documentation to review
    - Questions to formulate

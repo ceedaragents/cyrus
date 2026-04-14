@@ -797,10 +797,6 @@ export class EdgeWorker extends EventEmitter {
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode,
 			secret,
-			ipAllowlist:
-				useSignatureVerification && this.webhookIpValidator.isEnabled()
-					? this.webhookIpValidator.getAllowlist("gitlab")
-					: undefined,
 		});
 
 		// Listen for legacy GitLab webhook events
@@ -5118,12 +5114,20 @@ ${input.userComment}
 	 * correct bot account without hardcoding.
 	 */
 	private buildAgentContextBlock(): string {
-		const githubBot = process.env.GITHUB_BOT_USERNAME || "cyrusagent";
-		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "cyrusagent";
+		const githubBot = process.env.GITHUB_BOT_USERNAME || "";
+		const gitlabBot = process.env.GITLAB_BOT_USERNAME || "";
+
+		if (!githubBot && !gitlabBot) {
+			return "";
+		}
 
 		const lines: string[] = ["\n\n<agent_context>"];
-		lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
-		lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
+		if (githubBot) {
+			lines.push(`  <github_bot_username>${githubBot}</github_bot_username>`);
+		}
+		if (gitlabBot) {
+			lines.push(`  <gitlab_bot_username>${gitlabBot}</gitlab_bot_username>`);
+		}
 		lines.push("</agent_context>");
 
 		return lines.join("\n");

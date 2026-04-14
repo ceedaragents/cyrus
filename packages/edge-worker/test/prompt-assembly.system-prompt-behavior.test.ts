@@ -73,7 +73,7 @@ No comments yet.
 		expect(result.systemPrompt).toBeDefined();
 		expect(result.systemPrompt).toContain("<task_management_instructions>");
 		expect(result.systemPrompt).toContain(
-			"CRITICAL: You MUST use the TodoWrite",
+			"CRITICAL: You MUST use the Task tools",
 		);
 		expect(result.systemPrompt).not.toContain("builder");
 		expect(result.systemPrompt).not.toContain("debugger");
@@ -165,7 +165,7 @@ Build the payment integration
 		// Verify todolist-system-prompt-extension instructions are NOT included in label-based prompts
 		// Check for unique content from todolist-system-prompt-extension that won't be in builder prompt
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite tool extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 		expect(result.systemPrompt).not.toContain("YOU ARE IN 1 OF 2 SITUATIONS");
 		expect(result.systemPrompt).not.toContain("**Situation 1 - Execute**");
@@ -255,7 +255,7 @@ Orchestrate this task
 
 		// Verify shared instructions are NOT included in label-based prompts
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite tool extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 	});
 
@@ -347,7 +347,7 @@ Orchestrate this task
 
 		// Verify shared instructions are NOT included in label-based prompts
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite tool extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 	});
 });

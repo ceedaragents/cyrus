@@ -23,7 +23,10 @@ describe("config", () => {
 				"Task",
 				"WebFetch",
 				"WebSearch",
-				"TodoWrite",
+				"TaskCreate",
+				"TaskUpdate",
+				"TaskGet",
+				"TaskList",
 				"NotebookEdit",
 				"Skill",
 				"AskUserQuestion",
@@ -45,7 +48,7 @@ describe("config", () => {
 				"TeamCreate",
 				"TeamDelete",
 			]);
-			expect(availableTools).toHaveLength(30);
+			expect(availableTools).toHaveLength(33);
 		});
 
 		it("should define read-only tools", () => {
@@ -55,7 +58,10 @@ describe("config", () => {
 				"Grep",
 				"WebFetch",
 				"WebSearch",
-				"TodoWrite",
+				"TaskCreate",
+				"TaskUpdate",
+				"TaskGet",
+				"TaskList",
 				"Task",
 				"Skill",
 				"ListMcpResourcesTool",
@@ -65,23 +71,17 @@ describe("config", () => {
 				"EnterPlanMode",
 				"ExitPlanMode",
 			]);
-			expect(readOnlyTools).toHaveLength(14);
+			expect(readOnlyTools).toHaveLength(17);
 		});
 
 		it("should define write tools", () => {
-			expect(writeTools).toEqual([
-				"Edit",
-				"Write",
-				"Bash",
-				"TodoWrite",
-				"NotebookEdit",
-			]);
-			expect(writeTools).toHaveLength(5);
+			expect(writeTools).toEqual(["Edit", "Write", "Bash", "NotebookEdit"]);
+			expect(writeTools).toHaveLength(4);
 		});
 
-		it("should have TodoWrite in both read-only and write tools (for task tracking)", () => {
+		it("should have no overlap between read-only and write tools (task tools are read-only)", () => {
 			const overlap = readOnlyTools.filter((tool) => writeTools.includes(tool));
-			expect(overlap).toEqual(["TodoWrite"]);
+			expect(overlap).toEqual([]);
 		});
 
 		it("should have all categorized tools in available tools", () => {
@@ -132,7 +132,7 @@ describe("config", () => {
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
-			expect(tools).toContain("TodoWrite");
+			expect(tools).toContain("TaskCreate");
 			expect(tools).toContain("NotebookEdit");
 			expect(tools).toContain("Skill");
 			expect(tools).toContain("AskUserQuestion");
@@ -153,7 +153,7 @@ describe("config", () => {
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
-			expect(tools).toContain("TodoWrite"); // For task tracking
+			expect(tools).toContain("TaskCreate"); // For task tracking
 			expect(tools).toContain("Skill"); // For Skills functionality
 
 			// Should NOT include file editing tools
@@ -183,7 +183,7 @@ describe("config", () => {
 
 			// Can delegate and track tasks
 			expect(coordinatorTools).toContain("Task");
-			expect(coordinatorTools).toContain("TodoWrite");
+			expect(coordinatorTools).toContain("TaskCreate");
 
 			// Can use Skills
 			expect(coordinatorTools).toContain("Skill");

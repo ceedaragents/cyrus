@@ -64,7 +64,7 @@ describe("CursorRunner permissions mapping", () => {
 		const runner = new CursorRunner({
 			cyrusHome: TEST_CYRUS_HOME,
 			workingDirectory: "/tmp/repo",
-			allowedTools: ["Read", "Edit", "Write", "TodoWrite"],
+			allowedTools: ["Read", "Edit", "Write", "TaskCreate"],
 		});
 
 		const config = (runner as any).buildCursorPermissionsConfig();

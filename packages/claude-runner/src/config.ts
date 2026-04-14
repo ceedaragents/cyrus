@@ -31,7 +31,10 @@ export const availableTools = [
 	"WebSearch",
 
 	// Task management
-	"TodoWrite",
+	"TaskCreate",
+	"TaskUpdate",
+	"TaskGet",
+	"TaskList",
 
 	// Notebook tools
 	"NotebookEdit",
@@ -75,7 +78,7 @@ export type ToolName = (typeof availableTools)[number];
 
 /**
  * Default read-only tools that are safe to enable
- * Note: TodoWrite is included as it only modifies task tracking, not actual code files
+ * Note: Task tools are included as they only modify task tracking, not actual code files
  * Note: Skill is included as it enables Claude to use Skills which are packaged capabilities
  */
 export const readOnlyTools: ToolName[] = [
@@ -84,7 +87,10 @@ export const readOnlyTools: ToolName[] = [
 	"Grep",
 	"WebFetch",
 	"WebSearch",
-	"TodoWrite",
+	"TaskCreate",
+	"TaskUpdate",
+	"TaskGet",
+	"TaskList",
 	"Task",
 	"Skill",
 	"ListMcpResourcesTool",
@@ -97,15 +103,8 @@ export const readOnlyTools: ToolName[] = [
 
 /**
  * Tools that can modify the file system or state
- * Note: TodoWrite modifies task state but not actual files
  */
-export const writeTools: ToolName[] = [
-	"Edit",
-	"Write",
-	"Bash",
-	"TodoWrite",
-	"NotebookEdit",
-];
+export const writeTools: ToolName[] = ["Edit", "Write", "Bash", "NotebookEdit"];
 
 /**
  * Get a safe set of tools for read-only operations
