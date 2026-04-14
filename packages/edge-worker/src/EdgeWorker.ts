@@ -127,7 +127,6 @@ import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
 import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
-import { ClaudeSettingsWriter } from "./ClaudeSettingsWriter.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { EgressProxy } from "./EgressProxy.js";
@@ -230,8 +229,10 @@ export class EdgeWorker extends EventEmitter {
 	private webhookIpValidator: WebhookIpValidator;
 	/** Egress proxy for sandbox network traffic filtering and header injection */
 	private egressProxy: EgressProxy | null = null;
-	/** Writer for Claude Code's ~/.claude/settings.json sandbox config */
-	private claudeSettingsWriter: ClaudeSettingsWriter;
+	/** SDK sandbox settings to pass to ClaudeRunner sessions (set when proxy starts) */
+	private sdkSandboxSettings:
+		| import("cyrus-claude-runner").SandboxSettings
+		| null = null;
 	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
@@ -247,9 +248,6 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
-
-		// Initialize Claude settings writer and egress proxy
-		this.claudeSettingsWriter = new ClaudeSettingsWriter(this.logger);
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
 		this.gitHubCommentService = new GitHubCommentService();
@@ -540,11 +538,15 @@ export class EdgeWorker extends EventEmitter {
 			);
 			await this.egressProxy.start();
 
-			// Update ~/.claude/settings.json to route sandbox traffic through proxy
-			this.claudeSettingsWriter.writeSandboxPorts(
-				this.egressProxy.getHttpProxyPort(),
-				this.egressProxy.getSocksProxyPort(),
-			);
+			// Store SDK sandbox settings — passed per-session to ClaudeRunner
+			// instead of mutating ~/.claude/settings.json
+			this.sdkSandboxSettings = {
+				enabled: true,
+				network: {
+					httpProxyPort: this.egressProxy.getHttpProxyPort(),
+					socksProxyPort: this.egressProxy.getSocksProxyPort(),
+				},
+			};
 
 			// Set NODE_EXTRA_CA_CERTS so child processes trust our MITM CA
 			process.env.NODE_EXTRA_CA_CERTS = this.egressProxy.getCACertPath();
@@ -2186,11 +2188,11 @@ ${taskSection}`;
 		this.cyrusToolsMcpSessions.removeAllListeners();
 		this.cyrusToolsMcpRegistered = false;
 
-		// Stop egress proxy and clean up settings.json
+		// Stop egress proxy
 		if (this.egressProxy) {
 			await this.egressProxy.stop();
 			this.egressProxy = null;
-			this.claudeSettingsWriter.removeSandboxPorts();
+			this.sdkSandboxSettings = null;
 		}
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
@@ -5330,6 +5332,7 @@ ${input.userComment}
 			cyrusHome: this.cyrusHome,
 			logger: log,
 			plugins: await this.skillsPluginResolver.resolve(),
+			sandboxSettings: this.sdkSandboxSettings ?? undefined,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},

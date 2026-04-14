@@ -3,6 +3,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	SandboxSettings,
 	SDKMessage,
 	SdkPluginConfig,
 	StopHookInput,
@@ -108,6 +109,8 @@ export interface IssueRunnerConfigInput {
 	requireLinearWorkspaceId: (repo: RepositoryConfig) => string;
 	/** Plugins to load for the session (provides skills, hooks, etc.) */
 	plugins?: SdkPluginConfig[];
+	/** SDK sandbox settings (enabled, network proxy ports) for Claude runner */
+	sandboxSettings?: SandboxSettings;
 }
 
 /**
@@ -286,6 +289,9 @@ export class RunnerConfigBuilder {
 			// Plugins providing skills (Claude runner only)
 			...(runnerType === "claude" &&
 				input.plugins?.length && { plugins: input.plugins }),
+			// SDK sandbox settings (Claude runner only)
+			...(runnerType === "claude" &&
+				input.sandboxSettings && { sandbox: input.sandboxSettings }),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner

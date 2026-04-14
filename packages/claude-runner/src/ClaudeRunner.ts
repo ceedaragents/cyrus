@@ -467,6 +467,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(this.config.outputFormat && {
 						outputFormat: this.config.outputFormat,
 					}),
+					...(this.config.sandbox && { sandbox: this.config.sandbox }),
 					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
 				},
 			};
