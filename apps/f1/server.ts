@@ -179,6 +179,33 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 				httpProxyPort: 19080,
 				socksProxyPort: 19081,
 				logRequests: true,
+				networkPolicy: {
+					defaultAction: "allow",
+					allow: {
+						"github.com": [
+							{
+								transform: [
+									{
+										headers: {
+											"X-Cyrus-Egress": "verified",
+										},
+									},
+								],
+							},
+						],
+						"api.github.com": [
+							{
+								transform: [
+									{
+										headers: {
+											"X-Cyrus-Egress": "verified",
+										},
+									},
+								],
+							},
+						],
+					},
+				},
 			},
 		}),
 	};

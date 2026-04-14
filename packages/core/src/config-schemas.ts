@@ -145,6 +145,14 @@ const DomainRuleSchema = z.array(
  */
 export const NetworkPolicySchema = z.object({
 	/**
+	 * Default action for domains not explicitly listed in `allow`.
+	 * - "allow": unlisted domains pass through (transforms-only mode)
+	 * - "block": unlisted domains are rejected (strict allowlist mode)
+	 * @default "block"
+	 */
+	defaultAction: z.enum(["allow", "block"]).optional(),
+
+	/**
 	 * Domain allow rules with optional transforms.
 	 * Keys are domain patterns:
 	 * - Exact match: "api.example.com"

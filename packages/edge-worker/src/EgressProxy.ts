@@ -313,6 +313,10 @@ export class EgressProxy {
 	/**
 	 * Check if a hostname is allowed by the network policy.
 	 * Returns true if no policy is set (passthrough mode).
+	 *
+	 * When defaultAction is "allow" (or unset with no allow rules),
+	 * unlisted domains pass through. When "block" (default when allow
+	 * rules exist), unlisted domains are rejected.
 	 */
 	private isDomainAllowed(hostname: string): boolean {
 		// No policy = allow all
@@ -320,7 +324,12 @@ export class EgressProxy {
 			return true;
 		}
 
-		return this.matchDomain(hostname) !== null;
+		if (this.matchDomain(hostname) !== null) {
+			return true;
+		}
+
+		// Unlisted domain: check defaultAction (defaults to "block" for strict allowlist)
+		return this.networkPolicy.defaultAction === "allow";
 	}
 
 	/**
