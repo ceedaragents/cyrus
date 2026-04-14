@@ -532,10 +532,8 @@ export class EdgeWorker extends EventEmitter {
 		// Start egress proxy if sandbox is enabled.
 		// The proxy intercepts Bash-spawned subprocess traffic only (git, gh, npm, etc.).
 		// Claude's inference API, MCP servers, and built-in file tools bypass the proxy.
-		this.logger.info(
-			`Sandbox config: ${this.config.sandbox?.enabled ? "enabled" : "disabled (not configured)"}`,
-		);
 		if (this.config.sandbox?.enabled) {
+			this.logger.info("🛡️  Sandbox egress proxy: starting...");
 			this.egressProxy = new EgressProxy(
 				this.config.sandbox,
 				this.cyrusHome,
@@ -555,6 +553,10 @@ export class EdgeWorker extends EventEmitter {
 			// Store CA cert path — passed per-session via env, not process.env
 			// (process.env would leak to all child processes, potentially exposing secrets)
 			this.egressCaCertPath = this.egressProxy.getCACertPath();
+		} else {
+			this.logger.info(
+				"🛡️  Sandbox egress proxy: disabled (set sandbox.enabled=true in config.json to enable)",
+			);
 		}
 
 		// Initialize and register components BEFORE starting server (routes must be registered before listen())

@@ -130,8 +130,34 @@ export class EgressProxy {
 		this.isRunning = true;
 
 		this.logger.info(
-			`Egress proxy started (HTTP: ${this.httpProxyPort}, SOCKS: ${this.socksProxyPort})`,
+			`[EgressProxy] Listening — HTTP :${this.httpProxyPort}, SOCKS :${this.socksProxyPort}`,
 		);
+		this.logPolicySummary();
+	}
+
+	/**
+	 * Log a human-readable summary of the active network policy.
+	 */
+	private logPolicySummary(): void {
+		if (!this.networkPolicy?.allow || this.allowedDomains.size === 0) {
+			this.logger.info(
+				"[EgressProxy] Policy: allow-all (no domain restrictions)",
+			);
+			return;
+		}
+
+		const domains = [...this.allowedDomains];
+		const transformDomains = [...this.tlsTerminationDomains];
+
+		this.logger.info(
+			`[EgressProxy] Policy: deny-all with ${domains.length} allowed domain(s)`,
+		);
+		for (const domain of domains) {
+			const hasTransform = transformDomains.includes(domain);
+			this.logger.info(
+				`[EgressProxy]   ${hasTransform ? "↔" : "→"} ${domain}${hasTransform ? " (TLS intercept + header transform)" : " (passthrough)"}`,
+			);
+		}
 	}
 
 	/**
@@ -160,7 +186,7 @@ export class EgressProxy {
 
 		await Promise.all(stops);
 		this.isRunning = false;
-		this.logger.info("Egress proxy stopped");
+		this.logger.info("[EgressProxy] Stopped");
 	}
 
 	/**
@@ -172,7 +198,8 @@ export class EgressProxy {
 		this.domainTransforms.clear();
 		this.allowedDomains.clear();
 		this.parsePolicy();
-		this.logger.info("Network policy updated");
+		this.logger.info("[EgressProxy] Network policy updated");
+		this.logPolicySummary();
 	}
 
 	// ---------------------------------------------------------------------------
@@ -190,7 +217,7 @@ export class EgressProxy {
 				publicKey: this.caCert.publicKey as forge.pki.rsa.PublicKey,
 				privateKey: forge.pki.privateKeyFromPem(this.caKeyPem),
 			};
-			this.logger.debug("Loaded existing CA certificate");
+			this.logger.debug("[EgressProxy] Loaded existing CA certificate");
 			return;
 		}
 
@@ -199,7 +226,7 @@ export class EgressProxy {
 		}
 
 		this.logger.info(
-			"Generating CA certificate for egress proxy TLS termination...",
+			"[EgressProxy] Generating CA certificate for TLS termination...",
 		);
 		const keys = forge.pki.rsa.generateKeyPair(2048);
 		const cert = forge.pki.createCertificate();
@@ -237,7 +264,9 @@ export class EgressProxy {
 
 		writeFileSync(this.caCertPath, this.caCertPem);
 		writeFileSync(caKeyPath, this.caKeyPem, { mode: 0o600 });
-		this.logger.info(`CA certificate written to ${this.caCertPath}`);
+		this.logger.info(
+			`[EgressProxy] CA certificate written to ${this.caCertPath}`,
+		);
 	}
 
 	// ---------------------------------------------------------------------------
@@ -449,7 +478,7 @@ export class EgressProxy {
 		if (!this.isDomainAllowed(hostname)) {
 			if (this.logRequests) {
 				this.logger.warn(
-					`[BLOCKED] HTTP ${clientReq.method} ${hostname}${parsedUrl.pathname}`,
+					`[EgressProxy] ✗ BLOCKED ${clientReq.method} ${hostname}${parsedUrl.pathname} — domain not in allow list`,
 				);
 			}
 			clientRes.writeHead(403);
@@ -459,7 +488,7 @@ export class EgressProxy {
 
 		if (this.logRequests) {
 			this.logger.info(
-				`[PROXY] HTTP ${clientReq.method} ${hostname}${parsedUrl.pathname}`,
+				`[EgressProxy] → HTTP ${clientReq.method} ${hostname}${parsedUrl.pathname}`,
 			);
 		}
 
@@ -485,7 +514,7 @@ export class EgressProxy {
 		});
 
 		proxyReq.on("error", (err) => {
-			this.logger.error(`HTTP proxy error for ${hostname}:`, err);
+			this.logger.error(`[EgressProxy] HTTP error for ${hostname}:`, err);
 			clientRes.writeHead(502);
 			clientRes.end("Bad Gateway");
 		});
@@ -509,7 +538,9 @@ export class EgressProxy {
 
 		if (!hostname || !this.isDomainAllowed(hostname)) {
 			if (this.logRequests) {
-				this.logger.warn(`[BLOCKED] CONNECT ${hostname}:${port}`);
+				this.logger.warn(
+					`[EgressProxy] ✗ BLOCKED CONNECT ${hostname}:${port} — domain not in allow list`,
+				);
 			}
 			clientSocket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
 			clientSocket.destroy();
@@ -522,7 +553,9 @@ export class EgressProxy {
 		} else {
 			// Passthrough: direct TCP tunnel
 			if (this.logRequests) {
-				this.logger.info(`[TUNNEL] CONNECT ${hostname}:${port}`);
+				this.logger.info(
+					`[EgressProxy] → TUNNEL ${hostname}:${port} (passthrough)`,
+				);
 			}
 			this.handleTcpTunnel(hostname, port, clientSocket, head);
 		}
@@ -547,7 +580,10 @@ export class EgressProxy {
 		});
 
 		serverSocket.on("error", (err) => {
-			this.logger.error(`Tunnel error for ${hostname}:${port}:`, err);
+			this.logger.error(
+				`[EgressProxy] Tunnel error for ${hostname}:${port}:`,
+				err,
+			);
 			clientSocket.destroy();
 		});
 
@@ -578,9 +614,9 @@ export class EgressProxy {
 
 				if (this.logRequests) {
 					this.logger.info(
-						`[MITM] ${req.method} https://${hostname}${req.url}` +
+						`[EgressProxy] ↔ INTERCEPT ${req.method} https://${hostname}${req.url}` +
 							(transforms
-								? ` (transforms: ${Object.keys(transforms.headers).join(", ")})`
+								? ` — injecting headers: ${Object.keys(transforms.headers).join(", ")}`
 								: ""),
 					);
 				}
@@ -609,7 +645,10 @@ export class EgressProxy {
 				);
 
 				upstreamReq.on("error", (err: Error) => {
-					this.logger.error(`MITM upstream error for ${hostname}:`, err);
+					this.logger.error(
+						`[EgressProxy] Upstream error for ${hostname}:`,
+						err,
+					);
 					if (!res.headersSent) {
 						res.writeHead(502);
 						res.end("Bad Gateway");
@@ -621,7 +660,10 @@ export class EgressProxy {
 		);
 
 		localServer.on("tlsClientError", (err: Error) => {
-			this.logger.error(`TLS handshake error for ${hostname}:`, err.message);
+			this.logger.error(
+				`[EgressProxy] TLS handshake error for ${hostname}:`,
+				err.message,
+			);
 		});
 
 		localServer.listen(0, "127.0.0.1", () => {
@@ -653,7 +695,7 @@ export class EgressProxy {
 		});
 
 		localServer.on("error", (err: Error) => {
-			this.logger.error(`TLS termination server error for ${hostname}:`, err);
+			this.logger.error(`[EgressProxy] TLS server error for ${hostname}:`, err);
 			clientSocket.destroy();
 		});
 	}
@@ -745,7 +787,9 @@ export class EgressProxy {
 
 				if (!this.isDomainAllowed(hostname)) {
 					if (this.logRequests) {
-						this.logger.warn(`[BLOCKED] SOCKS5 ${hostname}:${port}`);
+						this.logger.warn(
+							`[EgressProxy] ✗ BLOCKED SOCKS5 ${hostname}:${port} — domain not in allow list`,
+						);
 					}
 					// Reply with connection not allowed
 					const reply = Buffer.from([0x05, 0x02, 0x00, 0x01, 0, 0, 0, 0, 0, 0]);
@@ -755,7 +799,7 @@ export class EgressProxy {
 				}
 
 				if (this.logRequests) {
-					this.logger.info(`[SOCKS5] ${hostname}:${port}`);
+					this.logger.info(`[EgressProxy] → SOCKS5 ${hostname}:${port}`);
 				}
 
 				// Connect to target
@@ -770,7 +814,7 @@ export class EgressProxy {
 
 				target.on("error", (err) => {
 					this.logger.error(
-						`SOCKS5 target connection error for ${hostname}:${port}:`,
+						`[EgressProxy] SOCKS5 connection error for ${hostname}:${port}:`,
 						err,
 					);
 					// Reply with general failure
