@@ -267,6 +267,9 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/** Figma OAuth access token for Figma MCP integration */
+	figmaToken: z.string().optional(),
 });
 
 /**

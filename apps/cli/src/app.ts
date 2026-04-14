@@ -8,6 +8,7 @@ import { Command } from "commander";
 import { Application } from "./Application.js";
 import { AuthCommand } from "./commands/AuthCommand.js";
 import { CheckTokensCommand } from "./commands/CheckTokensCommand.js";
+import { FigmaAuthCommand } from "./commands/FigmaAuthCommand.js";
 import { RefreshTokenCommand } from "./commands/RefreshTokenCommand.js";
 import { SelfAddRepoCommand } from "./commands/SelfAddRepoCommand.js";
 import { SelfAuthCommand } from "./commands/SelfAuthCommand.js";
@@ -104,6 +105,20 @@ program
 			packageJson.version,
 		);
 		await new SelfAuthCommand(app).execute([]);
+	});
+
+// Self-auth-figma command - Figma OAuth directly from CLI
+program
+	.command("self-auth-figma")
+	.description("Authenticate with Figma OAuth directly")
+	.action(async () => {
+		const opts = program.opts();
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
+		await new FigmaAuthCommand(app).execute([]);
 	});
 
 // Self-add-repo command - Clone and add repository

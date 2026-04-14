@@ -829,6 +829,9 @@
 				}
 			},
 			"additionalProperties": false
+		},
+		"figmaToken": {
+			"type": "string"
 		}
 	},
 	"required": ["repositories"],

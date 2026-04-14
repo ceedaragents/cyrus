@@ -29,6 +29,8 @@ export interface McpConfigServiceDeps {
 	getCyrusToolsMcpUrl: () => string;
 	/** Factory that creates CyrusToolsOptions with session callbacks */
 	createCyrusToolsOptions: (parentSessionId?: string) => CyrusToolsOptions;
+	/** Retrieve the stored Figma OAuth token (if configured) */
+	getFigmaToken?: () => string | undefined;
 }
 
 /**
@@ -129,6 +131,19 @@ export class McpConfigService {
 				args: ["-y", "slack-mcp-server@latest", "--transport", "stdio"],
 				env: {
 					SLACK_MCP_XOXB_TOKEN: slackBotToken,
+				},
+			};
+		}
+
+		// Conditionally inject the Figma MCP server when a Figma token is configured
+		// https://mcp.figma.com
+		const figmaToken = this.deps.getFigmaToken?.();
+		if (figmaToken) {
+			mcpConfig.figma = {
+				type: "http",
+				url: "https://mcp.figma.com/mcp",
+				headers: {
+					Authorization: `Bearer ${figmaToken}`,
 				},
 			};
 		}
