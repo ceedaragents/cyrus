@@ -51,6 +51,8 @@ export interface ClaudeRunnerConfig {
 	/** Additional environment variables to pass to the Claude child process (merged after process.env) */
 	additionalEnv?: Record<string, string>;
 	pathToClaudeCodeExecutable?: string; // Explicit path to Claude Code CLI executable (auto-resolved if not set)
+	apiKeyHelper?: string; // Path to a script that outputs authentication values (alternative to env var auth passthrough)
+	envFile?: string; // Path to the Cyrus .env file (defaults to <cyrusHome>/.env)
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
 	/**
 	 * Callback for handling AskUserQuestion tool invocations.

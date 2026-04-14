@@ -5,6 +5,14 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Added
+- Added `resolveClaudeCodeExecutablePath()` to `ClaudeRunner` — uses `createRequire(import.meta.url)` + `require.resolve()` to locate the SDK's `cli.js` in pnpm's `.pnpm` symlinked layout, bypassing the SDK's broken `import.meta.url` resolution. Ported from unmerged `cypack-762` branch (`42abcf22`). ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `resolveAuthSettings()` and `ensureAuthHelper()` to `ClaudeRunner` — auto-generates `<cyrusHome>/bin/auth-helper.sh` with the Cyrus `.env` path baked in at script creation time. The SDK calls this script via `settings.apiKeyHelper` to obtain credentials on demand. Script checks `CYRUS_ENV_FILE` env var → baked `.env` path → `~/.zshrc`/`~/.bashrc`/`~/.profile` fallback. Token precedence: `ANTHROPIC_API_KEY` > `CLAUDE_CODE_OAUTH_TOKEN` > `ANTHROPIC_AUTH_TOKEN`. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `pathToClaudeCodeExecutable`, `apiKeyHelper`, and `envFile` options to `ClaudeRunnerConfig` in `types.ts`. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+
+### Changed
+- Removed auth env var passthrough (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`) from `ClaudeRunner` child process `env` block — replaced by `apiKeyHelper` settings approach. Only `PATH` is forwarded from `process.env`. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+
+### Added
 - Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
 ## [0.2.44] - 2026-04-10

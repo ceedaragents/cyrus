@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Network egress sandboxing** — Agent sessions can now route all network traffic through a local egress proxy for domain filtering, request logging, and per-domain header injection (credentials brokering). Enable with `sandbox.enabled: true` in `~/.cyrus/config.json`. Supports TLS termination for domains with transform rules, following the Vercel Sandbox Firewall interface. Claude Code's `~/.claude/settings.json` is automatically updated on startup to route sandbox traffic through the proxy. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066), [#1095](https://github.com/ceedaragents/cyrus/pull/1095))
+
+### Fixed
+- **Agent sessions no longer fail with "executable not found" in pnpm monorepos** — The Claude Agent SDK's internal path resolution fails in pnpm's symlinked `node_modules`. Cyrus now explicitly resolves the SDK executable path using Node's module resolution, and passes `PATH` to the child process so the `node` binary can be found. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+
+### Changed
+- **Agent auth uses `apiKeyHelper` instead of environment variable passthrough** — Authentication credentials are no longer forwarded via `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_AUTH_TOKEN` environment variables. Instead, Cyrus auto-generates an auth helper script at `<cyrusHome>/bin/auth-helper.sh` that reads credentials from the Cyrus `.env` file on demand, with a fallback to shell profiles. This avoids leaking the parent process environment into agent sessions. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
 - **Webhook IP provenance validation** — Incoming webhooks from Linear, GitHub, and GitLab are now validated against each provider's known source IP ranges. Enabled automatically in self-hosted mode (`CYRUS_HOST_EXTERNAL=true`); can be toggled with the `WEBHOOK_IP_VALIDATION` environment variable. GitHub CIDRs are refreshed from the `/meta` API on startup. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
 ## [0.2.44] - 2026-04-10
