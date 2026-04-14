@@ -154,10 +154,7 @@ describe("Environment variable isolation", () => {
 		const env2 = getQueryEnv();
 		expect(env2.VAR_A).toBe("updated");
 		// VAR_B should NOT be present (it was removed from .env)
-		// It would only be present if it exists in process.env
-		if (!("VAR_B" in process.env)) {
-			expect(env2.VAR_B).toBeUndefined();
-		}
+		expect(env2.VAR_B).toBeUndefined();
 	});
 
 	it("should isolate env vars between different repositories", async () => {
@@ -174,9 +171,7 @@ describe("Environment variable isolation", () => {
 
 		const envA = getQueryEnv();
 		expect(envA.REPO_VAR).toBe("from-repo-a");
-		if (!("OTHER" in process.env)) {
-			expect(envA.OTHER).toBeUndefined();
-		}
+		expect(envA.OTHER).toBeUndefined();
 
 		// Start session for repo-b
 		mockSuccessfulQuery();
@@ -188,17 +183,22 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
-	it("should let process.env take precedence over .env values", async () => {
-		// Set a value in process.env
-		const originalPath = process.env.PATH;
-		envFileContents.set("/repo-a/.env", `PATH=/should-not-override`);
+	it("should not include process.env in child env", async () => {
+		envFileContents.set("/repo-a/.env", "MY_CUSTOM_VAR=from-dotenv");
 
 		mockSuccessfulQuery();
 		const runner = new ClaudeRunner(makeConfig("/repo-a"));
 		await runner.start("test");
 
 		const env = getQueryEnv();
-		// process.env.PATH should win over .env's PATH
-		expect(env.PATH).toBe(originalPath);
+		// Only .env vars and explicit Cyrus vars should be present — not process.env
+		expect(env.MY_CUSTOM_VAR).toBe("from-dotenv");
+		expect(env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
+		// process.env vars should NOT be spread into child env
+		// (SDK defaults to process.env when no env is provided,
+		// but our explicit env object replaces it entirely)
+		expect(Object.keys(env).length).toBeLessThan(
+			Object.keys(process.env).length,
+		);
 	});
 });

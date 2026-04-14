@@ -438,7 +438,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					settingSources: ["user", "project", "local"],
 					env: {
 						...this.repositoryEnv,
-						...process.env,
 						...this.config.additionalEnv,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 						CLAUDE_CODE_ENABLE_TASKS: "true",
