@@ -142,24 +142,23 @@ const DomainRuleSchema = z.array(
  * curl, etc.) can reach and enables per-domain header injection
  * (credentials brokering).
  *
+ * Three modes (following Vercel Sandbox Firewall conventions):
+ * - **allow-all**: No networkPolicy set — unrestricted access (default)
+ * - **deny-all**: networkPolicy set with no `allow` rules — blocks all traffic
+ * - **user-defined**: networkPolicy with `allow` rules — deny-all by default,
+ *   only explicitly listed domains are reachable
+ *
  * Scope: Claude Code's sandbox network proxy only intercepts traffic from
  * Bash tool subprocesses. It does NOT apply to Claude's own inference API
  * calls, MCP server traffic, or built-in file tools (Read/Edit/Write).
  *
  * @see https://code.claude.com/docs/en/sandboxing#network-isolation
- * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall
+ * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall#network-policies
  */
 export const NetworkPolicySchema = z.object({
 	/**
-	 * Default action for domains not explicitly listed in `allow`.
-	 * - "allow": unlisted domains pass through (transforms-only mode)
-	 * - "block": unlisted domains are rejected (strict allowlist mode)
-	 * @default "block"
-	 */
-	defaultAction: z.enum(["allow", "block"]).optional(),
-
-	/**
 	 * Domain allow rules with optional transforms.
+	 * When present, all unlisted domains are denied (deny-all default).
 	 * Keys are domain patterns:
 	 * - Exact match: "api.example.com"
 	 * - Wildcard subdomain: "*.example.com" (matches any subdomain, NOT parent)

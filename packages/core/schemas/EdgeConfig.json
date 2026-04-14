@@ -847,10 +847,6 @@
 				"networkPolicy": {
 					"type": "object",
 					"properties": {
-						"defaultAction": {
-							"type": "string",
-							"enum": ["allow", "block"]
-						},
 						"allow": {
 							"type": "object",
 							"propertyNames": {

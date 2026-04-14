@@ -316,28 +316,24 @@ export class EgressProxy {
 
 	/**
 	 * Check if a hostname is allowed by the network policy.
-	 * Returns true if no policy is set (passthrough mode).
 	 *
-	 * Only Bash-spawned subprocess traffic reaches this proxy, so
-	 * this controls domains reachable by git, gh, npm, curl, etc.
-	 * Claude's inference API and MCP traffic never pass through here.
+	 * Three modes (matching Vercel Sandbox Firewall):
+	 * - allow-all: no networkPolicy or no allow rules → all traffic passes
+	 * - deny-all: networkPolicy with empty allow → all traffic blocked
+	 * - user-defined: networkPolicy with allow rules → deny-all default,
+	 *   only listed domains pass
 	 *
-	 * When defaultAction is "allow", unlisted domains pass through
-	 * (transforms-only mode). When "block" (default when allow rules
-	 * exist), unlisted domains are rejected (strict allowlist).
+	 * Only Bash-spawned subprocess traffic reaches this proxy (git, gh,
+	 * npm, curl, etc.). Claude's inference API and MCP traffic bypass it.
 	 */
 	private isDomainAllowed(hostname: string): boolean {
-		// No policy = allow all
+		// allow-all: no policy or no allow rules
 		if (!this.networkPolicy?.allow || this.allowedDomains.size === 0) {
 			return true;
 		}
 
-		if (this.matchDomain(hostname) !== null) {
-			return true;
-		}
-
-		// Unlisted domain: check defaultAction (defaults to "block" for strict allowlist)
-		return this.networkPolicy.defaultAction === "allow";
+		// user-defined: deny-all default, check explicit allow list
+		return this.matchDomain(hostname) !== null;
 	}
 
 	/**

@@ -175,41 +175,48 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		// Enable egress proxy sandbox when CYRUS_SANDBOX=1 is set.
 		// The proxy only intercepts Bash-spawned subprocess traffic (git, gh, npm, etc.).
 		// Claude's inference API, MCP servers, and built-in file tools bypass the proxy.
-		// defaultAction: "allow" lets unlisted domains pass through while still
-		// TLS-terminating github.com/api.github.com to inject test headers.
+		//
+		// No networkPolicy = allow-all mode (passthrough with logging).
+		// To test deny-all + explicit allows with transforms, set CYRUS_SANDBOX_POLICY=1.
 		...(process.env.CYRUS_SANDBOX === "1" && {
 			sandbox: {
 				enabled: true,
 				httpProxyPort: 19080,
 				socksProxyPort: 19081,
 				logRequests: true,
-				networkPolicy: {
-					defaultAction: "allow",
-					allow: {
-						"github.com": [
-							{
-								transform: [
-									{
-										headers: {
-											"X-Cyrus-Egress": "verified",
+				// User-defined policy: deny-all default, explicit allows with transforms.
+				// Only enabled with CYRUS_SANDBOX_POLICY=1 since F1 test repos lack
+				// GitHub remotes and don't need network restrictions.
+				...(process.env.CYRUS_SANDBOX_POLICY === "1" && {
+					networkPolicy: {
+						allow: {
+							"github.com": [
+								{
+									transform: [
+										{
+											headers: {
+												"X-Cyrus-Egress": "verified",
+											},
 										},
-									},
-								],
-							},
-						],
-						"api.github.com": [
-							{
-								transform: [
-									{
-										headers: {
-											"X-Cyrus-Egress": "verified",
+									],
+								},
+							],
+							"api.github.com": [
+								{
+									transform: [
+										{
+											headers: {
+												"X-Cyrus-Egress": "verified",
+											},
 										},
-									},
-								],
-							},
-						],
+									],
+								},
+							],
+							// Subprocess dependencies (npm, etc.)
+							"registry.npmjs.org": [],
+						},
 					},
-				},
+				}),
 			},
 		}),
 	};
