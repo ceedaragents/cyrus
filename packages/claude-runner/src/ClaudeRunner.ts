@@ -824,6 +824,40 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 		if (existsSync(helperPath)) {
 			this.logger.debug(`Using apiKeyHelper: ${helperPath}`);
+
+			// Validate the script produces a token before handing to the SDK
+			try {
+				const { execSync } =
+					require("node:child_process") as typeof import("child_process");
+				const token = execSync(helperPath, {
+					timeout: 5000,
+					env: { HOME: process.env.HOME, PATH: process.env.PATH },
+				})
+					.toString()
+					.trim();
+
+				if (!token) {
+					this.logger.error(
+						"apiKeyHelper returned empty token — auth will fail",
+					);
+				} else {
+					const prefix = token.substring(0, 15);
+					const source = token.startsWith("sk-ant-oat")
+						? "oauth"
+						: token.startsWith("sk-ant-api")
+							? "api-key"
+							: "unknown";
+					this.logger.info(
+						`apiKeyHelper validated: type=${source}, prefix=${prefix}...`,
+					);
+				}
+			} catch (error) {
+				this.logger.error(
+					"apiKeyHelper validation failed:",
+					error instanceof Error ? error.message : error,
+				);
+			}
+
 			return { settings: { apiKeyHelper: helperPath } };
 		}
 
@@ -844,6 +878,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			const envFilePath = this.config.envFile || join(this.cyrusHome, ".env");
 
 			// Build script with env path baked in (avoids shell variable interpolation issues)
+			// stderr is used for diagnostics — only stdout is consumed by the SDK as the token
 			const lines = [
 				"#!/bin/sh",
 				"# Cyrus auth helper — outputs an auth token for the Claude Agent SDK.",
@@ -854,29 +889,42 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				"",
 				`ENV_FILE="\${CYRUS_ENV_FILE:-${envFilePath}}"`,
 				"",
+				'log() { echo "[auth-helper] $1" >&2; }',
+				"",
 				"emit_token() {",
-				'  if [ -n "$ANTHROPIC_API_KEY" ]; then printf \'%s\' "$ANTHROPIC_API_KEY"; return 0',
-				'  elif [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then printf \'%s\' "$CLAUDE_CODE_OAUTH_TOKEN"; return 0',
-				'  elif [ -n "$ANTHROPIC_AUTH_TOKEN" ]; then printf \'%s\' "$ANTHROPIC_AUTH_TOKEN"; return 0',
+				'  if [ -n "$ANTHROPIC_API_KEY" ]; then',
+				'    log "using ANTHROPIC_API_KEY (${ANTHROPIC_API_KEY%${ANTHROPIC_API_KEY#???????????????}}...)"',
+				"    printf '%s' \"$ANTHROPIC_API_KEY\"; return 0",
+				'  elif [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then',
+				'    log "using CLAUDE_CODE_OAUTH_TOKEN (${CLAUDE_CODE_OAUTH_TOKEN%${CLAUDE_CODE_OAUTH_TOKEN#???????????????}}...)"',
+				"    printf '%s' \"$CLAUDE_CODE_OAUTH_TOKEN\"; return 0",
+				'  elif [ -n "$ANTHROPIC_AUTH_TOKEN" ]; then',
+				'    log "using ANTHROPIC_AUTH_TOKEN (${ANTHROPIC_AUTH_TOKEN%${ANTHROPIC_AUTH_TOKEN#???????????????}}...)"',
+				"    printf '%s' \"$ANTHROPIC_AUTH_TOKEN\"; return 0",
 				"  fi",
 				"  return 1",
 				"}",
 				"",
 				"# First choice: Cyrus .env file",
+				'log "checking $ENV_FILE"',
 				'if [ -f "$ENV_FILE" ]; then',
 				'  set -a; . "$ENV_FILE"; set +a',
-				"  if emit_token; then exit 0; fi",
+				'  if emit_token; then log "source=env-file"; exit 0; fi',
+				'  log "no auth vars in $ENV_FILE"',
+				"else",
+				'  log "$ENV_FILE not found"',
 				"fi",
 				"",
 				"# Fallback: shell profile",
 				'for PROFILE in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do',
 				'  if [ -f "$PROFILE" ]; then',
+				'    log "checking $PROFILE"',
 				'    eval "$(grep \'^export \\(ANTHROPIC_API_KEY\\|CLAUDE_CODE_OAUTH_TOKEN\\|ANTHROPIC_AUTH_TOKEN\\)=\' "$PROFILE")"',
-				"    if emit_token; then exit 0; fi",
+				'    if emit_token; then log "source=$PROFILE"; exit 0; fi',
 				"  fi",
 				"done",
 				"",
-				'echo "No auth token found in $ENV_FILE or shell profiles" >&2',
+				'log "FAILED: no auth token found"',
 				"exit 1",
 				"",
 			];
