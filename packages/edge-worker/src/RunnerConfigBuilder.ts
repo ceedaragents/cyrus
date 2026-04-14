@@ -390,6 +390,8 @@ export class RunnerConfigBuilder {
 		if (input.sandboxSettings) {
 			result.sandbox = {
 				...input.sandboxSettings,
+				// When sandbox is enabled, do not allow commands to run unsandboxed
+				allowUnsandboxedCommands: false,
 				filesystem: {
 					...input.sandboxSettings.filesystem,
 					// Restrict subprocess writes to the session worktree only
