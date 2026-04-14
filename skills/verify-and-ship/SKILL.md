@@ -26,8 +26,20 @@ Check if the project has changelog files:
 ls -la CHANGELOG.md CHANGELOG.internal.md 2>/dev/null || echo "NO_CHANGELOG"
 ```
 
-If changelog files exist:
-- Add an entry under `## [Unreleased]` in the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`)
+If changelog files exist, diff against the base branch to detect entries already added by this branch:
+
+```bash
+# See what changelog lines this branch has added compared to the base branch
+# Replace <base_branch> with the actual base branch from the issue context
+git diff <base_branch> -- CHANGELOG.md CHANGELOG.internal.md 2>/dev/null
+```
+
+**Handling existing entries:**
+- If the diff shows this branch already added a changelog entry for the current issue (matching the issue identifier), **update that entry in-place** (e.g., to add the PR/MR link or refine the description). Do NOT add a duplicate entry.
+- If the diff shows this branch added changelog entries for a different issue or no entries at all, add a new entry.
+
+**Adding or updating entries:**
+- Place entries under `## [Unreleased]` in the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`)
 - Focus on end-user impact — be concise but descriptive
 - Include the Linear issue identifier and PR/MR link (format: `([ISSUE-ID](linear_url), [#NUMBER](PR_OR_MR_URL))`)
 - Follow [Keep a Changelog](https://keepachangelog.com/) format

@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Refreshed Claude Code tool allowance lists** — Updated all tool permission presets (`availableTools`, `readOnlyTools`, `writeTools`, `getSafeTools`, `getCoordinatorTools`) to match the latest Claude Code SDK tool set (30 tools). Adds new tools like `Glob`, `Grep`, `Write`, `SendMessage`, `EnterPlanMode`, `EnterWorktree`, cron/scheduling tools, MCP resource tools, and team management tools. Removes deprecated `TodoRead`, `NotebookRead`, and `Batch`. Tool names no longer use glob patterns (`Read` instead of `Read(**)`). ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
 
+### Fixed
+- **Changelog updates no longer create duplicate entries** — The PR/MR and changelog-update skills now diff entries against the base branch instead of only the last commit, correctly detecting entries already added by the current branch and updating them in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
+
 ### Added
 - **Webhook IP provenance validation** — Incoming webhooks from Linear, GitHub, and GitLab are now validated against each provider's known source IP ranges. Enabled automatically in self-hosted mode (`CYRUS_HOST_EXTERNAL=true`); can be toggled with the `WEBHOOK_IP_VALIDATION` environment variable. GitHub CIDRs are refreshed from the `/meta` API on startup. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
