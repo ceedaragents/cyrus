@@ -229,10 +229,12 @@ export class EdgeWorker extends EventEmitter {
 	private webhookIpValidator: WebhookIpValidator;
 	/** Egress proxy for sandbox network traffic filtering and header injection */
 	private egressProxy: EgressProxy | null = null;
-	/** SDK sandbox settings to pass to ClaudeRunner sessions (set when proxy starts) */
+	/** Base SDK sandbox settings to pass to ClaudeRunner sessions (set when proxy starts) */
 	private sdkSandboxSettings:
 		| import("cyrus-claude-runner").SandboxSettings
 		| null = null;
+	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
+	private egressCaCertPath: string | null = null;
 	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
@@ -538,8 +540,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 			await this.egressProxy.start();
 
-			// Store SDK sandbox settings — passed per-session to ClaudeRunner
-			// instead of mutating ~/.claude/settings.json
+			// Store base SDK sandbox settings — merged per-session with worktree path
 			this.sdkSandboxSettings = {
 				enabled: true,
 				network: {
@@ -548,8 +549,9 @@ export class EdgeWorker extends EventEmitter {
 				},
 			};
 
-			// Set NODE_EXTRA_CA_CERTS so child processes trust our MITM CA
-			process.env.NODE_EXTRA_CA_CERTS = this.egressProxy.getCACertPath();
+			// Store CA cert path — passed per-session via env, not process.env
+			// (process.env would leak to all child processes, potentially exposing secrets)
+			this.egressCaCertPath = this.egressProxy.getCACertPath();
 		}
 
 		// Initialize and register components BEFORE starting server (routes must be registered before listen())
@@ -2193,6 +2195,7 @@ ${taskSection}`;
 			await this.egressProxy.stop();
 			this.egressProxy = null;
 			this.sdkSandboxSettings = null;
+			this.egressCaCertPath = null;
 		}
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
@@ -5333,6 +5336,7 @@ ${input.userComment}
 			logger: log,
 			plugins: await this.skillsPluginResolver.resolve(),
 			sandboxSettings: this.sdkSandboxSettings ?? undefined,
+			egressCaCertPath: this.egressCaCertPath ?? undefined,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},

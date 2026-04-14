@@ -48,6 +48,8 @@ export interface ClaudeRunnerConfig {
 	plugins?: SdkPluginConfig[]; // Plugins providing skills, agents, hooks, and MCP servers
 	outputFormat?: OutputFormatConfig; // Structured output format configuration
 	sandbox?: SandboxSettings; // Sandbox settings (enabled, network proxy ports, etc.)
+	/** Additional environment variables to pass to the Claude child process (merged after process.env) */
+	additionalEnv?: Record<string, string>;
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
 	/**
 	 * Callback for handling AskUserQuestion tool invocations.

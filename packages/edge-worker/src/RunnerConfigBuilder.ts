@@ -111,6 +111,8 @@ export interface IssueRunnerConfigInput {
 	plugins?: SdkPluginConfig[];
 	/** SDK sandbox settings (enabled, network proxy ports) for Claude runner */
 	sandboxSettings?: SandboxSettings;
+	/** CA cert path for MITM TLS termination — passed via child process env */
+	egressCaCertPath?: string;
 }
 
 /**
@@ -289,9 +291,12 @@ export class RunnerConfigBuilder {
 			// Plugins providing skills (Claude runner only)
 			...(runnerType === "claude" &&
 				input.plugins?.length && { plugins: input.plugins }),
-			// SDK sandbox settings (Claude runner only)
+			// SDK sandbox settings (Claude runner only):
+			// - Merge base settings with per-session filesystem.allowWrite (worktree path)
+			// - Pass CA cert path via env for MITM TLS termination
 			...(runnerType === "claude" &&
-				input.sandboxSettings && { sandbox: input.sandboxSettings }),
+				input.sandboxSettings &&
+				this.buildSandboxConfig(input)),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
@@ -369,6 +374,37 @@ export class RunnerConfigBuilder {
 				},
 			],
 		};
+	}
+
+	/**
+	 * Build sandbox and env config for a Claude runner session.
+	 * Merges base sandbox settings with per-session filesystem restrictions
+	 * (worktree as the only writable directory) and passes the CA cert
+	 * for MITM TLS termination via additionalEnv instead of process.env.
+	 */
+	private buildSandboxConfig(
+		input: IssueRunnerConfigInput,
+	): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
+
+		if (input.sandboxSettings) {
+			result.sandbox = {
+				...input.sandboxSettings,
+				filesystem: {
+					...input.sandboxSettings.filesystem,
+					// Restrict subprocess writes to the session worktree only
+					allowWrite: [input.session.workspace.path],
+				},
+			};
+		}
+
+		if (input.egressCaCertPath) {
+			result.additionalEnv = {
+				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
+			};
+		}
+
+		return result;
 	}
 
 	/**
