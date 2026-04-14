@@ -11,7 +11,7 @@
 
 Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|GitHub|GitLab|Slack) agent. Cyrus monitors issues assigned to it, creates isolated Git worktrees for each issue, runs AI coding sessions to process them, and streams detailed agent activity updates back to your issue tracker, along with rich interactions like dropdown selects and approvals.
 
-**Note:** Cyrus is a BYOK platform (bring your keys / subscriptions) for tokens.
+**Note:** Cyrus is a BYOK (bring your own keys / subscriptions) platform.
 
 ---
 
