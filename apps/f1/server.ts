@@ -172,7 +172,11 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 				linearToken: "cli-mode-no-token-needed",
 			},
 		},
-		// Enable egress proxy sandbox when CYRUS_SANDBOX=1 is set
+		// Enable egress proxy sandbox when CYRUS_SANDBOX=1 is set.
+		// The proxy only intercepts Bash-spawned subprocess traffic (git, gh, npm, etc.).
+		// Claude's inference API, MCP servers, and built-in file tools bypass the proxy.
+		// defaultAction: "allow" lets unlisted domains pass through while still
+		// TLS-terminating github.com/api.github.com to inject test headers.
 		...(process.env.CYRUS_SANDBOX === "1" && {
 			sandbox: {
 				enabled: true,

@@ -138,9 +138,15 @@ const DomainRuleSchema = z.array(
 
 /**
  * Network policy for egress sandboxing.
- * Controls which domains/subnets the sandboxed agent can reach and
- * enables per-domain header injection (credentials brokering).
+ * Controls which domains/subnets Bash-spawned subprocesses (git, gh, npm,
+ * curl, etc.) can reach and enables per-domain header injection
+ * (credentials brokering).
  *
+ * Scope: Claude Code's sandbox network proxy only intercepts traffic from
+ * Bash tool subprocesses. It does NOT apply to Claude's own inference API
+ * calls, MCP server traffic, or built-in file tools (Read/Edit/Write).
+ *
+ * @see https://code.claude.com/docs/en/sandboxing#network-isolation
  * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall
  */
 export const NetworkPolicySchema = z.object({
@@ -174,10 +180,16 @@ export const NetworkPolicySchema = z.object({
 
 /**
  * Sandbox configuration for network egress control.
- * Configures the egress proxy that intercepts outbound traffic from agent sessions.
+ * Configures the egress proxy that intercepts outbound traffic from
+ * Bash-spawned subprocesses in agent sessions.
  *
- * When enabled, Claude Code's sandbox routes all network traffic through the proxy,
- * allowing domain filtering, header injection, and request logging.
+ * When enabled, the proxy starts on EdgeWorker boot and Claude's
+ * ~/.claude/settings.json is updated with sandbox.network ports.
+ * Only Bash tool commands (git, gh, npm, curl, etc.) route through
+ * the proxy — Claude's inference API, MCP servers, and built-in
+ * file tools are unaffected.
+ *
+ * @see https://code.claude.com/docs/en/sandboxing#network-isolation
  */
 export const SandboxConfigSchema = z.object({
 	/**

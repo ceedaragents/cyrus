@@ -529,7 +529,9 @@ export class EdgeWorker extends EventEmitter {
 		);
 		this.configManager.startConfigWatcher();
 
-		// Start egress proxy if sandbox is enabled
+		// Start egress proxy if sandbox is enabled.
+		// The proxy intercepts Bash-spawned subprocess traffic only (git, gh, npm, etc.).
+		// Claude's inference API, MCP servers, and built-in file tools bypass the proxy.
 		if (this.config.sandbox?.enabled) {
 			this.egressProxy = new EgressProxy(
 				this.config.sandbox,

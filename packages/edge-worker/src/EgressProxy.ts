@@ -30,8 +30,14 @@ interface ResolvedTransform {
  * EgressProxy provides an HTTP/HTTPS forward proxy for Claude Code sandbox
  * network egress control.
  *
+ * Scope: Claude Code's sandbox.network proxy only intercepts traffic from
+ * Bash tool subprocesses (git, gh, npm, curl, etc.). Claude's own inference
+ * API calls, MCP server traffic, and built-in file tools (Read/Edit/Write)
+ * are NOT routed through this proxy.
+ * @see https://code.claude.com/docs/en/sandboxing#network-isolation
+ *
  * Capabilities:
- * - Domain-based allow/deny filtering
+ * - Domain-based allow/deny filtering for subprocess traffic
  * - TLS termination (MITM) for domains with header transform rules
  * - Per-domain header injection (credentials brokering)
  * - Request logging
@@ -42,8 +48,6 @@ interface ResolvedTransform {
  * TLS termination is selective — only domains with transform rules get intercepted.
  * A per-instance CA certificate is generated and must be trusted by the client
  * via NODE_EXTRA_CA_CERTS.
- *
- * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall#tls-termination
  */
 export class EgressProxy {
 	private httpServer: ReturnType<typeof createHttpServer> | null = null;
@@ -314,9 +318,13 @@ export class EgressProxy {
 	 * Check if a hostname is allowed by the network policy.
 	 * Returns true if no policy is set (passthrough mode).
 	 *
-	 * When defaultAction is "allow" (or unset with no allow rules),
-	 * unlisted domains pass through. When "block" (default when allow
-	 * rules exist), unlisted domains are rejected.
+	 * Only Bash-spawned subprocess traffic reaches this proxy, so
+	 * this controls domains reachable by git, gh, npm, curl, etc.
+	 * Claude's inference API and MCP traffic never pass through here.
+	 *
+	 * When defaultAction is "allow", unlisted domains pass through
+	 * (transforms-only mode). When "block" (default when allow rules
+	 * exist), unlisted domains are rejected (strict allowlist).
 	 */
 	private isDomainAllowed(hostname: string): boolean {
 		// No policy = allow all
