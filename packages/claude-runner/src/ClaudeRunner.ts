@@ -814,7 +814,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		const helperPath =
 			this.config.apiKeyHelper || join(this.cyrusHome, "bin", "auth-helper.sh");
 
-		if (!existsSync(helperPath)) {
+		// Regenerate if missing or corrupted (e.g. missing shebang)
+		if (
+			!existsSync(helperPath) ||
+			!readFileSync(helperPath, "utf8").startsWith("#!/bin/sh")
+		) {
 			this.ensureAuthHelper(helperPath);
 		}
 
