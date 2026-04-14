@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Webhook IP provenance validation** — Incoming webhooks from Linear, GitHub, and GitLab are now validated against each provider's known source IP ranges. Enabled automatically in self-hosted mode (`CYRUS_HOST_EXTERNAL=true`); can be toggled with the `WEBHOOK_IP_VALIDATION` environment variable. GitHub CIDRs are refreshed from the `/meta` API on startup. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.107 and `@anthropic-ai/sdk` to v0.88.0** — Keeps the SDK dependencies up to date with the latest releases. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1068](https://linear.app/ceedar/issue/CYPACK-1068))
+
 ## [0.2.44] - 2026-04-10
 
 ### Fixed
