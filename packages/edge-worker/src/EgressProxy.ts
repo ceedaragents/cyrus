@@ -4,14 +4,16 @@ import {
 	createServer as createHttpServer,
 	request as httpRequest,
 } from "node:http";
-import { request as httpsRequest } from "node:https";
+import {
+	createServer as createHttpsServer,
+	request as httpsRequest,
+} from "node:https";
 import type { Socket } from "node:net";
 import {
 	createServer as createNetServer,
 	connect as netConnect,
 } from "node:net";
 import { join } from "node:path";
-import { TLSSocket } from "node:tls";
 import type { NetworkPolicy, SandboxConfig } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import forge from "node-forge";
@@ -555,80 +557,65 @@ export class EgressProxy {
 	): void {
 		const serverCert = this.generateServerCert(hostname);
 
-		// Create a local HTTPS server to terminate TLS
-		const httpsServer = createHttpServer((req, res) => {
-			const transforms = this.getTransformsForDomain(hostname);
+		// Create a real HTTPS server with the generated cert to terminate TLS
+		const localServer = createHttpsServer(
+			{ key: serverCert.key, cert: serverCert.cert },
+			(req, res) => {
+				const transforms = this.getTransformsForDomain(hostname);
 
-			if (this.logRequests) {
-				this.logger.info(
-					`[MITM] ${req.method} https://${hostname}${req.url}` +
-						(transforms
-							? ` (transforms: ${Object.keys(transforms.headers).join(", ")})`
-							: ""),
-				);
-			}
-
-			const headers = { ...req.headers };
-			delete headers["proxy-connection"];
-			headers.host = hostname + (port !== 443 ? `:${port}` : "");
-
-			if (transforms) {
-				Object.assign(headers, transforms.headers);
-			}
-
-			const upstreamReq = httpsRequest(
-				{
-					hostname,
-					port,
-					path: req.url,
-					method: req.method,
-					headers,
-					rejectUnauthorized: true,
-				},
-				(upstreamRes) => {
-					res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
-					upstreamRes.pipe(res);
-				},
-			);
-
-			upstreamReq.on("error", (err: Error) => {
-				this.logger.error(`MITM upstream error for ${hostname}:`, err);
-				if (!res.headersSent) {
-					res.writeHead(502);
-					res.end("Bad Gateway");
+				if (this.logRequests) {
+					this.logger.info(
+						`[MITM] ${req.method} https://${hostname}${req.url}` +
+							(transforms
+								? ` (transforms: ${Object.keys(transforms.headers).join(", ")})`
+								: ""),
+					);
 				}
-			});
 
-			req.pipe(upstreamReq);
+				const headers = { ...req.headers };
+				delete headers["proxy-connection"];
+				headers.host = hostname + (port !== 443 ? `:${port}` : "");
+
+				if (transforms) {
+					Object.assign(headers, transforms.headers);
+				}
+
+				const upstreamReq = httpsRequest(
+					{
+						hostname,
+						port,
+						path: req.url,
+						method: req.method,
+						headers,
+						rejectUnauthorized: true,
+					},
+					(upstreamRes) => {
+						res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+						upstreamRes.pipe(res);
+					},
+				);
+
+				upstreamReq.on("error", (err: Error) => {
+					this.logger.error(`MITM upstream error for ${hostname}:`, err);
+					if (!res.headersSent) {
+						res.writeHead(502);
+						res.end("Bad Gateway");
+					}
+				});
+
+				req.pipe(upstreamReq);
+			},
+		);
+
+		localServer.on("tlsClientError", (err: Error) => {
+			this.logger.error(`TLS handshake error for ${hostname}:`, err.message);
 		});
 
-		// Upgrade the HTTP server connection to TLS by wrapping incoming sockets
-		const originalEmit = httpsServer.emit.bind(httpsServer);
-		httpsServer.emit = (event: string, ...args: unknown[]) => {
-			if (event === "connection") {
-				const socket = args[0] as Socket;
-				const tlsSocket = new TLSSocket(socket, {
-					isServer: true,
-					key: serverCert.key,
-					cert: serverCert.cert,
-				});
-				tlsSocket.on("error", (err: Error) => {
-					this.logger.error(
-						`TLS handshake error for ${hostname}:`,
-						err.message,
-					);
-					socket.destroy();
-				});
-				return originalEmit("connection", tlsSocket);
-			}
-			return originalEmit(event, ...args);
-		};
-
-		httpsServer.listen(0, "127.0.0.1", () => {
-			const addr = httpsServer.address();
+		localServer.listen(0, "127.0.0.1", () => {
+			const addr = localServer.address();
 			if (!addr || typeof addr === "string") {
 				clientSocket.destroy();
-				httpsServer.close();
+				localServer.close();
 				return;
 			}
 
@@ -648,11 +635,11 @@ export class EgressProxy {
 			clientSocket.on("error", () => bridge.destroy());
 			clientSocket.on("close", () => {
 				bridge.destroy();
-				httpsServer.close();
+				localServer.close();
 			});
 		});
 
-		httpsServer.on("error", (err: Error) => {
+		localServer.on("error", (err: Error) => {
 			this.logger.error(`TLS termination server error for ${hostname}:`, err);
 			clientSocket.destroy();
 		});
