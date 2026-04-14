@@ -483,6 +483,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					settingSources: ["user", "project", "local"],
 					env: {
 						...(process.env.PATH && { PATH: process.env.PATH }),
+						...(process.env.ANTHROPIC_API_KEY && {
+							ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+						}),
+						...(process.env.ANTHROPIC_AUTH_TOKEN && {
+							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
+						}),
+						...(process.env.CLAUDE_CODE_OAUTH_TOKEN && {
+							CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+						}),
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
