@@ -258,9 +258,31 @@ When `networkPolicy.allow` is specified, all domains not in the list are blocked
 
 The egress proxy generates a CA certificate at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception of domains with transform rules. This cert is stable across restarts — once trusted, it stays trusted.
 
-**Automatic (per-session):** Cyrus sets the following env vars automatically for every agent session: `NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`. These cover Node.js, Git, Python, and OpenSSL-based tools. If `NODE_EXTRA_CA_CERTS` is already set in the host environment (e.g., corporate proxy), Cyrus merges both certs into a combined bundle.
+**Automatic (per-session):** Cyrus sets the following env vars automatically for every agent session:
 
-**System-wide (optional, requires sudo):** For tools that use the OS certificate store (e.g., curl on macOS), trust the cert in the system keychain:
+| Env Var | Covers |
+|---------|--------|
+| `NODE_EXTRA_CA_CERTS` | Node.js, npm, SDK |
+| `GIT_SSL_CAINFO` | Git HTTPS |
+| `SSL_CERT_FILE` | OpenSSL-based tools, Ruby |
+| `REQUESTS_CA_BUNDLE` | Python requests |
+| `PIP_CERT` | pip |
+| `CURL_CA_BUNDLE` | curl (when compiled against OpenSSL) |
+| `CARGO_HTTP_CAINFO` | Rust/Cargo |
+| `AWS_CA_BUNDLE` | AWS CLI, boto3 |
+| `DENO_CERT` | Deno |
+
+If `NODE_EXTRA_CA_CERTS` is already set in the host environment (e.g., corporate proxy), Cyrus merges both certs into a combined bundle.
+
+**Not covered by env vars (require system keychain trust):**
+
+- **Bun** — uses the system cert store; no env var override
+- **.NET (dotnet/nuget)** — uses the system cert store on macOS
+- **curl on macOS** — when compiled against SecureTransport (the default), uses the system keychain rather than `CURL_CA_BUNDLE`
+
+For these tools, system-wide trust (see below) is required.
+
+**System-wide (optional, requires sudo):** For tools that use the OS certificate store, trust the cert in the system keychain:
 
 ```bash
 # macOS

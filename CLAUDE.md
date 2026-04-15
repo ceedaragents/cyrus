@@ -401,7 +401,13 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 4. **Testing**: Uses Vitest for all packages. Run tests before committing changes.
 
-5. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
+5. **Sandbox Egress Proxy & CA Certificates**: When sandbox is enabled, the egress proxy generates a CA cert at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception. Per-session env vars are set in `RunnerConfigBuilder.buildSandboxConfig()` to cover most tools:
+   - `NODE_EXTRA_CA_CERTS` (Node.js), `GIT_SSL_CAINFO` (Git), `SSL_CERT_FILE` (OpenSSL/Ruby), `REQUESTS_CA_BUNDLE` / `PIP_CERT` (Python), `CURL_CA_BUNDLE` (curl/OpenSSL), `CARGO_HTTP_CAINFO` (Rust), `AWS_CA_BUNDLE` (AWS CLI), `DENO_CERT` (Deno)
+   - **Gotchas — tools that ignore env vars and require system keychain trust**: Bun, .NET/nuget, curl on macOS (compiled against SecureTransport, the default). For these, users must run `sudo security add-trusted-cert` (macOS) or `update-ca-certificates` (Linux).
+   - **Gotcha — parent process env vars**: If `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, or `CURL_CA_BUNDLE` are set in the Cyrus parent process env (e.g., from a previous test or `.env`), they can break git push/fetch from the Cyrus process itself (not child sessions). The parent process does not route through the egress proxy, so these vars should not be set in `~/.cyrus/.env`.
+   - Pre-existing `NODE_EXTRA_CA_CERTS` from the host environment are merged into a combined bundle via `EgressProxy.buildCACertBundle()`.
+
+6. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
    - `packages/edge-worker/src/PromptBuilder.ts` — Generates the `<repository_routing_context>` XML block included in session system prompts, documenting routing methods and priority order
    - `packages/edge-worker/src/SlackChatAdapter.ts` — Builds the Slack chat system prompt including orchestration notes with repo routing syntax
    - `packages/edge-worker/src/ActivityPoster.ts` — Posts routing activities to Linear timeline (method display names, formatting)

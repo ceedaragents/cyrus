@@ -2270,7 +2270,7 @@ ${taskSection}`;
 	private logCertTrustInstructions(certPath: string): void {
 		this.logger.info(`🛡️  Sandbox TLS interception CA certificate: ${certPath}`);
 		this.logger.info(
-			"🛡️  Per-session env vars are set automatically: NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT",
+			"🛡️  Per-session env vars are set automatically: NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT, CURL_CA_BUNDLE, CARGO_HTTP_CAINFO, AWS_CA_BUNDLE, DENO_CERT",
 		);
 
 		if (process.platform === "darwin") {

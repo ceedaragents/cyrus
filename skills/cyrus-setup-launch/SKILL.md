@@ -179,7 +179,7 @@ sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyru
 sudo update-ca-certificates
 ```
 
-**Note:** System-wide trust is optional — Cyrus automatically sets `NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, and `PIP_CERT` per-session for agent subprocesses. System-wide trust only matters for tools that use the OS certificate store directly (e.g., curl on macOS).
+**Note:** System-wide trust is optional — Cyrus automatically sets `NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`, `CURL_CA_BUNDLE`, `CARGO_HTTP_CAINFO`, `AWS_CA_BUNDLE`, and `DENO_CERT` per-session for agent subprocesses. System-wide trust only matters for tools that use the OS certificate store directly (Bun, .NET, curl on macOS with SecureTransport).
 
 ## Step 6: Verify Running
 

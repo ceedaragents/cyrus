@@ -404,13 +404,21 @@ export class RunnerConfigBuilder {
 			result.additionalEnv = {
 				// Node.js (SDK, npm, etc.)
 				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
-				// OpenSSL-based tools (general fallback)
+				// OpenSSL-based tools (general fallback — also covers Ruby)
 				SSL_CERT_FILE: input.egressCaCertPath,
 				// Git HTTPS operations
 				GIT_SSL_CAINFO: input.egressCaCertPath,
 				// Python requests/pip
 				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
 				PIP_CERT: input.egressCaCertPath,
+				// curl (when compiled against OpenSSL, not SecureTransport)
+				CURL_CA_BUNDLE: input.egressCaCertPath,
+				// Rust/Cargo
+				CARGO_HTTP_CAINFO: input.egressCaCertPath,
+				// AWS CLI / boto3
+				AWS_CA_BUNDLE: input.egressCaCertPath,
+				// Deno
+				DENO_CERT: input.egressCaCertPath,
 			};
 		}
 
