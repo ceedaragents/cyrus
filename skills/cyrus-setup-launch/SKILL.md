@@ -148,7 +148,42 @@ pm2 start "ngrok start cyrus" --name ngrok
 pm2 save
 ```
 
-## Step 5: Verify Running
+## Step 5: Sandbox CA Certificate Trust (if sandbox enabled)
+
+If the user's `~/.cyrus/config.json` has `sandbox.enabled: true`, check whether the egress proxy CA certificate is trusted in the system keychain.
+
+**Check if sandbox is enabled:**
+
+```bash
+grep -o '"enabled":\s*true' ~/.cyrus/config.json 2>/dev/null | head -1
+```
+
+If sandbox is enabled, check trust status:
+
+```bash
+# macOS — check System keychain for the Cyrus CA
+security find-certificate -c "Cyrus Egress Proxy CA" /Library/Keychains/System.keychain 2>&1
+```
+
+- If the cert is found (exit code 0): report ✓ trusted. Offer to set `sandbox.systemWideCert: true` in config.json to skip per-session cert env vars.
+- If not found (exit code 44): inform the user and offer to run the trust command:
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
+```
+
+On Linux, check with `test -f /usr/local/share/ca-certificates/cyrus-egress-ca.crt`. If not present:
+
+```bash
+sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyrus-egress-ca.crt
+sudo update-ca-certificates
+```
+
+After trusting system-wide, offer to set `sandbox.systemWideCert: true` in config.json. This skips per-session cert env vars (`NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, etc.) since the OS cert store handles trust for all tools.
+
+If the user declines system-wide trust, Cyrus still works — it sets cert env vars per-session. But some tools (Bun, .NET, curl on macOS with SecureTransport) will only work with system-wide trust.
+
+## Step 6: Verify Running
 
 Once Cyrus starts, verify it's listening:
 

@@ -829,6 +829,92 @@
 				}
 			},
 			"additionalProperties": false
+		},
+		"sandbox": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"httpProxyPort": {
+					"default": 9080,
+					"type": "number"
+				},
+				"socksProxyPort": {
+					"default": 9081,
+					"type": "number"
+				},
+				"networkPolicy": {
+					"type": "object",
+					"properties": {
+						"preset": {
+							"type": "string",
+							"enum": ["trusted"]
+						},
+						"allow": {
+							"type": "object",
+							"propertyNames": {
+								"type": "string"
+							},
+							"additionalProperties": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"transform": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"headers": {
+														"type": "object",
+														"propertyNames": {
+															"type": "string"
+														},
+														"additionalProperties": {
+															"type": "string"
+														}
+													}
+												},
+												"required": ["headers"],
+												"additionalProperties": false
+											}
+										}
+									},
+									"additionalProperties": false
+								}
+							}
+						},
+						"subnets": {
+							"type": "object",
+							"properties": {
+								"allow": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"deny": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"additionalProperties": false
+				},
+				"systemWideCert": {
+					"type": "boolean"
+				},
+				"logRequests": {
+					"type": "boolean"
+				}
+			},
+			"required": ["httpProxyPort", "socksProxyPort"],
+			"additionalProperties": false
 		}
 	},
 	"required": ["repositories"],

@@ -70,9 +70,14 @@ export class McpConfigService {
 		const linearToken = this.deps.getLinearTokenForWorkspace(linearWorkspaceId);
 		const issueTracker = this.deps.getIssueTracker(linearWorkspaceId);
 		if (!issueTracker?.getClient) {
-			throw new Error(
-				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
-			);
+			// CLI platform mode — no Linear client available, return config without cyrus-tools
+			const mcpConfig: Record<string, McpServerConfig> = {
+				"cyrus-docs": {
+					type: "http",
+					url: "https://atcyrus.com/docs/mcp",
+				},
+			};
+			return mcpConfig;
 		}
 		const linearClient = issueTracker.getClient();
 		const prebuiltServer = createCyrusToolsServer(

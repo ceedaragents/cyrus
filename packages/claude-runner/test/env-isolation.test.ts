@@ -153,8 +153,8 @@ describe("Environment variable isolation", () => {
 
 		const env2 = getQueryEnv();
 		expect(env2.VAR_A).toBe("updated");
-		// VAR_B should NOT be present (it was removed from .env)
-		// It would only be present if it exists in process.env
+		// VAR_B should NOT be present from .env (it was removed)
+		// It may still exist if process.env happens to have it
 		if (!("VAR_B" in process.env)) {
 			expect(env2.VAR_B).toBeUndefined();
 		}
@@ -188,17 +188,28 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
-	it("should let process.env take precedence over .env values", async () => {
-		// Set a value in process.env
-		const originalPath = process.env.PATH;
-		envFileContents.set("/repo-a/.env", `PATH=/should-not-override`);
-
+	it("should set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to prevent auth token leakage", async () => {
 		mockSuccessfulQuery();
 		const runner = new ClaudeRunner(makeConfig("/repo-a"));
 		await runner.start("test");
 
 		const env = getQueryEnv();
-		// process.env.PATH should win over .env's PATH
-		expect(env.PATH).toBe(originalPath);
+		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+	});
+
+	it("should let repositoryEnv and additionalEnv override process.env", async () => {
+		envFileContents.set("/repo-a/.env", "PATH=/from-dotenv");
+
+		mockSuccessfulQuery();
+		const runner = new ClaudeRunner(
+			Object.assign(makeConfig("/repo-a"), {
+				additionalEnv: { PATH: "/from-additional-env" },
+			}),
+		);
+		await runner.start("test");
+
+		const env = getQueryEnv();
+		// additionalEnv wins over both process.env and repositoryEnv
+		expect(env.PATH).toBe("/from-additional-env");
 	});
 });

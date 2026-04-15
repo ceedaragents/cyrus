@@ -91,10 +91,21 @@ export class GitService {
 	}
 
 	/**
-	 * Sanitize branch name by removing backticks to prevent command injection
+	 * Sanitize branch name by removing characters invalid in git refs.
+	 * Git branch names cannot contain: space, ~, ^, :, ?, *, [, \, backtick,
+	 * consecutive dots (..), ASCII control chars, or start/end with dot or slash.
+	 * See `git check-ref-format` for the full specification.
 	 */
 	public sanitizeBranchName(name: string): string {
-		return name ? name.replace(/`/g, "") : name;
+		if (!name) return name;
+		return name
+			.replace(/[`~^:?*[\]\\@{}\s]/g, "-") // replace invalid chars with dash
+			.replace(/\.{2,}/g, ".") // collapse consecutive dots
+			.replace(/\/{2,}/g, "/") // collapse consecutive slashes
+			.replace(/\.lock(\/|$)/g, "$1") // remove .lock component
+			.replace(/^[.\-/]+/, "") // strip leading dots, dashes, slashes
+			.replace(/[.\-/]+$/, "") // strip trailing dots, dashes, slashes
+			.replace(/-{2,}/g, "-"); // collapse consecutive dashes
 	}
 
 	/**
