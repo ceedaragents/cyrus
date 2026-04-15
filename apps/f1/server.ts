@@ -38,6 +38,8 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
+const DEFAULT_REPOS_BASE_DIR =
+	process.env.CYRUS_REPOS_DIR?.trim() || join(CYRUS_HOME, DEFAULT_REPOS_DIR);
 const DEFAULT_WORKTREES_BASE_DIR =
 	process.env.CYRUS_WORKTREES_DIR?.trim() ||
 	join(CYRUS_HOME, DEFAULT_WORKTREES_DIR);
@@ -69,7 +71,7 @@ if (!existsSync(CYRUS_REPO_PATH)) {
 function setupDirectories(): void {
 	const requiredDirs = [
 		CYRUS_HOME,
-		process.env.CYRUS_REPOS_DIR?.trim() || join(CYRUS_HOME, DEFAULT_REPOS_DIR),
+		DEFAULT_REPOS_BASE_DIR,
 		DEFAULT_WORKTREES_BASE_DIR,
 		join(CYRUS_HOME, "mcp-configs"),
 		join(CYRUS_HOME, "state"),
