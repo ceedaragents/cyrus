@@ -3,6 +3,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	SandboxSettings,
 	SDKMessage,
 	SdkPluginConfig,
 	StopHookInput,
@@ -108,6 +109,10 @@ export interface IssueRunnerConfigInput {
 	requireLinearWorkspaceId: (repo: RepositoryConfig) => string;
 	/** Plugins to load for the session (provides skills, hooks, etc.) */
 	plugins?: SdkPluginConfig[];
+	/** SDK sandbox settings (enabled, network proxy ports) for Claude runner */
+	sandboxSettings?: SandboxSettings;
+	/** CA cert path for MITM TLS termination — passed via child process env */
+	egressCaCertPath?: string;
 }
 
 /**
@@ -286,6 +291,12 @@ export class RunnerConfigBuilder {
 			// Plugins providing skills (Claude runner only)
 			...(runnerType === "claude" &&
 				input.plugins?.length && { plugins: input.plugins }),
+			// SDK sandbox settings (Claude runner only):
+			// - Merge base settings with per-session filesystem.allowWrite (worktree path)
+			// - Pass CA cert path via env for MITM TLS termination
+			...(runnerType === "claude" &&
+				input.sandboxSettings &&
+				this.buildSandboxConfig(input)),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
@@ -363,6 +374,55 @@ export class RunnerConfigBuilder {
 				},
 			],
 		};
+	}
+
+	/**
+	 * Build sandbox and env config for a Claude runner session.
+	 * Merges base sandbox settings with per-session filesystem restrictions
+	 * (worktree as the only writable directory) and passes the CA cert
+	 * for MITM TLS termination via additionalEnv instead of process.env.
+	 */
+	private buildSandboxConfig(
+		input: IssueRunnerConfigInput,
+	): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
+
+		if (input.sandboxSettings) {
+			result.sandbox = {
+				...input.sandboxSettings,
+				// When sandbox is enabled, do not allow commands to run unsandboxed
+				allowUnsandboxedCommands: false,
+				filesystem: {
+					...input.sandboxSettings.filesystem,
+					// Restrict subprocess writes to the session worktree only
+					allowWrite: [input.session.workspace.path],
+				},
+			};
+		}
+
+		if (input.egressCaCertPath) {
+			result.additionalEnv = {
+				// Node.js (SDK, npm, etc.)
+				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
+				// OpenSSL-based tools (general fallback — also covers Ruby)
+				SSL_CERT_FILE: input.egressCaCertPath,
+				// Git HTTPS operations
+				GIT_SSL_CAINFO: input.egressCaCertPath,
+				// Python requests/pip
+				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
+				PIP_CERT: input.egressCaCertPath,
+				// curl (when compiled against OpenSSL, not SecureTransport)
+				CURL_CA_BUNDLE: input.egressCaCertPath,
+				// Rust/Cargo
+				CARGO_HTTP_CAINFO: input.egressCaCertPath,
+				// AWS CLI / boto3
+				AWS_CA_BUNDLE: input.egressCaCertPath,
+				// Deno
+				DENO_CERT: input.egressCaCertPath,
+			};
+		}
+
+		return result;
 	}
 
 	/**

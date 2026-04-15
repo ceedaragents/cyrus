@@ -211,6 +211,149 @@ Users can be specified in three formats:
 
 ---
 
+## Sandbox (Network Egress Control)
+
+### `sandbox` (object)
+
+Controls network egress for agent sessions. When enabled, all Bash-spawned subprocess traffic (git, gh, npm, curl, etc.) routes through a local egress proxy for domain filtering, request logging, and per-domain header injection. Claude's inference API, MCP servers, and built-in file tools (Read/Edit/Write) are unaffected.
+
+**Properties:**
+
+- **`enabled`** (boolean) - Enable or disable the egress proxy. Default: `false`
+- **`httpProxyPort`** (number) - HTTP proxy port. Default: `9080`
+- **`socksProxyPort`** (number) - SOCKS proxy port. Default: `9081`
+- **`systemWideCert`** (boolean) - Set to `true` after trusting the CA cert system-wide (e.g., via `sudo security add-trusted-cert`). When true, per-session CA cert env vars (`NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, etc.) are skipped — the OS cert store handles trust for all tools. Default: `false`
+- **`logRequests`** (boolean) - Log all proxied requests. Default: `true`
+- **`networkPolicy`** (object) - Domain allow/deny rules and header transforms. If omitted, all traffic is allowed (passthrough mode with logging).
+  - **`preset`** (`"trusted"`) - Pre-populate the allow list with ~200 domains matching [Claude Code on the web's default allowlist](https://docs.anthropic.com/en/docs/claude-code/claude-code-on-the-web#default-allowed-domains). Covers package registries (npm, PyPI, RubyGems, crates.io, Maven, etc.), version control (GitHub, GitLab, Bitbucket), container registries (Docker Hub, GCR, ECR, GHCR), cloud platforms (GCP, Azure, AWS, Oracle), dev tools (Kubernetes, HashiCorp, Anaconda), monitoring (Sentry, Datadog, Honeycomb), and more. Custom `allow` rules are merged on top.
+  - **`allow`** (object) - Domain allow rules with optional header transforms. Keys are domain patterns (e.g., `"api.example.com"`, `"*.example.com"`). When present, all unlisted domains are denied.
+  - **`subnets`** (object) - IP-range-based allow/deny rules.
+
+**Example — use the trusted preset (recommended starting point):**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "preset": "trusted"
+    }
+  }
+}
+```
+
+**Example — trusted preset with additional custom domains:**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "preset": "trusted",
+      "allow": {
+        "internal.company.com": [{}],
+        "*.internal.corp": [{}]
+      }
+    }
+  }
+}
+```
+
+**Example — custom allow list with header injection:**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "allow": {
+        "api.github.com": [{}],
+        "registry.npmjs.org": [{}],
+        "api.example.com": [
+          {
+            "transform": [
+              {
+                "headers": {
+                  "Authorization": "Bearer ${API_TOKEN}"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+When `networkPolicy.allow` is specified (or expanded from a preset), all domains not in the list are blocked (deny-all). Domains with `transform` rules get TLS termination for header injection; all others pass through as CONNECT tunnels.
+
+### CA Certificate Trust
+
+The egress proxy generates a CA certificate at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception of domains with transform rules. This cert is stable across restarts — once trusted, it stays trusted.
+
+**Automatic (per-session, when `systemWideCert: false`):** Cyrus sets the following env vars automatically for every agent session:
+
+| Env Var | Covers |
+|---------|--------|
+| `NODE_EXTRA_CA_CERTS` | Node.js, npm, SDK |
+| `GIT_SSL_CAINFO` | Git HTTPS |
+| `SSL_CERT_FILE` | OpenSSL-based tools, Ruby |
+| `REQUESTS_CA_BUNDLE` | Python requests |
+| `PIP_CERT` | pip |
+| `CURL_CA_BUNDLE` | curl (when compiled against OpenSSL) |
+| `CARGO_HTTP_CAINFO` | Rust/Cargo |
+| `AWS_CA_BUNDLE` | AWS CLI, boto3 |
+| `DENO_CERT` | Deno |
+
+If `NODE_EXTRA_CA_CERTS` is already set in the host environment (e.g., corporate proxy), Cyrus merges both certs into a combined bundle.
+
+**Not covered by env vars (require system-wide trust):**
+
+- **Bun** — uses the system cert store; no env var override
+- **.NET (dotnet/nuget)** — uses the system cert store on macOS
+- **curl on macOS** — when compiled against SecureTransport (the default), uses the system keychain rather than `CURL_CA_BUNDLE`
+
+For these tools, system-wide trust is required.
+
+**System-wide trust (recommended):** Trust the cert in the OS certificate store, then set `systemWideCert: true` to skip per-session env vars:
+
+```bash
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
+
+# Linux
+sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyrus-egress-ca.crt
+sudo update-ca-certificates
+```
+
+Then update config.json:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "systemWideCert": true
+  }
+}
+```
+
+On startup, Cyrus checks whether the cert is trusted system-wide (macOS keychain or Linux CA certificates) and logs the result:
+
+```
+🛡️  CA certificate is trusted system-wide ✓
+🛡️  systemWideCert: true — per-session CA cert env vars are skipped (OS cert store handles trust)
+```
+
+or, if not yet trusted:
+
+```
+[WARN] 🛡️  CA certificate is NOT trusted in the macOS System keychain. To trust (requires sudo):
+[WARN] 🛡️  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
+```
+
+---
+
 ## Global Configuration
 
 In addition to repository-specific settings, you can configure global defaults:
