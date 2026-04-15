@@ -29,6 +29,16 @@ export function getDefaultReposDir(cyrusHome: string): string {
 }
 
 /**
+ * Resolves the worktrees directory, preferring CYRUS_WORKTREES_DIR env var over the default.
+ */
+export function getDefaultWorktreesDir(cyrusHome: string): string {
+	return (
+		process.env.CYRUS_WORKTREES_DIR?.trim() ||
+		join(cyrusHome, DEFAULT_WORKTREES_DIR)
+	);
+}
+
+/**
  * Default base branch for new repositories
  */
 export const DEFAULT_BASE_BRANCH = "main";

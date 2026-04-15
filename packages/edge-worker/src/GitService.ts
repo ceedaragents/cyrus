@@ -16,7 +16,7 @@ import type {
 	RepositoryConfig,
 	Workspace,
 } from "cyrus-core";
-import { createLogger, DEFAULT_WORKTREES_DIR, type ILogger } from "cyrus-core";
+import { createLogger, getDefaultWorktreesDir, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 export interface CreateGitWorktreeOptions {
@@ -56,10 +56,7 @@ export class GitService {
 	 * so that runtime changes to CYRUS_WORKTREES_DIR are reflected.
 	 */
 	private get workspaceBaseDir(): string {
-		return (
-			process.env.CYRUS_WORKTREES_DIR?.trim() ||
-			join(this.cyrusHome, DEFAULT_WORKTREES_DIR)
-		);
+		return getDefaultWorktreesDir(this.cyrusHome);
 	}
 	/**
 	 * Check if a branch exists locally or remotely

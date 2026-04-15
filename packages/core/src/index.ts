@@ -81,6 +81,7 @@ export {
 	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
 	getDefaultReposDir,
+	getDefaultWorktreesDir,
 } from "./constants.js";
 // Issue Tracker Abstraction
 export type {

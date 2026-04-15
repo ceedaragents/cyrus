@@ -23,9 +23,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAllTools } from "cyrus-claude-runner";
 import {
-	DEFAULT_REPOS_DIR,
-	DEFAULT_WORKTREES_DIR,
 	type EdgeWorkerConfig,
+	getDefaultReposDir,
+	getDefaultWorktreesDir,
 	type RepositoryConfig,
 } from "cyrus-core";
 import { EdgeWorker } from "cyrus-edge-worker";
@@ -38,11 +38,8 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
-const DEFAULT_REPOS_BASE_DIR =
-	process.env.CYRUS_REPOS_DIR?.trim() || join(CYRUS_HOME, DEFAULT_REPOS_DIR);
-const DEFAULT_WORKTREES_BASE_DIR =
-	process.env.CYRUS_WORKTREES_DIR?.trim() ||
-	join(CYRUS_HOME, DEFAULT_WORKTREES_DIR);
+const DEFAULT_REPOS_BASE_DIR = getDefaultReposDir(CYRUS_HOME);
+const DEFAULT_WORKTREES_BASE_DIR = getDefaultWorktreesDir(CYRUS_HOME);
 // Optional second repository path for multi-repo orchestration testing
 const CYRUS_REPO_PATH_2 = process.env.CYRUS_REPO_PATH_2;
 const MULTI_REPO_MODE = Boolean(CYRUS_REPO_PATH_2);
