@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 
 // Mock file system with all required methods
 vi.mock("fs", () => ({
-	readFileSync: vi.fn(() => "#!/bin/sh\necho test-token"),
+	readFileSync: vi.fn(() => "{}"),
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
 	createWriteStream: vi.fn(() => ({
@@ -23,11 +23,6 @@ vi.mock("fs", () => ({
 	statSync: vi.fn(() => ({
 		isDirectory: vi.fn(() => true),
 	})),
-}));
-
-// Mock os module
-vi.mock("os", () => ({
-	homedir: vi.fn(() => "/mock/home"),
 }));
 
 describe("ClaudeRunner - disallowedTools", () => {

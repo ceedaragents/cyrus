@@ -188,6 +188,15 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
+	it("should set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to prevent auth token leakage", async () => {
+		mockSuccessfulQuery();
+		const runner = new ClaudeRunner(makeConfig("/repo-a"));
+		await runner.start("test");
+
+		const env = getQueryEnv();
+		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+	});
+
 	it("should let repositoryEnv and additionalEnv override process.env", async () => {
 		envFileContents.set("/repo-a/.env", "PATH=/from-dotenv");
 
