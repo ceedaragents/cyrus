@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GitHubCommentService } from "../src/GitHubCommentService.js";
+import {
+	CYRUS_PR_MARKER,
+	GitHubCommentService,
+} from "../src/GitHubCommentService.js";
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -295,6 +298,197 @@ describe("GitHubCommentService", () => {
 			).rejects.toThrow(
 				"[GitHubCommentService] Failed to post review comment reply: 404 Not Found",
 			);
+		});
+	});
+
+	describe("findPullRequestByBranch", () => {
+		it("returns the first open PR for the branch", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [
+					{ number: 42, body: "PR description" },
+					{ number: 43, body: "Another PR" },
+				],
+			});
+
+			const result = await service.findPullRequestByBranch({
+				token: "ghp_test123",
+				owner: "testorg",
+				repo: "my-repo",
+				branch: "feature/test",
+			});
+
+			expect(result).toEqual({ number: 42, body: "PR description" });
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.github.com/repos/testorg/my-repo/pulls?head=testorg%3Afeature%2Ftest&state=open&per_page=1",
+				{
+					method: "GET",
+					headers: {
+						Authorization: "Bearer ghp_test123",
+						Accept: "application/vnd.github+json",
+						"X-GitHub-Api-Version": "2022-11-28",
+					},
+				},
+			);
+		});
+
+		it("returns null when no PR exists", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [],
+			});
+
+			const result = await service.findPullRequestByBranch({
+				token: "ghp_test123",
+				owner: "testorg",
+				repo: "my-repo",
+				branch: "no-pr-branch",
+			});
+
+			expect(result).toBeNull();
+		});
+
+		it("throws on API error", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: false,
+				status: 401,
+				statusText: "Unauthorized",
+				text: async () => '{"message":"Bad credentials"}',
+			});
+
+			await expect(
+				service.findPullRequestByBranch({
+					token: "bad-token",
+					owner: "testorg",
+					repo: "my-repo",
+					branch: "feature/test",
+				}),
+			).rejects.toThrow(
+				"[GitHubCommentService] Failed to list PRs: 401 Unauthorized",
+			);
+		});
+	});
+
+	describe("updatePullRequestBody", () => {
+		it("updates the PR body via PATCH", async () => {
+			mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+			await service.updatePullRequestBody({
+				token: "ghp_test123",
+				owner: "testorg",
+				repo: "my-repo",
+				pullNumber: 42,
+				body: "Updated body",
+			});
+
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.github.com/repos/testorg/my-repo/pulls/42",
+				{
+					method: "PATCH",
+					headers: {
+						Authorization: "Bearer ghp_test123",
+						Accept: "application/vnd.github+json",
+						"Content-Type": "application/json",
+						"X-GitHub-Api-Version": "2022-11-28",
+					},
+					body: JSON.stringify({ body: "Updated body" }),
+				},
+			);
+		});
+
+		it("throws on API error", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: false,
+				status: 422,
+				statusText: "Unprocessable Entity",
+				text: async () => '{"message":"Validation failed"}',
+			});
+
+			await expect(
+				service.updatePullRequestBody({
+					token: "ghp_test123",
+					owner: "testorg",
+					repo: "my-repo",
+					pullNumber: 42,
+					body: "body",
+				}),
+			).rejects.toThrow(
+				"[GitHubCommentService] Failed to update PR body: 422 Unprocessable Entity",
+			);
+		});
+	});
+
+	describe("ensureCyrusMarker", () => {
+		const baseParams = {
+			token: "ghp_test123",
+			owner: "testorg",
+			repo: "my-repo",
+			branch: "feature/test",
+		};
+
+		it("adds marker when PR exists and marker is missing", async () => {
+			// findPullRequestByBranch
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [{ number: 42, body: "Some PR description" }],
+			});
+			// updatePullRequestBody
+			mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+			const result = await service.ensureCyrusMarker(baseParams);
+
+			expect(result).toBe(true);
+			expect(mockFetch).toHaveBeenCalledTimes(2);
+			// Verify the update call includes the marker
+			const updateCall = mockFetch.mock.calls[1];
+			const updateBody = JSON.parse(updateCall[1].body);
+			expect(updateBody.body).toContain(CYRUS_PR_MARKER);
+			expect(updateBody.body).toContain("Some PR description");
+		});
+
+		it("returns false when marker already present", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [
+					{
+						number: 42,
+						body: `Description\n\n${CYRUS_PR_MARKER}`,
+					},
+				],
+			});
+
+			const result = await service.ensureCyrusMarker(baseParams);
+
+			expect(result).toBe(false);
+			// Should only call findPullRequestByBranch, not updatePullRequestBody
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("returns false when no PR exists", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [],
+			});
+
+			const result = await service.ensureCyrusMarker(baseParams);
+
+			expect(result).toBe(false);
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("handles PR with null body", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => [{ number: 42, body: null }],
+			});
+			mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+			const result = await service.ensureCyrusMarker(baseParams);
+
+			expect(result).toBe(true);
+			const updateCall = mockFetch.mock.calls[1];
+			const updateBody = JSON.parse(updateCall[1].body);
+			expect(updateBody.body).toBe(CYRUS_PR_MARKER);
 		});
 	});
 });

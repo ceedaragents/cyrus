@@ -497,6 +497,15 @@ export class EdgeWorker extends EventEmitter {
 			this.logger,
 		);
 
+		// Ensure Cyrus PR marker is present after sessions complete
+		this.globalSessionRegistry.on("sessionCompleted", (_sessionId, session) => {
+			this.ensurePrCyrusMarker(session).catch((err) => {
+				this.logger.warn(
+					`Failed to ensure Cyrus PR marker: ${err instanceof Error ? err.message : err}`,
+				);
+			});
+		});
+
 		// Components will be initialized and registered in start() method before server starts
 	}
 
@@ -1008,6 +1017,88 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 		return process.env.GITHUB_TOKEN;
+	}
+
+	/**
+	 * Resolve a GitHub token for API calls that aren't triggered by a webhook event.
+	 * Uses GitHub App token provider or falls back to GITHUB_TOKEN env var.
+	 */
+	private async resolveGitHubTokenForApi(): Promise<string | undefined> {
+		if (this.gitHubAppTokenProvider) {
+			try {
+				return await this.gitHubAppTokenProvider.getToken();
+			} catch (error) {
+				this.logger.warn(
+					"Failed to mint GitHub App installation token, falling back to GITHUB_TOKEN",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
+		return process.env.GITHUB_TOKEN;
+	}
+
+	/**
+	 * Parse a GitHub URL (e.g. "https://github.com/owner/repo") into owner and repo.
+	 */
+	private parseGitHubUrl(
+		githubUrl: string,
+	): { owner: string; repo: string } | null {
+		// Strip protocol and host prefix, then extract owner/repo
+		const cleaned = githubUrl
+			.replace(/^https?:\/\/[^/]+\//, "")
+			.replace(/\.git$/, "")
+			.replace(/\/$/, "");
+		const parts = cleaned.split("/");
+		const owner = parts[0];
+		const repo = parts[1];
+		if (owner && repo) {
+			return { owner, repo };
+		}
+		return null;
+	}
+
+	/**
+	 * After a session completes, ensure the Cyrus PR marker is present
+	 * in any open PR created on the session's branch.
+	 */
+	private async ensurePrCyrusMarker(
+		session: import("cyrus-core").CyrusAgentSession,
+	): Promise<void> {
+		if (session.status !== "complete") return;
+
+		for (const repoCtx of session.repositories) {
+			if (!repoCtx.branchName) continue;
+
+			const repo = this.repositories.get(repoCtx.repositoryId);
+			if (!repo?.githubUrl) continue;
+
+			const parsed = this.parseGitHubUrl(repo.githubUrl);
+			if (!parsed) continue;
+
+			const token = await this.resolveGitHubTokenForApi();
+			if (!token) {
+				this.logger.debug("No GitHub token available to check PR marker");
+				return;
+			}
+
+			try {
+				const added = await this.gitHubCommentService.ensureCyrusMarker({
+					token,
+					owner: parsed.owner,
+					repo: parsed.repo,
+					branch: repoCtx.branchName,
+				});
+				if (added) {
+					this.logger.info(
+						`Added Cyrus PR marker to ${parsed.owner}/${parsed.repo} branch ${repoCtx.branchName}`,
+					);
+				}
+			} catch (err) {
+				this.logger.warn(
+					`Failed to ensure Cyrus PR marker on ${parsed.owner}/${parsed.repo}: ${err instanceof Error ? err.message : err}`,
+				);
+			}
+		}
 	}
 
 	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {

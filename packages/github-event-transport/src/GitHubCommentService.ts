@@ -71,6 +71,9 @@ export interface AddReactionParams {
 	content: string;
 }
 
+/** The hidden HTML comment used to identify Cyrus-authored PRs */
+export const CYRUS_PR_MARKER = "<!-- generated-by-cyrus -->";
+
 export class GitHubCommentService {
 	private apiBaseUrl: string;
 
@@ -180,5 +183,109 @@ export class GitHubCommentService {
 				`[GitHubCommentService] Failed to add reaction: ${response.status} ${response.statusText} - ${errorBody}`,
 			);
 		}
+	}
+
+	/**
+	 * Find an open pull request for a given head branch.
+	 *
+	 * @see https://docs.github.com/en/rest/pulls/pulls#list-pull-requests
+	 */
+	async findPullRequestByBranch(params: {
+		token: string;
+		owner: string;
+		repo: string;
+		branch: string;
+	}): Promise<{ number: number; body: string | null } | null> {
+		const { token, owner, repo, branch } = params;
+		const url = `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open&per_page=1`;
+
+		const response = await fetch(url, {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+			},
+		});
+
+		if (!response.ok) {
+			const errorBody = await response.text();
+			throw new Error(
+				`[GitHubCommentService] Failed to list PRs: ${response.status} ${response.statusText} - ${errorBody}`,
+			);
+		}
+
+		const prs = (await response.json()) as Array<{
+			number: number;
+			body: string | null;
+		}>;
+		return prs[0] ?? null;
+	}
+
+	/**
+	 * Update a pull request body.
+	 *
+	 * @see https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request
+	 */
+	async updatePullRequestBody(params: {
+		token: string;
+		owner: string;
+		repo: string;
+		pullNumber: number;
+		body: string;
+	}): Promise<void> {
+		const { token, owner, repo, pullNumber, body } = params;
+		const url = `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${pullNumber}`;
+
+		const response = await fetch(url, {
+			method: "PATCH",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+				"Content-Type": "application/json",
+				"X-GitHub-Api-Version": "2022-11-28",
+			},
+			body: JSON.stringify({ body }),
+		});
+
+		if (!response.ok) {
+			const errorBody = await response.text();
+			throw new Error(
+				`[GitHubCommentService] Failed to update PR body: ${response.status} ${response.statusText} - ${errorBody}`,
+			);
+		}
+	}
+
+	/**
+	 * Ensure the Cyrus attribution marker is present in a PR body.
+	 * If the PR exists and the marker is missing, appends it.
+	 *
+	 * @returns true if the marker was added, false if already present or no PR found
+	 */
+	async ensureCyrusMarker(params: {
+		token: string;
+		owner: string;
+		repo: string;
+		branch: string;
+	}): Promise<boolean> {
+		const pr = await this.findPullRequestByBranch(params);
+		if (!pr) return false;
+
+		const body = pr.body ?? "";
+		if (body.includes(CYRUS_PR_MARKER)) return false;
+
+		const updatedBody = body.trim()
+			? `${body}\n\n${CYRUS_PR_MARKER}`
+			: CYRUS_PR_MARKER;
+
+		await this.updatePullRequestBody({
+			token: params.token,
+			owner: params.owner,
+			repo: params.repo,
+			pullNumber: pr.number,
+			body: updatedBody,
+		});
+
+		return true;
 	}
 }

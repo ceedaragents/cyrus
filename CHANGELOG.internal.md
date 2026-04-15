@@ -4,6 +4,10 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `ensureCyrusMarker()`, `findPullRequestByBranch()`, and `updatePullRequestBody()` methods to `GitHubCommentService` for programmatic PR marker enforcement. Exported `CYRUS_PR_MARKER` constant. ([CYPACK-1082](https://linear.app/ceedar/issue/CYPACK-1082))
+- Added `ensurePrCyrusMarker()`, `resolveGitHubTokenForApi()`, and `parseGitHubUrl()` private methods to `EdgeWorker`. Registered `sessionCompleted` listener on `GlobalSessionRegistry` to automatically verify and append the Cyrus attribution marker to PRs after session completion. ([CYPACK-1082](https://linear.app/ceedar/issue/CYPACK-1082))
+
 ### Changed
 - PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
 
