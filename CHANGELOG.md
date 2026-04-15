@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Anthropic SDK dependencies** — `@anthropic-ai/claude-agent-sdk` updated from `0.2.90` to `0.2.109` and `@anthropic-ai/sdk` updated from `0.82.0` to `0.89.0`. ([CYPACK-1079](https://linear.app/ceedar/issue/CYPACK-1079), [#1101](https://github.com/ceedaragents/cyrus/pull/1101))
+
 ### Fixed
 - **Changelog updates no longer create duplicate entries** — The PR/MR and changelog-update skills now diff entries against the base branch instead of only the last commit, correctly detecting entries already added by the current branch and updating them in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
 
