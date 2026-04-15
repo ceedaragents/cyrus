@@ -15,6 +15,8 @@ export {
 	type LinearWorkspaceConfig,
 	LinearWorkspaceConfigSchema,
 	migrateEdgeConfig,
+	type NetworkPolicy,
+	NetworkPolicySchema,
 	type RepositoryConfig,
 	type RepositoryConfigPayload,
 	RepositoryConfigPayloadSchema,
@@ -22,11 +24,15 @@ export {
 	type RunnerType,
 	RunnerTypeSchema,
 	requireLinearWorkspaceId,
+	type SandboxConfig,
+	SandboxConfigSchema,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,
 	type UserIdentifier,
 	UserIdentifierSchema,
 } from "./config-schemas.js";
+
+export { TRUSTED_DOMAINS } from "./trusted-domains.js";
 
 /**
  * Resolve path with tilde (~) expansion

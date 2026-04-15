@@ -785,29 +785,23 @@ describe("ClaudeRunner", () => {
 			expect(messageHandler).toHaveBeenCalledWith(mockMessages[1]); // assistant
 		});
 
-		it("should filter TodoWrite tool calls from readable log", async () => {
+		it("should filter TaskCreate tool calls from readable log", async () => {
 			const mockMessages: SDKMessage[] = [
-				// Assistant message with TodoWrite and Read tools
+				// Assistant message with TaskCreate and Read tools
 				{
 					type: "assistant",
 					message: {
 						content: [
 							{
 								type: "text",
-								text: "Let me create a todo list and read a file.",
+								text: "Let me create a task and read a file.",
 							},
 							{
 								type: "tool_use",
-								name: "TodoWrite",
+								name: "TaskCreate",
 								input: {
-									todos: [
-										{
-											content: "Test todo",
-											status: "pending",
-											priority: "high",
-											id: "1",
-										},
-									],
+									subject: "Test task",
+									status: "pending",
 								},
 								id: "tool_1",
 							},
@@ -839,7 +833,7 @@ describe("ClaudeRunner", () => {
 			expect(messageHandler).toHaveBeenCalledTimes(1);
 			expect(messageHandler).toHaveBeenCalledWith(mockMessages[0]);
 
-			// Readable log logic would filter out TodoWrite but keep Read
+			// Readable log logic would filter out TaskCreate but keep Read
 			// (This tests the filtering logic in writeReadableLogEntry)
 		});
 	});

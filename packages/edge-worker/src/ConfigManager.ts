@@ -235,6 +235,8 @@ export class ConfigManager extends EventEmitter {
 				// otherwise keep current or default to true
 				issueUpdateTrigger:
 					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
+				// Sandbox / egress proxy config
+				sandbox: parsedConfig.sandbox ?? this.config.sandbox,
 			};
 
 			// Basic validation
@@ -325,6 +327,7 @@ export class ConfigManager extends EventEmitter {
 			"issueUpdateTrigger",
 			"linearWorkspaces",
 			"userAccessControl",
+			"sandbox",
 		];
 
 		for (const key of globalKeys) {

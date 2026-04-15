@@ -66,10 +66,12 @@ async function main() {
 			"Task",
 			"WebFetch",
 			"WebSearch",
-			"TodoRead",
-			"TodoWrite",
-			"NotebookRead",
+			"TaskCreate",
+			"TaskUpdate",
+			"TaskGet",
+			"TaskList",
 			"NotebookEdit",
+			"Skill",
 		],
 
 		// Use EdgeWorker's system prompt pattern

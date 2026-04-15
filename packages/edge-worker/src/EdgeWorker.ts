@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
@@ -67,6 +68,7 @@ import {
 	PersistenceManager,
 	requireLinearWorkspaceId,
 	resolvePath,
+	WebhookIpValidator,
 } from "cyrus-core";
 import { CursorRunner } from "cyrus-cursor-runner";
 import { GeminiRunner } from "cyrus-gemini-runner";
@@ -130,9 +132,11 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
+import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
+import { EgressProxy } from "./EgressProxy.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
@@ -230,6 +234,16 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
+	/** Validates webhook source IPs against known provider allowlists */
+	private webhookIpValidator: WebhookIpValidator;
+	/** Egress proxy for sandbox network traffic filtering and header injection */
+	private egressProxy: EgressProxy | null = null;
+	/** Base SDK sandbox settings to pass to ClaudeRunner sessions (set when proxy starts) */
+	private sdkSandboxSettings:
+		| import("cyrus-claude-runner").SandboxSettings
+		| null = null;
+	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
+	private egressCaCertPath: string | null = null;
 	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
@@ -303,6 +317,23 @@ export class EdgeWorker extends EventEmitter {
 				return this.getIssueTrackerForWorkspace(linearWorkspaceId) ?? null;
 			},
 		});
+
+		// Initialize webhook IP validator
+		// Enabled by default in self-hosted mode (CYRUS_HOST_EXTERNAL=true),
+		// can be overridden with WEBHOOK_IP_VALIDATION=false to disable
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const ipValidationEnv =
+			process.env.WEBHOOK_IP_VALIDATION?.toLowerCase().trim();
+		const ipValidationEnabled =
+			ipValidationEnv === "true" ||
+			(ipValidationEnv !== "false" && isExternalHost);
+		this.webhookIpValidator = new WebhookIpValidator({
+			enabled: ipValidationEnabled,
+		});
+		if (ipValidationEnabled) {
+			this.logger.info("Webhook IP validation enabled");
+		}
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
@@ -510,6 +541,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.addNewRepositories(changes.added);
 				// Detect and apply workspace token changes before overwriting config
 				this.updateLinearWorkspaceTokens(changes.newConfig);
+				// Live-update sandbox / egress proxy settings
+				await this.applySandboxConfigChanges(changes.newConfig);
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
@@ -518,8 +551,56 @@ export class EdgeWorker extends EventEmitter {
 		);
 		this.configManager.startConfigWatcher();
 
+		// Start egress proxy if sandbox is enabled.
+		// The proxy intercepts Bash-spawned subprocess traffic only (git, gh, npm, etc.).
+		// Claude's inference API, MCP servers, and built-in file tools bypass the proxy.
+		if (this.config.sandbox?.enabled) {
+			this.logger.info("🛡️  Sandbox egress proxy: starting...");
+			this.egressProxy = new EgressProxy(
+				this.config.sandbox,
+				this.cyrusHome,
+				this.logger,
+			);
+			await this.egressProxy.start();
+
+			// Store base SDK sandbox settings — merged per-session with worktree path
+			this.sdkSandboxSettings = {
+				enabled: true,
+				network: {
+					httpProxyPort: this.egressProxy.getHttpProxyPort(),
+					socksProxyPort: this.egressProxy.getSocksProxyPort(),
+				},
+			};
+
+			const systemWideCert = this.config.sandbox?.systemWideCert === true;
+			this.logCertTrustInstructions(
+				this.egressProxy.getCACertPath(),
+				systemWideCert,
+			);
+
+			// When systemWideCert is true, the OS cert store handles trust
+			// for all tools — skip per-session cert env vars.
+			if (!systemWideCert) {
+				this.egressCaCertPath = this.egressProxy.buildCACertBundle();
+			}
+		} else {
+			this.logger.info(
+				"🛡️  Sandbox egress proxy: disabled (set sandbox.enabled=true in config.json to enable)",
+			);
+		}
+
 		// Initialize and register components BEFORE starting server (routes must be registered before listen())
 		await this.initializeComponents();
+
+		// Refresh GitHub webhook allowlist from /meta API (non-blocking)
+		if (this.webhookIpValidator.isEnabled()) {
+			this.webhookIpValidator.refreshGitHubAllowlist().catch((error) => {
+				this.logger.warn(
+					"Failed to refresh GitHub webhook allowlist",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		}
 
 		// Start shared application server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.sharedApplicationServer.start();
@@ -603,6 +684,10 @@ export class EdgeWorker extends EventEmitter {
 				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 				verificationMode,
 				secret,
+				ipAllowlist:
+					verificationMode === "direct" && this.webhookIpValidator.isEnabled()
+						? this.webhookIpValidator.getAllowlist("linear")
+						: undefined,
 			});
 
 			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
@@ -724,6 +809,10 @@ export class EdgeWorker extends EventEmitter {
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode,
 			secret,
+			ipAllowlist:
+				useSignatureVerification && this.webhookIpValidator.isEnabled()
+					? this.webhookIpValidator.getAllowlist("github")
+					: undefined,
 		});
 
 		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
@@ -826,23 +915,24 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const allRepos = Array.from(this.repositories.values());
-		const chatRepositoryPaths = allRepos.map((repo) => repo.repositoryPath);
+		// Live provider reads from the repository map on demand — no snapshot needed
+		const chatRepositoryProvider = new LiveChatRepositoryProvider(
+			this.repositories,
+			() => this.config.linearWorkspaces || {},
+		);
+
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
-			chatRepositoryPaths,
+			chatRepositoryProvider,
 			this.logger,
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// V1: Source workspace/repo from first available (all repos share the same MCPs today)
-		const firstLinearWorkspaceId = Object.keys(
-			this.config.linearWorkspaces || {},
-		)[0];
-		const firstRepo = allRepos[0];
-
-		if (!firstLinearWorkspaceId || !firstRepo) {
+		if (
+			!chatRepositoryProvider.getDefaultLinearWorkspaceId() ||
+			!chatRepositoryProvider.getDefaultRepository()
+		) {
 			this.logger.warn(
 				"No repositories or workspaces configured — Slack sessions will not have access to MCP tools",
 			);
@@ -852,9 +942,7 @@ export class EdgeWorker extends EventEmitter {
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
-				chatRepositoryPaths,
-				linearWorkspaceId: firstLinearWorkspaceId,
-				repository: firstRepo,
+				chatRepositoryProvider,
 				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();
@@ -2146,8 +2234,160 @@ ${taskSection}`;
 		this.cyrusToolsMcpSessions.removeAllListeners();
 		this.cyrusToolsMcpRegistered = false;
 
+		// Stop egress proxy
+		if (this.egressProxy) {
+			await this.egressProxy.stop();
+			this.egressProxy = null;
+			this.sdkSandboxSettings = null;
+			this.egressCaCertPath = null;
+		}
+
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
+	}
+
+	/**
+	 * Apply sandbox config changes from a config reload.
+	 * Handles three transitions:
+	 * - enabled → enabled: update network policy on the running proxy
+	 * - disabled → enabled: start a new proxy
+	 * - enabled → disabled: stop the running proxy
+	 */
+	private async applySandboxConfigChanges(
+		newConfig: EdgeWorkerConfig,
+	): Promise<void> {
+		const wasEnabled = this.egressProxy !== null;
+		const isEnabled = newConfig.sandbox?.enabled === true;
+
+		if (wasEnabled && isEnabled) {
+			// Policy update — proxy stays running, rules change
+			// Pass current policy (or empty object to reset to allow-all)
+			this.egressProxy!.updateNetworkPolicy(
+				newConfig.sandbox?.networkPolicy ?? {},
+			);
+			// Handle systemWideCert toggling while proxy is running
+			if (newConfig.sandbox?.systemWideCert) {
+				this.egressCaCertPath = null;
+			} else if (!this.egressCaCertPath) {
+				this.egressCaCertPath = this.egressProxy!.buildCACertBundle();
+			}
+		} else if (!wasEnabled && isEnabled) {
+			// Start proxy for the first time
+			this.logger.info("🛡️  Sandbox egress proxy: starting (config change)...");
+			this.egressProxy = new EgressProxy(
+				newConfig.sandbox!,
+				this.cyrusHome,
+				this.logger,
+			);
+			await this.egressProxy.start();
+
+			this.sdkSandboxSettings = {
+				enabled: true,
+				network: {
+					httpProxyPort: this.egressProxy.getHttpProxyPort(),
+					socksProxyPort: this.egressProxy.getSocksProxyPort(),
+				},
+			};
+			const systemWideCert = newConfig.sandbox?.systemWideCert === true;
+			this.logCertTrustInstructions(
+				this.egressProxy.getCACertPath(),
+				systemWideCert,
+			);
+
+			if (!systemWideCert) {
+				this.egressCaCertPath = this.egressProxy.buildCACertBundle();
+			}
+		} else if (wasEnabled && !isEnabled) {
+			// Stop proxy
+			this.logger.info(
+				"🛡️  Sandbox egress proxy: stopping (disabled in config)",
+			);
+			await this.egressProxy!.stop();
+			this.egressProxy = null;
+			this.sdkSandboxSettings = null;
+			this.egressCaCertPath = null;
+		}
+	}
+
+	/**
+	 * Log instructions for trusting the egress proxy CA certificate.
+	 * When systemWideCert is true, logs that env vars are skipped and trust
+	 * is expected from the OS cert store. Otherwise logs env var list and
+	 * checks macOS keychain trust status.
+	 */
+	private logCertTrustInstructions(
+		certPath: string,
+		systemWideCert = false,
+	): void {
+		this.logger.info(`🛡️  Sandbox TLS interception CA certificate: ${certPath}`);
+
+		if (systemWideCert) {
+			this.logger.info(
+				"🛡️  systemWideCert: true — per-session CA cert env vars are skipped (OS cert store handles trust)",
+			);
+		} else {
+			this.logger.info(
+				"🛡️  Per-session env vars are set automatically: NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT, CURL_CA_BUNDLE, CARGO_HTTP_CAINFO, AWS_CA_BUNDLE, DENO_CERT",
+			);
+		}
+
+		const trusted = this.isCertTrustedSystemWide();
+		if (trusted) {
+			this.logger.info("🛡️  CA certificate is trusted system-wide ✓");
+			if (!systemWideCert) {
+				this.logger.info(
+					"🛡️  Tip: set sandbox.systemWideCert: true in config.json to skip per-session cert env vars",
+				);
+			}
+		} else {
+			if (process.platform === "darwin") {
+				this.logger.warn(
+					"🛡️  CA certificate is NOT trusted in the macOS System keychain. To trust (requires sudo):",
+				);
+				this.logger.warn(
+					`🛡️  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${certPath}`,
+				);
+			} else if (process.platform === "linux") {
+				this.logger.warn(
+					"🛡️  CA certificate is NOT trusted system-wide. To trust (requires sudo):",
+				);
+				this.logger.warn(
+					`🛡️  sudo cp ${certPath} /usr/local/share/ca-certificates/cyrus-egress-ca.crt && sudo update-ca-certificates`,
+				);
+			}
+			if (systemWideCert) {
+				this.logger.warn(
+					"🛡️  systemWideCert is true but cert is not trusted — tools using the OS cert store will fail TLS verification",
+				);
+			}
+		}
+	}
+
+	/**
+	 * Check whether the Cyrus egress proxy CA is trusted at the OS level.
+	 * macOS: searches the System keychain. Linux: checks update-ca-certificates output.
+	 */
+	private isCertTrustedSystemWide(): boolean {
+		try {
+			if (process.platform === "darwin") {
+				execSync(
+					'security find-certificate -c "Cyrus Egress Proxy CA" /Library/Keychains/System.keychain',
+					{ stdio: "ignore" },
+				);
+				return true;
+			}
+			if (process.platform === "linux") {
+				// Check if our cert exists in the system CA certificates directory
+				execSync(
+					"test -f /usr/local/share/ca-certificates/cyrus-egress-ca.crt",
+					{ stdio: "ignore" },
+				);
+				return true;
+			}
+			return false;
+		} catch {
+			return false;
+		}
 	}
 
 	/**
@@ -5315,6 +5555,8 @@ ${input.userComment}
 			cyrusHome: this.cyrusHome,
 			logger: log,
 			plugins: await this.skillsPluginResolver.resolve(),
+			sandboxSettings: this.sdkSandboxSettings ?? undefined,
+			egressCaCertPath: this.egressCaCertPath ?? undefined,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},

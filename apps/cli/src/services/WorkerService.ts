@@ -266,6 +266,7 @@ export class WorkerService {
 			ngrokAuthToken,
 			// User access control configuration
 			userAccessControl: edgeConfig.userAccessControl,
+			sandbox: edgeConfig.sandbox,
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,

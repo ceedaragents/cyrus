@@ -19,8 +19,8 @@ type CyrusToolsMcpContextEntry = {
  * Dependencies injected into McpConfigService from the EdgeWorker.
  */
 export interface McpConfigServiceDeps {
-	/** Retrieve the stored Linear API token for a workspace, or null for CLI/unconfigured */
-	getLinearTokenForWorkspace: (workspaceId: string) => string | null;
+	/** Retrieve the stored Linear API token for a workspace */
+	getLinearTokenForWorkspace: (workspaceId: string) => string;
 	/** Retrieve the issue tracker service for a workspace (must expose getClient()) */
 	getIssueTracker: (
 		workspaceId: string,
@@ -66,56 +66,64 @@ export class McpConfigService {
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildContextId(repoId, parentSessionId);
 
+		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		const linearToken = this.deps.getLinearTokenForWorkspace(linearWorkspaceId);
 		const issueTracker = this.deps.getIssueTracker(linearWorkspaceId);
-		const linearClient = issueTracker?.getClient?.();
+		if (!issueTracker?.getClient) {
+			// CLI platform mode — no Linear client available, return config without cyrus-tools
+			const mcpConfig: Record<string, McpServerConfig> = {
+				"cyrus-docs": {
+					type: "http",
+					url: "https://atcyrus.com/docs/mcp",
+				},
+			};
+			return mcpConfig;
+		}
+		const linearClient = issueTracker.getClient();
+		const prebuiltServer = createCyrusToolsServer(
+			linearClient,
+			this.deps.createCyrusToolsOptions(parentSessionId),
+		);
+
+		this.contexts.set(contextId, {
+			contextId,
+			linearToken,
+			linearClient,
+			parentSessionId,
+			prebuiltServer,
+			createdAt: Date.now(),
+		});
+		this.pruneContexts();
+
+		const cyrusToolsAuthorizationHeader = this.getAuthorizationHeaderValue();
 
 		// Workspace-level MCP servers — configured once regardless of repo count
-		const mcpConfig: Record<string, McpServerConfig> = {};
-
-		// Linear MCP and cyrus-tools require a valid Linear token and client.
-		// CLI platform (and any unconfigured workspace) skips these.
-		if (linearToken && linearClient) {
-			const prebuiltServer = createCyrusToolsServer(
-				linearClient,
-				this.deps.createCyrusToolsOptions(parentSessionId),
-			);
-
-			this.contexts.set(contextId, {
-				contextId,
-				linearToken,
-				linearClient,
-				parentSessionId,
-				prebuiltServer,
-				createdAt: Date.now(),
-			});
-			this.pruneContexts();
-
-			const cyrusToolsAuthorizationHeader = this.getAuthorizationHeaderValue();
-
-			// https://linear.app/docs/mcp
-			mcpConfig.linear = {
+		// https://linear.app/docs/mcp
+		const mcpConfig: Record<string, McpServerConfig> = {
+			linear: {
 				type: "http",
 				url: "https://mcp.linear.app/mcp",
 				headers: {
 					Authorization: `Bearer ${linearToken}`,
 				},
-			};
-			mcpConfig["cyrus-tools"] = {
+			},
+			"cyrus-tools": {
 				type: "http",
 				url: this.deps.getCyrusToolsMcpUrl(),
 				headers: {
 					"x-cyrus-mcp-context-id": contextId,
 					...(cyrusToolsAuthorizationHeader
-						? { Authorization: cyrusToolsAuthorizationHeader }
+						? {
+								Authorization: cyrusToolsAuthorizationHeader,
+							}
 						: {}),
 				},
-			};
-			mcpConfig["cyrus-docs"] = {
+			},
+			"cyrus-docs": {
 				type: "http",
 				url: "https://atcyrus.com/docs/mcp",
-			};
-		}
+			},
+		};
 
 		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
 		// https://github.com/korotovsky/slack-mcp-server

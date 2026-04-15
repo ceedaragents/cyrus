@@ -4,6 +4,38 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.45] - 2026-04-15
+
+### Added
+- Added `DEFAULT_REPOS_DIR` constant to `cyrus-core` and `getDefaultReposDir()` utility functions (in `apps/cli` and `packages/config-updater`) mirroring the existing `CYRUS_WORKTREES_DIR` / `getDefaultWorktreesDir()` pattern. Replaced all hardcoded `join(cyrusHome, "repos")` calls in `Application.ts`, `SelfAddRepoCommand.ts`, `repository.ts` handler, and `f1/server.ts`. ([CYPACK-1081](https://linear.app/ceedar/issue/CYPACK-1081), [#1104](https://github.com/ceedaragents/cyrus/pull/1104))
+- Added `resolveClaudeCodeExecutablePath()` to `ClaudeRunner` — uses `createRequire(import.meta.url)` + `require.resolve()` to locate the SDK's `cli.js` in pnpm's `.pnpm` symlinked layout, bypassing the SDK's broken `import.meta.url` resolution. Ported from unmerged `cypack-762` branch (`42abcf22`). ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `pathToClaudeCodeExecutable` option to `ClaudeRunnerConfig` in `types.ts`. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `TRUSTED_DOMAINS` constant (~200 domains) in `packages/core/src/trusted-domains.ts` matching Claude Code on the web's default allowlist. Added `preset: "trusted"` field to `NetworkPolicySchema`. `EgressProxy.parsePolicy()` expands the preset into `allow` rules, merging any explicit custom rules on top. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
+
+### Changed
+- PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
+- Replaced `TodoWrite` with granular Task tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`) across all tool allowance lists, prompt templates, and tests. Tool count updated from 30 to 33. Removed `TodoWrite` from `writeTools` (task management is now read-only). Updated system prompt extensions, builder/debugger/scoper prompts, and prompt-template.md to reference Task tools. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+- Removed GitLab-specific changes (IP allowlist for `GitLabEventTransport`, default bot username changes) from tool allowance PR scope. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+- Auth credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`) are forwarded from `process.env` to the SDK child process, with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` set to prevent leakage to Bash subprocesses. Only `PATH` + auth tokens are forwarded from `process.env`; repo `.env` vars and `additionalEnv` are merged separately. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+
+## [0.2.44] - 2026-04-10
+
+### Fixed
+- `buildAgentContextBlock()` now always emits `<agent_context>` with default bot usernames (`cyrusagent`) instead of returning empty string when `GITHUB_BOT_USERNAME`/`GITLAB_BOT_USERNAME` env vars are unset. Updated `verify-and-ship` skill to also include an explicit fallback instruction. ([CYPACK-1054](https://linear.app/ceedar/issue/CYPACK-1054), [#1082](https://github.com/ceedaragents/cyrus/pull/1082))
+
+## [0.2.43] - 2026-04-08
+
+### Changed
+- Introduced `ChatRepositoryProvider` interface and `LiveChatRepositoryProvider` implementation to decouple `SlackChatAdapter` and `ChatSessionHandler` from frozen boot-time repository snapshots. Both now read live repository state on demand at session-build time via the provider abstraction. Removed `chatRepositoryPaths`, `repository`, and `linearWorkspaceId` from `ChatSessionHandlerDeps` in favor of a single `chatRepositoryProvider` field. ([CYPACK-1051](https://linear.app/ceedar/issue/CYPACK-1051), [#1078](https://github.com/ceedaragents/cyrus/pull/1078))
+
+## [0.2.42] - 2026-04-06
+
+### Fixed
+- Fixed bundled skills not being included in published npm package. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046), [#1073](https://github.com/ceedaragents/cyrus/pull/1073))
+
+## [0.2.41] - 2026-04-06
+
 ### Changed
 - Replaced rigid procedure-based agent session architecture with skills-based approach. Procedures (ProcedureAnalyzer, subroutine sequencing, validation loop) removed in favor of SKILL.md files delivered via Claude Agent SDK plugin (`cyrus-skills-plugin`). Added `plugins` field to `AgentRunnerConfig`, `ClaudeRunnerConfig`, and `IssueRunnerConfigInput`; wired through `ClaudeRunner` to SDK `query()` options. Added Stop hook to `RunnerConfigBuilder` with `stop_hook_active` guard to ensure PRs/summaries are created before session ends. Simplified `AgentSessionManager` by removing procedure completion routing and validation loop logic. Re-exported `SdkPluginConfig` from `claude-runner`. Removed ~7000 lines of procedure/validation/subroutine code. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
 - Extracted `SkillsPluginResolver` from `EdgeWorker` (SRP refactor). Skills plugin resolution, user plugin manifest auto-scaffolding, and `buildSkillsGuidance()` now live in a dedicated module instead of being inline in the 5400-line EdgeWorker. Removed stale `postProcedureSelectionThought` mocks from 7 test files and updated procedure-referencing comments across source and docs. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))

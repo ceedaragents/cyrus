@@ -114,6 +114,135 @@ const PromptTypeDefaultsSchema = z.object({
 });
 
 /**
+ * Header transform rule for egress proxy.
+ * Injects or overrides HTTP headers on outgoing requests to a specific domain.
+ * Follows the Vercel Sandbox Firewall transform interface.
+ *
+ * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall
+ */
+const HeaderTransformSchema = z.object({
+	/** Headers to inject/override on outgoing requests */
+	headers: z.record(z.string(), z.string()),
+});
+
+/**
+ * Per-domain allow rule with optional header transforms.
+ * When transforms are specified, TLS is terminated for that domain
+ * so headers can be inspected and modified (credentials brokering).
+ */
+const DomainRuleSchema = z.array(
+	z.object({
+		transform: z.array(HeaderTransformSchema).optional(),
+	}),
+);
+
+/**
+ * Network policy for egress sandboxing.
+ * Controls which domains/subnets Bash-spawned subprocesses (git, gh, npm,
+ * curl, etc.) can reach and enables per-domain header injection
+ * (credentials brokering).
+ *
+ * Three modes (following Vercel Sandbox Firewall conventions):
+ * - **allow-all**: No networkPolicy set — unrestricted access (default)
+ * - **deny-all**: networkPolicy set with no `allow` rules — blocks all traffic
+ * - **user-defined**: networkPolicy with `allow` rules — deny-all by default,
+ *   only explicitly listed domains are reachable
+ *
+ * Scope: Claude Code's sandbox network proxy only intercepts traffic from
+ * Bash tool subprocesses. It does NOT apply to Claude's own inference API
+ * calls, MCP server traffic, or built-in file tools (Read/Edit/Write).
+ *
+ * @see https://docs.anthropic.com/en/docs/claude-code/security#sandbox
+ * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall#network-policies
+ */
+export const NetworkPolicySchema = z.object({
+	/**
+	 * Network policy preset. When set, pre-populates the allow list with
+	 * a curated set of domains. Additional `allow` rules are merged on top.
+	 *
+	 * - `"trusted"`: ~200 domains matching Claude Code on the web's default
+	 *   allowlist — package registries, version control, cloud platforms,
+	 *   container registries, dev tools, and monitoring services.
+	 *
+	 * @see https://docs.anthropic.com/en/docs/claude-code/claude-code-on-the-web#default-allowed-domains
+	 */
+	preset: z.enum(["trusted"]).optional(),
+
+	/**
+	 * Domain allow rules with optional transforms.
+	 * When present, all unlisted domains are denied (deny-all default).
+	 * Keys are domain patterns:
+	 * - Exact match: "api.example.com"
+	 * - Wildcard subdomain: "*.example.com" (matches any subdomain, NOT parent)
+	 * - Wildcard segment: "www.*.com" (matches one segment)
+	 *
+	 * When a preset is also set, these rules are merged on top of the
+	 * preset's domains (custom rules take precedence).
+	 */
+	allow: z.record(z.string(), DomainRuleSchema).optional(),
+
+	/** Subnet-based rules */
+	subnets: z
+		.object({
+			/** IP ranges to allow (bypasses domain matching) */
+			allow: z.array(z.string()).optional(),
+			/** IP ranges to deny (takes precedence over all allow rules) */
+			deny: z.array(z.string()).optional(),
+		})
+		.optional(),
+});
+
+/**
+ * Sandbox configuration for network egress control.
+ * Configures the egress proxy that intercepts outbound traffic from
+ * Bash-spawned subprocesses in agent sessions.
+ *
+ * When enabled, the proxy starts on EdgeWorker boot and sandbox
+ * network ports are passed to the Claude Agent SDK per-session.
+ * Only Bash tool commands (git, gh, npm, curl, etc.) route through
+ * the proxy — Claude's inference API, MCP servers, and built-in
+ * file tools are unaffected.
+ *
+ * @see https://docs.anthropic.com/en/docs/claude-code/security#sandbox
+ */
+export const SandboxConfigSchema = z.object({
+	/**
+	 * Enable or disable the egress proxy.
+	 * When true, the proxy starts on EdgeWorker boot and sandbox network ports
+	 * are passed to Claude Agent SDK sessions to route traffic through it.
+	 * @default false
+	 */
+	enabled: z.boolean().optional(),
+
+	/** HTTP proxy port for SDK sandbox.network.httpProxyPort */
+	httpProxyPort: z.number().optional().default(9080),
+
+	/** SOCKS proxy port for SDK sandbox.network.socksProxyPort */
+	socksProxyPort: z.number().optional().default(9081),
+
+	/**
+	 * Network policy controlling allowed domains, transforms, and subnets.
+	 * If omitted, all traffic is allowed (passthrough mode with logging).
+	 */
+	networkPolicy: NetworkPolicySchema.optional(),
+
+	/**
+	 * Whether the CA certificate has been trusted system-wide (e.g., via
+	 * `sudo security add-trusted-cert` on macOS). When true, per-session
+	 * CA cert env vars (NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, etc.) are
+	 * skipped — the OS cert store handles trust for all tools.
+	 * @default false
+	 */
+	systemWideCert: z.boolean().optional(),
+
+	/**
+	 * Log all proxied requests (method, URL, domain, status).
+	 * @default true
+	 */
+	logRequests: z.boolean().optional(),
+});
+
+/**
  * Global defaults for prompt types
  */
 const PromptDefaultsSchema = z.object({
@@ -267,6 +396,13 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/**
+	 * Sandbox configuration for network egress control.
+	 * When enabled, starts an egress proxy and configures Claude Code to route
+	 * all agent network traffic through it for inspection and filtering.
+	 */
+	sandbox: SandboxConfigSchema.optional(),
 });
 
 /**
@@ -373,6 +509,8 @@ export type UserAccessControlConfig = z.infer<
 export type LinearWorkspaceConfig = z.infer<typeof LinearWorkspaceConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type NetworkPolicy = z.infer<typeof NetworkPolicySchema>;
 export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema
 >;

@@ -35,6 +35,7 @@ export type {
 	McpServerConfig,
 	OutputFormat,
 	OutputFormatConfig,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKRateLimitEvent,

@@ -80,8 +80,8 @@ importers:
         specifier: ^5.2.0
         version: 5.2.1
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
       file-type:
         specifier: ^21.0.0
         version: 21.3.2
@@ -226,8 +226,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -258,8 +258,8 @@ importers:
         specifier: ^20.0.0
         version: 20.19.21
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
       tsx:
         specifier: ^4.20.6
         version: 4.20.6
@@ -343,8 +343,8 @@ importers:
         specifier: workspace:*
         version: link:../slack-event-transport
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
       fastify-mcp:
         specifier: ^2.1.0
         version: 2.1.0(zod@4.3.6)
@@ -354,6 +354,9 @@ importers:
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
+      node-forge:
+        specifier: ^1.4.0
+        version: 1.4.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -361,12 +364,15 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
+      '@types/node-forge':
+        specifier: ^1.3.14
+        version: 1.3.14
       '@vitest/coverage-v8':
         specifier: ^3.1.4
         version: 3.2.4(vitest@3.2.4)
       axios:
-        specifier: ^1.13.5
-        version: 1.13.5
+        specifier: ^1.15.0
+        version: 1.15.0
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
@@ -423,8 +429,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -442,8 +448,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -464,8 +470,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -536,8 +542,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fastify:
-        specifier: ^5.8.3
-        version: 5.8.3
+        specifier: ^5.8.5
+        version: 5.8.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1798,6 +1804,9 @@ packages:
   '@types/minimatch@5.1.2':
     resolution: {integrity: sha512-K0VQKziLUWkVKiRVrx4a40iPaxTUefQmjtkQofBkYRcoaaL/8rhwDWww9qWbrgicNOgnpIsMxyNIUM4+n6dUIA==}
 
+  '@types/node-forge@1.3.14':
+    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
+
   '@types/node@20.19.21':
     resolution: {integrity: sha512-CsGG2P3I5y48RPMfprQGfy4JPRZ6csfC3ltBZSRItG3ngggmNY/qs2uZKp4p9VbrpqNNSMzUZNFZKzgOGnd/VA==}
 
@@ -1944,8 +1953,8 @@ packages:
   avvio@9.2.0:
     resolution: {integrity: sha512-2t/sy01ArdHHE0vRH5Hsay+RtCZt3dLPji7W7/MMOCEgze5b7SNDC4j5H6FnVgPkI1MTNFGzHdHrVXDDl7QSSQ==}
 
-  axios@1.13.5:
-    resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
+  axios@1.15.0:
+    resolution: {integrity: sha512-wWyJDlAatxk30ZJer+GeCWS209sA42X+N5jU2jy6oHTp7ufw8uzUTVFBX9+wTfAlhiJXGS0Bq7X6efruWjuK9Q==}
 
   balanced-match@4.0.4:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
@@ -2330,8 +2339,8 @@ packages:
   fastify-mcp@2.1.0:
     resolution: {integrity: sha512-nx1Es7kEqzYe3COWwqdzQbtjgGJVKXFow6pd6rKKsByyXANdJAkEXAXeIJ+ox/vhGD26X7yX6pDDGmaezkBy6g==}
 
-  fastify@5.8.3:
-    resolution: {integrity: sha512-XJXpRQ41+rsJ/GLeP9vyDC+fBXilcTlEXokMSexkdEkla4uf7ZQNaI5xl3el+kW5TZQulqYxLr659ey/KX7XmQ==}
+  fastify@5.8.5:
+    resolution: {integrity: sha512-Yqptv59pQzPgQUSIm87hMqHJmdkb1+GPxdE6vW6FRyVE9G86mt7rOghitiU4JHRaTyDUk9pfeKmDeu70lAwM4Q==}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -2906,6 +2915,10 @@ packages:
       encoding:
         optional: true
 
+  node-forge@1.4.0:
+    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+    engines: {node: '>= 6.13.0'}
+
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
@@ -3097,8 +3110,9 @@ packages:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
 
-  proxy-from-env@1.1.0:
-    resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
+  proxy-from-env@2.1.0:
+    resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
+    engines: {node: '>=10'}
 
   pstree.remy@1.1.8:
     resolution: {integrity: sha512-77DZwxQmxKnu3aR542U+X8FypNzbfJ+C5XQDk3uWjWxn6151aIMGthWYRXTqT1E5oJvg+ljaa2OJi+VfvCOQ8w==}
@@ -4884,6 +4898,10 @@ snapshots:
 
   '@types/minimatch@5.1.2': {}
 
+  '@types/node-forge@1.3.14':
+    dependencies:
+      '@types/node': 20.19.21
+
   '@types/node@20.19.21':
     dependencies:
       undici-types: 6.21.0
@@ -5052,11 +5070,11 @@ snapshots:
       '@fastify/error': 4.2.0
       fastq: 1.20.1
 
-  axios@1.13.5:
+  axios@1.15.0:
     dependencies:
       follow-redirects: 1.15.11
       form-data: 4.0.5
-      proxy-from-env: 1.1.0
+      proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
 
@@ -5500,13 +5518,13 @@ snapshots:
   fastify-mcp@2.1.0(zod@4.3.6):
     dependencies:
       '@modelcontextprotocol/sdk': 1.27.1(zod@4.3.6)
-      fastify: 5.8.3
+      fastify: 5.8.5
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
       - zod
 
-  fastify@5.8.3:
+  fastify@5.8.5:
     dependencies:
       '@fastify/ajv-compiler': 4.0.5
       '@fastify/error': 4.2.0
@@ -6137,6 +6155,8 @@ snapshots:
     dependencies:
       whatwg-url: 5.0.0
 
+  node-forge@1.4.0: {}
+
   node-gyp-build@4.8.4: {}
 
   node-pty@1.0.0:
@@ -6321,7 +6341,7 @@ snapshots:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
 
-  proxy-from-env@1.1.0: {}
+  proxy-from-env@2.1.0: {}
 
   pstree.remy@1.1.8: {}
 

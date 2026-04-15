@@ -398,7 +398,7 @@ export interface IAgentRunner {
 export interface AgentRunnerConfig {
 	/** Working directory for the agent session */
 	workingDirectory?: string;
-	/** List of allowed tool patterns (e.g., ["Read(**)", "Edit(**)"]) */
+	/** List of allowed tool names (e.g., ["Read", "Edit", "Bash"]) */
 	allowedTools?: string[];
 	/** List of disallowed tool patterns */
 	disallowedTools?: string[];

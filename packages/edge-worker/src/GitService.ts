@@ -16,7 +16,7 @@ import type {
 	RepositoryConfig,
 	Workspace,
 } from "cyrus-core";
-import { createLogger, DEFAULT_WORKTREES_DIR, type ILogger } from "cyrus-core";
+import { createLogger, getDefaultWorktreesDir, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 export interface CreateGitWorktreeOptions {
@@ -52,16 +52,6 @@ export class GitService {
 	}
 
 	/**
-	 * Resolves the workspace base directory dynamically on every access,
-	 * so that runtime changes to CYRUS_WORKTREES_DIR are reflected.
-	 */
-	private get workspaceBaseDir(): string {
-		return (
-			process.env.CYRUS_WORKTREES_DIR?.trim() ||
-			join(this.cyrusHome, DEFAULT_WORKTREES_DIR)
-		);
-	}
-	/**
 	 * Check if a branch exists locally or remotely
 	 */
 	async branchExists(branchName: string, repoPath: string): Promise<boolean> {
@@ -91,10 +81,21 @@ export class GitService {
 	}
 
 	/**
-	 * Sanitize branch name by removing backticks to prevent command injection
+	 * Sanitize branch name by removing characters invalid in git refs.
+	 * Git branch names cannot contain: space, ~, ^, :, ?, *, [, \, backtick,
+	 * consecutive dots (..), ASCII control chars, or start/end with dot or slash.
+	 * See `git check-ref-format` for the full specification.
 	 */
 	public sanitizeBranchName(name: string): string {
-		return name ? name.replace(/`/g, "") : name;
+		if (!name) return name;
+		return name
+			.replace(/[`~^:?*[\]\\@{}\s]/g, "-") // replace invalid chars with dash
+			.replace(/\.{2,}/g, ".") // collapse consecutive dots
+			.replace(/\/{2,}/g, "/") // collapse consecutive slashes
+			.replace(/\.lock(\/|$)/g, "$1") // remove .lock component
+			.replace(/^[.\-/]+/, "") // strip leading dots, dashes, slashes
+			.replace(/[.\-/]+$/, "") // strip trailing dots, dashes, slashes
+			.replace(/-{2,}/g, "-"); // collapse consecutive dashes
 	}
 
 	/**
@@ -881,7 +882,10 @@ export class GitService {
 	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
 	 */
 	deleteWorktree(issueIdentifier: string): void {
-		const workspacePath = join(this.workspaceBaseDir, issueIdentifier);
+		const workspacePath = join(
+			getDefaultWorktreesDir(this.cyrusHome),
+			issueIdentifier,
+		);
 
 		if (!existsSync(workspacePath)) {
 			this.logger.info(

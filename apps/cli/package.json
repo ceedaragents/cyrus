@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-ai",
-	"version": "0.2.40",
+	"version": "0.2.45",
 	"description": "AI-powered Linear issue automation using Claude",
 	"main": "dist/src/app.js",
 	"types": "dist/src/app.d.ts",
@@ -50,7 +50,7 @@
 		"cyrus-slack-event-transport": "workspace:*",
 		"dotenv": "^16.5.0",
 		"express": "^5.2.0",
-		"fastify": "^5.8.3",
+		"fastify": "^5.8.5",
 		"file-type": "^21.0.0",
 		"fs-extra": "^11.3.0",
 		"node-fetch": "^2.7.0",
