@@ -13,7 +13,12 @@
 set -euo pipefail
 
 echo "Running Claude Code to capture init block..."
-init_json=$(claude -p "say hi" --output-format stream-json --verbose 2>&1 | head -1)
+# Capture full output to a temp file to avoid SIGPIPE from head -1
+# (pipefail + head causes claude to exit non-zero when the pipe closes early)
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+claude -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
+init_json=$(head -1 "$tmpfile")
 
 # The first line of stream-json output is the init message containing the tool list
 tools=$(echo "$init_json" | jq -r '.tools[]' 2>/dev/null)
