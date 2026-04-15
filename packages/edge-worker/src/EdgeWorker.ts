@@ -555,6 +555,7 @@ export class EdgeWorker extends EventEmitter {
 			// Store CA cert path — passed per-session via env, not process.env
 			// (process.env would leak to all child processes, potentially exposing secrets)
 			this.egressCaCertPath = this.egressProxy.getCACertPath();
+			this.logCertTrustInstructions(this.egressCaCertPath);
 		} else {
 			this.logger.info(
 				"🛡️  Sandbox egress proxy: disabled (set sandbox.enabled=true in config.json to enable)",
@@ -2245,6 +2246,7 @@ ${taskSection}`;
 				},
 			};
 			this.egressCaCertPath = this.egressProxy.getCACertPath();
+			this.logCertTrustInstructions(this.egressCaCertPath);
 		} else if (wasEnabled && !isEnabled) {
 			// Stop proxy
 			this.logger.info(
@@ -2254,6 +2256,27 @@ ${taskSection}`;
 			this.egressProxy = null;
 			this.sdkSandboxSettings = null;
 			this.egressCaCertPath = null;
+		}
+	}
+
+	/**
+	 * Log instructions for trusting the egress proxy CA certificate.
+	 * The proxy auto-sets NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, etc. for child
+	 * processes, but system-wide trust (macOS Keychain) requires sudo.
+	 */
+	private logCertTrustInstructions(certPath: string): void {
+		this.logger.info(`🛡️  Sandbox TLS interception CA certificate: ${certPath}`);
+		this.logger.info(
+			"🛡️  Per-session env vars are set automatically: NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT",
+		);
+		if (process.platform === "darwin") {
+			this.logger.info(
+				`🛡️  To trust system-wide (requires sudo): sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${certPath}`,
+			);
+		} else if (process.platform === "linux") {
+			this.logger.info(
+				`🛡️  To trust system-wide: sudo cp ${certPath} /usr/local/share/ca-certificates/cyrus-egress-ca.crt && sudo update-ca-certificates`,
+			);
 		}
 	}
 

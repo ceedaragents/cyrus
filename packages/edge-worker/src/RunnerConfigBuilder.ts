@@ -402,7 +402,15 @@ export class RunnerConfigBuilder {
 
 		if (input.egressCaCertPath) {
 			result.additionalEnv = {
+				// Node.js (SDK, npm, etc.)
 				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
+				// OpenSSL-based tools (general fallback)
+				SSL_CERT_FILE: input.egressCaCertPath,
+				// Git HTTPS operations
+				GIT_SSL_CAINFO: input.egressCaCertPath,
+				// Python requests/pip
+				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
+				PIP_CERT: input.egressCaCertPath,
 			};
 		}
 
