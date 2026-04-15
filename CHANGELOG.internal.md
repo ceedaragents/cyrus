@@ -4,8 +4,7 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-### Changed
-- PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
+## [0.2.45] - 2026-04-15
 
 ### Added
 - Added `DEFAULT_REPOS_DIR` constant to `cyrus-core` and `getDefaultReposDir()` utility functions (in `apps/cli` and `packages/config-updater`) mirroring the existing `CYRUS_WORKTREES_DIR` / `getDefaultWorktreesDir()` pattern. Replaced all hardcoded `join(cyrusHome, "repos")` calls in `Application.ts`, `SelfAddRepoCommand.ts`, `repository.ts` handler, and `f1/server.ts`. ([CYPACK-1081](https://linear.app/ceedar/issue/CYPACK-1081), [#1104](https://github.com/ceedaragents/cyrus/pull/1104))
@@ -15,6 +14,7 @@ This changelog documents internal development changes, refactors, tooling update
 - Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
 
 ### Changed
+- PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
 - Replaced `TodoWrite` with granular Task tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`) across all tool allowance lists, prompt templates, and tests. Tool count updated from 30 to 33. Removed `TodoWrite` from `writeTools` (task management is now read-only). Updated system prompt extensions, builder/debugger/scoper prompts, and prompt-template.md to reference Task tools. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
 - Removed GitLab-specific changes (IP allowlist for `GitLabEventTransport`, default bot username changes) from tool allowance PR scope. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
 - Auth credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`) are forwarded from `process.env` to the SDK child process, with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` set to prevent leakage to Bash subprocesses. Only `PATH` + auth tokens are forwarded from `process.env`; repo `.env` vars and `additionalEnv` are merged separately. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
