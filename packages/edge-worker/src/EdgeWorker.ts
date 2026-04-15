@@ -521,6 +521,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.addNewRepositories(changes.added);
 				// Detect and apply workspace token changes before overwriting config
 				this.updateLinearWorkspaceTokens(changes.newConfig);
+				// Live-update sandbox / egress proxy settings
+				await this.applySandboxConfigChanges(changes.newConfig);
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
@@ -2205,6 +2207,54 @@ ${taskSection}`;
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
+	}
+
+	/**
+	 * Apply sandbox config changes from a config reload.
+	 * Handles three transitions:
+	 * - enabled → enabled: update network policy on the running proxy
+	 * - disabled → enabled: start a new proxy
+	 * - enabled → disabled: stop the running proxy
+	 */
+	private async applySandboxConfigChanges(
+		newConfig: EdgeWorkerConfig,
+	): Promise<void> {
+		const wasEnabled = this.egressProxy !== null;
+		const isEnabled = newConfig.sandbox?.enabled === true;
+
+		if (wasEnabled && isEnabled) {
+			// Policy update — proxy stays running, rules change
+			if (newConfig.sandbox?.networkPolicy) {
+				this.egressProxy!.updateNetworkPolicy(newConfig.sandbox.networkPolicy);
+			}
+		} else if (!wasEnabled && isEnabled) {
+			// Start proxy for the first time
+			this.logger.info("🛡️  Sandbox egress proxy: starting (config change)...");
+			this.egressProxy = new EgressProxy(
+				newConfig.sandbox!,
+				this.cyrusHome,
+				this.logger,
+			);
+			await this.egressProxy.start();
+
+			this.sdkSandboxSettings = {
+				enabled: true,
+				network: {
+					httpProxyPort: this.egressProxy.getHttpProxyPort(),
+					socksProxyPort: this.egressProxy.getSocksProxyPort(),
+				},
+			};
+			this.egressCaCertPath = this.egressProxy.getCACertPath();
+		} else if (wasEnabled && !isEnabled) {
+			// Stop proxy
+			this.logger.info(
+				"🛡️  Sandbox egress proxy: stopping (disabled in config)",
+			);
+			await this.egressProxy!.stop();
+			this.egressProxy = null;
+			this.sdkSandboxSettings = null;
+			this.egressCaCertPath = null;
+		}
 	}
 
 	/**
