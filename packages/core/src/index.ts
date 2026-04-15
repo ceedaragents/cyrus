@@ -80,6 +80,7 @@ export {
 	DEFAULT_PROXY_URL,
 	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
+	getDefaultReposDir,
 } from "./constants.js";
 // Issue Tracker Abstraction
 export type {

@@ -2,18 +2,12 @@ import { exec } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { DEFAULT_REPOS_DIR } from "cyrus-core";
+import { getDefaultReposDir } from "cyrus-core";
 import type {
 	ApiResponse,
 	DeleteRepositoryPayload,
 	RepositoryPayload,
 } from "../types.js";
-
-function getDefaultReposDir(cyrusHome: string): string {
-	return (
-		process.env.CYRUS_REPOS_DIR?.trim() || join(cyrusHome, DEFAULT_REPOS_DIR)
-	);
-}
 
 const execAsync = promisify(exec);
 
