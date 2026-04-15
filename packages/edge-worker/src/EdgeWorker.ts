@@ -552,10 +552,11 @@ export class EdgeWorker extends EventEmitter {
 				},
 			};
 
-			// Store CA cert path — passed per-session via env, not process.env
-			// (process.env would leak to all child processes, potentially exposing secrets)
-			this.egressCaCertPath = this.egressProxy.getCACertPath();
-			this.logCertTrustInstructions(this.egressCaCertPath);
+			// Build CA cert bundle — merges our proxy CA with any pre-existing
+			// NODE_EXTRA_CA_CERTS from the host (e.g., corporate proxy CA).
+			// Passed per-session via env, not process.env.
+			this.egressCaCertPath = this.egressProxy.buildCACertBundle();
+			this.logCertTrustInstructions(this.egressProxy.getCACertPath());
 		} else {
 			this.logger.info(
 				"🛡️  Sandbox egress proxy: disabled (set sandbox.enabled=true in config.json to enable)",
@@ -2245,8 +2246,8 @@ ${taskSection}`;
 					socksProxyPort: this.egressProxy.getSocksProxyPort(),
 				},
 			};
-			this.egressCaCertPath = this.egressProxy.getCACertPath();
-			this.logCertTrustInstructions(this.egressCaCertPath);
+			this.egressCaCertPath = this.egressProxy.buildCACertBundle();
+			this.logCertTrustInstructions(this.egressProxy.getCACertPath());
 		} else if (wasEnabled && !isEnabled) {
 			// Stop proxy
 			this.logger.info(

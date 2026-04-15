@@ -67,6 +67,9 @@ export class EgressProxy {
 	/** Path where the CA cert PEM is written for NODE_EXTRA_CA_CERTS */
 	private caCertPath: string = "";
 
+	/** Directory where cert files are stored */
+	private certsDir: string;
+
 	/** Cache of generated server certificates keyed by hostname */
 	private certCache = new Map<string, { key: string; cert: string }>();
 
@@ -89,9 +92,9 @@ export class EgressProxy {
 		this.logger = logger ?? createLogger({ component: "EgressProxy" });
 
 		// Generate CA cert and store path
-		const certsDir = join(cyrusHome, "certs");
-		this.caCertPath = join(certsDir, "cyrus-egress-ca.pem");
-		this.generateCA(certsDir);
+		this.certsDir = join(cyrusHome, "certs");
+		this.caCertPath = join(this.certsDir, "cyrus-egress-ca.pem");
+		this.generateCA(this.certsDir);
 
 		// Parse policy into fast-lookup structures
 		this.parsePolicy();
@@ -103,6 +106,40 @@ export class EgressProxy {
 	 */
 	getCACertPath(): string {
 		return this.caCertPath;
+	}
+
+	/**
+	 * Build a CA cert bundle that includes the proxy CA and any pre-existing
+	 * cert file (e.g., corporate proxy CA). NODE_EXTRA_CA_CERTS accepts a
+	 * single file path, so we concatenate all PEM certs into one bundle.
+	 *
+	 * Checks (in order): explicit existingCertPath arg, then the host
+	 * process's NODE_EXTRA_CA_CERTS env var. If neither is set or the file
+	 * doesn't exist, returns the proxy CA cert path unchanged.
+	 */
+	buildCACertBundle(existingCertPath?: string): string {
+		const certPath = existingCertPath ?? process.env.NODE_EXTRA_CA_CERTS;
+
+		if (!certPath || !existsSync(certPath)) {
+			return this.caCertPath;
+		}
+
+		// If pointing at our own cert or bundle, no merge needed
+		if (
+			certPath === this.caCertPath ||
+			certPath === join(this.certsDir, "cyrus-ca-bundle.pem")
+		) {
+			return this.caCertPath;
+		}
+
+		const bundlePath = join(this.certsDir, "cyrus-ca-bundle.pem");
+		const existingCerts = readFileSync(certPath, "utf8");
+		const bundle = `${existingCerts.trimEnd()}\n${this.caCertPem}`;
+		writeFileSync(bundlePath, bundle);
+		this.logger.info(
+			`[EgressProxy] Created combined CA bundle: ${bundlePath} (merged with ${certPath})`,
+		);
+		return bundlePath;
 	}
 
 	/**
