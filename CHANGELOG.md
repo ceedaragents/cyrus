@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Cyrus PR marker is now guaranteed on GitHub PRs** — After a session completes, Cyrus programmatically verifies that the `<!-- generated-by-cyrus -->` attribution marker is present in any open PR on the session's branch. If missing (e.g., the agent didn't follow the prompt instruction), the marker is automatically appended via the GitHub API. ([CYPACK-1082](https://linear.app/ceedar/issue/CYPACK-1082))
+- **Cyrus PR marker is now guaranteed on GitHub PRs** — After a session completes, Cyrus programmatically verifies that the `<!-- generated-by-cyrus -->` attribution marker is present in any open PR on the session's branch. If missing (e.g., the agent didn't follow the prompt instruction), the marker is automatically appended via the GitHub API. ([CYPACK-1082](https://linear.app/ceedar/issue/CYPACK-1082), [#1106](https://github.com/ceedaragents/cyrus/pull/1106))
 - **Changelog updates no longer create duplicate entries** — The PR/MR and changelog-update skills now diff entries against the base branch instead of only the last commit, correctly detecting entries already added by the current branch and updating them in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
 
 ### Added
