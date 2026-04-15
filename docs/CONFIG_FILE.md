@@ -211,6 +211,81 @@ Users can be specified in three formats:
 
 ---
 
+## Sandbox (Network Egress Control)
+
+### `sandbox` (object)
+
+Controls network egress for agent sessions. When enabled, all Bash-spawned subprocess traffic (git, gh, npm, curl, etc.) routes through a local egress proxy for domain filtering, request logging, and per-domain header injection. Claude's inference API, MCP servers, and built-in file tools (Read/Edit/Write) are unaffected.
+
+**Properties:**
+
+- **`enabled`** (boolean) - Enable or disable the egress proxy. Default: `false`
+- **`httpProxyPort`** (number) - HTTP proxy port. Default: `9080`
+- **`socksProxyPort`** (number) - SOCKS proxy port. Default: `9081`
+- **`logRequests`** (boolean) - Log all proxied requests. Default: `true`
+- **`networkPolicy`** (object) - Domain allow/deny rules and header transforms. If omitted, all traffic is allowed (passthrough mode with logging).
+
+**Example — allow specific domains with header injection:**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "allow": [
+        { "host": "api.github.com" },
+        { "host": "registry.npmjs.org" },
+        {
+          "host": "api.example.com",
+          "transforms": [
+            {
+              "type": "header",
+              "set": {
+                "Authorization": "Bearer ${API_TOKEN}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+When `networkPolicy.allow` is specified, all domains not in the list are blocked (deny-all). Domains with `transforms` get TLS termination for header injection; all others pass through as CONNECT tunnels.
+
+### CA Certificate Trust
+
+The egress proxy generates a CA certificate at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception of domains with transform rules. This cert is stable across restarts — once trusted, it stays trusted.
+
+**Automatic (per-session):** Cyrus sets the following env vars automatically for every agent session: `NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`. These cover Node.js, Git, Python, and OpenSSL-based tools. If `NODE_EXTRA_CA_CERTS` is already set in the host environment (e.g., corporate proxy), Cyrus merges both certs into a combined bundle.
+
+**System-wide (optional, requires sudo):** For tools that use the OS certificate store (e.g., curl on macOS), trust the cert in the system keychain:
+
+```bash
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
+
+# Linux
+sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyrus-egress-ca.crt
+sudo update-ca-certificates
+```
+
+On startup, Cyrus checks whether the cert is already trusted in the macOS System keychain and logs the result:
+
+```
+🛡️  CA certificate is already trusted in the macOS System keychain ✓
+```
+
+or:
+
+```
+[WARN] 🛡️  CA certificate is NOT trusted in the macOS System keychain. To trust (requires sudo):
+[WARN] 🛡️  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
+```
+
+---
+
 ## Global Configuration
 
 In addition to repository-specific settings, you can configure global defaults:
