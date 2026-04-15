@@ -4,6 +4,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NetworkPolicy, SandboxConfig } from "cyrus-core";
+import { TRUSTED_DOMAINS } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EgressProxy } from "../src/EgressProxy.js";
 
@@ -252,6 +253,75 @@ describe("EgressProxy", () => {
 			// Now blocked.com should be allowed
 			const result2 = await connectViaProxy(httpPort, "blocked.com:443");
 			expect(result2).not.toBe(403);
+		});
+	});
+
+	describe("trusted preset", () => {
+		it("expands trusted preset into allow list", async () => {
+			proxy = new EgressProxy(
+				createConfig({
+					httpProxyPort: httpPort,
+					socksProxyPort: socksPort,
+					networkPolicy: {
+						preset: "trusted",
+					},
+				}),
+				TEST_CYRUS_HOME,
+			);
+			await proxy.start();
+
+			// github.com (in the trusted list) should be allowed
+			const githubResult = await connectViaProxy(httpPort, "github.com:443");
+			expect(githubResult).not.toBe(403);
+
+			// evil.example.com (not in the trusted list) should be blocked
+			const evilResult = await connectViaProxy(
+				httpPort,
+				"evil.example.com:443",
+			);
+			expect(evilResult).toBe(403);
+		});
+
+		it("merges custom allow rules on top of trusted preset", async () => {
+			proxy = new EgressProxy(
+				createConfig({
+					httpProxyPort: httpPort,
+					socksProxyPort: socksPort,
+					networkPolicy: {
+						preset: "trusted",
+						allow: {
+							"internal.company.com": [{}],
+						},
+					},
+				}),
+				TEST_CYRUS_HOME,
+			);
+			await proxy.start();
+
+			// Custom domain should be allowed
+			const customResult = await connectViaProxy(
+				httpPort,
+				"internal.company.com:443",
+			);
+			expect(customResult).not.toBe(403);
+
+			// Trusted domain should still be allowed
+			const trustedResult = await connectViaProxy(
+				httpPort,
+				"registry.npmjs.org:443",
+			);
+			expect(trustedResult).not.toBe(403);
+
+			// Unknown domain should be blocked
+			const blockedResult = await connectViaProxy(
+				httpPort,
+				"unknown.example.com:443",
+			);
+			expect(blockedResult).toBe(403);
+		});
+
+		it("contains expected number of trusted domains", () => {
+			expect(TRUSTED_DOMAINS.length).toBeGreaterThan(180);
 		});
 	});
 

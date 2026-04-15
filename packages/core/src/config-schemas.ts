@@ -157,12 +157,27 @@ const DomainRuleSchema = z.array(
  */
 export const NetworkPolicySchema = z.object({
 	/**
+	 * Network policy preset. When set, pre-populates the allow list with
+	 * a curated set of domains. Additional `allow` rules are merged on top.
+	 *
+	 * - `"trusted"`: ~200 domains matching Claude Code on the web's default
+	 *   allowlist — package registries, version control, cloud platforms,
+	 *   container registries, dev tools, and monitoring services.
+	 *
+	 * @see https://docs.anthropic.com/en/docs/claude-code/claude-code-on-the-web#default-allowed-domains
+	 */
+	preset: z.enum(["trusted"]).optional(),
+
+	/**
 	 * Domain allow rules with optional transforms.
 	 * When present, all unlisted domains are denied (deny-all default).
 	 * Keys are domain patterns:
 	 * - Exact match: "api.example.com"
 	 * - Wildcard subdomain: "*.example.com" (matches any subdomain, NOT parent)
 	 * - Wildcard segment: "www.*.com" (matches one segment)
+	 *
+	 * When a preset is also set, these rules are merged on top of the
+	 * preset's domains (custom rules take precedence).
 	 */
 	allow: z.record(z.string(), DomainRuleSchema).optional(),
 

@@ -32,6 +32,8 @@ export {
 	UserIdentifierSchema,
 } from "./config-schemas.js";
 
+export { TRUSTED_DOMAINS } from "./trusted-domains.js";
+
 /**
  * Resolve path with tilde (~) expansion
  * Expands ~ to the user's home directory and resolves to absolute path

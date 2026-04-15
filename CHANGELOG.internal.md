@@ -10,6 +10,7 @@ This changelog documents internal development changes, refactors, tooling update
 
 ### Changed
 - Auth credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`) are forwarded from `process.env` to the SDK child process, with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` set to prevent leakage to Bash subprocesses. Only `PATH` + auth tokens are forwarded from `process.env`; repo `.env` vars and `additionalEnv` are merged separately. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `TRUSTED_DOMAINS` constant (~200 domains) in `packages/core/src/trusted-domains.ts` matching Claude Code on the web's default allowlist. Added `preset: "trusted"` field to `NetworkPolicySchema`. `EgressProxy.parsePolicy()` expands the preset into `allow` rules, merging any explicit custom rules on top. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
 
 ### Added
 - Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))

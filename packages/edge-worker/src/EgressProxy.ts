@@ -15,7 +15,7 @@ import {
 } from "node:net";
 import { join } from "node:path";
 import type { NetworkPolicy, SandboxConfig } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, type ILogger, TRUSTED_DOMAINS } from "cyrus-core";
 import forge from "node-forge";
 
 /**
@@ -185,9 +185,12 @@ export class EgressProxy {
 
 		const domains = [...this.allowedDomains];
 		const transformDomains = [...this.tlsTerminationDomains];
+		const presetLabel = this.networkPolicy.preset
+			? ` (preset: ${this.networkPolicy.preset})`
+			: "";
 
 		this.logger.info(
-			`[EgressProxy] Policy: deny-all with ${domains.length} allowed domain(s)`,
+			`[EgressProxy] Policy: deny-all with ${domains.length} allowed domain(s)${presetLabel}`,
 		);
 		for (const domain of domains) {
 			const hasTransform = transformDomains.includes(domain);
@@ -349,7 +352,22 @@ export class EgressProxy {
 	// ---------------------------------------------------------------------------
 
 	private parsePolicy(): void {
-		if (!this.networkPolicy?.allow) return;
+		if (!this.networkPolicy) return;
+
+		// Expand "trusted" preset into allow rules
+		if (this.networkPolicy.preset === "trusted") {
+			const presetAllow: Record<string, Array<{ transform?: undefined }>> = {};
+			for (const domain of TRUSTED_DOMAINS) {
+				presetAllow[domain] = [{}];
+			}
+			// Merge: explicit allow rules take precedence over preset
+			this.networkPolicy = {
+				...this.networkPolicy,
+				allow: { ...presetAllow, ...this.networkPolicy.allow },
+			};
+		}
+
+		if (!this.networkPolicy.allow) return;
 
 		const allow = this.networkPolicy.allow;
 		for (const domain of Object.keys(allow)) {

@@ -225,35 +225,68 @@ Controls network egress for agent sessions. When enabled, all Bash-spawned subpr
 - **`systemWideCert`** (boolean) - Set to `true` after trusting the CA cert system-wide (e.g., via `sudo security add-trusted-cert`). When true, per-session CA cert env vars (`NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, etc.) are skipped — the OS cert store handles trust for all tools. Default: `false`
 - **`logRequests`** (boolean) - Log all proxied requests. Default: `true`
 - **`networkPolicy`** (object) - Domain allow/deny rules and header transforms. If omitted, all traffic is allowed (passthrough mode with logging).
+  - **`preset`** (`"trusted"`) - Pre-populate the allow list with ~200 domains matching [Claude Code on the web's default allowlist](https://docs.anthropic.com/en/docs/claude-code/claude-code-on-the-web#default-allowed-domains). Covers package registries (npm, PyPI, RubyGems, crates.io, Maven, etc.), version control (GitHub, GitLab, Bitbucket), container registries (Docker Hub, GCR, ECR, GHCR), cloud platforms (GCP, Azure, AWS, Oracle), dev tools (Kubernetes, HashiCorp, Anaconda), monitoring (Sentry, Datadog, Honeycomb), and more. Custom `allow` rules are merged on top.
+  - **`allow`** (object) - Domain allow rules with optional header transforms. Keys are domain patterns (e.g., `"api.example.com"`, `"*.example.com"`). When present, all unlisted domains are denied.
+  - **`subnets`** (object) - IP-range-based allow/deny rules.
 
-**Example — allow specific domains with header injection:**
+**Example — use the trusted preset (recommended starting point):**
 
 ```json
 {
   "sandbox": {
     "enabled": true,
     "networkPolicy": {
-      "allow": [
-        { "host": "api.github.com" },
-        { "host": "registry.npmjs.org" },
-        {
-          "host": "api.example.com",
-          "transforms": [
-            {
-              "type": "header",
-              "set": {
-                "Authorization": "Bearer ${API_TOKEN}"
-              }
-            }
-          ]
-        }
-      ]
+      "preset": "trusted"
     }
   }
 }
 ```
 
-When `networkPolicy.allow` is specified, all domains not in the list are blocked (deny-all). Domains with `transforms` get TLS termination for header injection; all others pass through as CONNECT tunnels.
+**Example — trusted preset with additional custom domains:**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "preset": "trusted",
+      "allow": {
+        "internal.company.com": [{}],
+        "*.internal.corp": [{}]
+      }
+    }
+  }
+}
+```
+
+**Example — custom allow list with header injection:**
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "networkPolicy": {
+      "allow": {
+        "api.github.com": [{}],
+        "registry.npmjs.org": [{}],
+        "api.example.com": [
+          {
+            "transform": [
+              {
+                "headers": {
+                  "Authorization": "Bearer ${API_TOKEN}"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+When `networkPolicy.allow` is specified (or expanded from a preset), all domains not in the list are blocked (deny-all). Domains with `transform` rules get TLS termination for header injection; all others pass through as CONNECT tunnels.
 
 ### CA Certificate Trust
 

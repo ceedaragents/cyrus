@@ -68,6 +68,7 @@ export {
 	requireLinearWorkspaceId,
 	resolvePath,
 	SandboxConfigSchema,
+	TRUSTED_DOMAINS,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
 } from "./config-types.js";

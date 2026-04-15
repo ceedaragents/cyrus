@@ -841,6 +841,10 @@
 				"networkPolicy": {
 					"type": "object",
 					"properties": {
+						"preset": {
+							"type": "string",
+							"enum": ["trusted"]
+						},
 						"allow": {
 							"type": "object",
 							"propertyNames": {
