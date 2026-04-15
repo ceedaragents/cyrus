@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -2264,20 +2265,49 @@ ${taskSection}`;
 	 * Log instructions for trusting the egress proxy CA certificate.
 	 * The proxy auto-sets NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, etc. for child
 	 * processes, but system-wide trust (macOS Keychain) requires sudo.
+	 * On macOS, checks whether the cert is already trusted in the System keychain.
 	 */
 	private logCertTrustInstructions(certPath: string): void {
 		this.logger.info(`🛡️  Sandbox TLS interception CA certificate: ${certPath}`);
 		this.logger.info(
 			"🛡️  Per-session env vars are set automatically: NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT",
 		);
+
 		if (process.platform === "darwin") {
-			this.logger.info(
-				`🛡️  To trust system-wide (requires sudo): sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${certPath}`,
-			);
+			const trusted = this.isCertTrustedInKeychain();
+			if (trusted) {
+				this.logger.info(
+					"🛡️  CA certificate is already trusted in the macOS System keychain ✓",
+				);
+			} else {
+				this.logger.warn(
+					`🛡️  CA certificate is NOT trusted in the macOS System keychain. To trust (requires sudo):`,
+				);
+				this.logger.warn(
+					`🛡️  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${certPath}`,
+				);
+			}
 		} else if (process.platform === "linux") {
 			this.logger.info(
 				`🛡️  To trust system-wide: sudo cp ${certPath} /usr/local/share/ca-certificates/cyrus-egress-ca.crt && sudo update-ca-certificates`,
 			);
+		}
+	}
+
+	/**
+	 * Check whether the Cyrus egress proxy CA is trusted in the macOS
+	 * System keychain. Returns false on non-macOS or if the check fails.
+	 */
+	private isCertTrustedInKeychain(): boolean {
+		if (process.platform !== "darwin") return false;
+		try {
+			execSync(
+				'security find-certificate -c "Cyrus Egress Proxy CA" /Library/Keychains/System.keychain',
+				{ stdio: "ignore" },
+			);
+			return true;
+		} catch {
+			return false;
 		}
 	}
 
