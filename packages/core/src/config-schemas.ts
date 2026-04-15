@@ -152,7 +152,7 @@ const DomainRuleSchema = z.array(
  * Bash tool subprocesses. It does NOT apply to Claude's own inference API
  * calls, MCP server traffic, or built-in file tools (Read/Edit/Write).
  *
- * @see https://code.claude.com/docs/en/sandboxing#network-isolation
+ * @see https://docs.anthropic.com/en/docs/claude-code/security#sandbox
  * @see https://vercel.com/docs/vercel-sandbox/concepts/firewall#network-policies
  */
 export const NetworkPolicySchema = z.object({
@@ -182,27 +182,27 @@ export const NetworkPolicySchema = z.object({
  * Configures the egress proxy that intercepts outbound traffic from
  * Bash-spawned subprocesses in agent sessions.
  *
- * When enabled, the proxy starts on EdgeWorker boot and Claude's
- * ~/.claude/settings.json is updated with sandbox.network ports.
+ * When enabled, the proxy starts on EdgeWorker boot and sandbox
+ * network ports are passed to the Claude Agent SDK per-session.
  * Only Bash tool commands (git, gh, npm, curl, etc.) route through
  * the proxy — Claude's inference API, MCP servers, and built-in
  * file tools are unaffected.
  *
- * @see https://code.claude.com/docs/en/sandboxing#network-isolation
+ * @see https://docs.anthropic.com/en/docs/claude-code/security#sandbox
  */
 export const SandboxConfigSchema = z.object({
 	/**
 	 * Enable or disable the egress proxy.
-	 * When true, the proxy starts on EdgeWorker boot and Claude's settings.json
-	 * is updated to route traffic through it.
+	 * When true, the proxy starts on EdgeWorker boot and sandbox network ports
+	 * are passed to Claude Agent SDK sessions to route traffic through it.
 	 * @default false
 	 */
 	enabled: z.boolean().optional(),
 
-	/** HTTP proxy port for Claude Code sandbox.network.httpProxyPort */
+	/** HTTP proxy port for SDK sandbox.network.httpProxyPort */
 	httpProxyPort: z.number().optional().default(9080),
 
-	/** SOCKS proxy port for Claude Code sandbox.network.socksProxyPort */
+	/** SOCKS proxy port for SDK sandbox.network.socksProxyPort */
 	socksProxyPort: z.number().optional().default(9081),
 
 	/**

@@ -30,11 +30,11 @@ interface ResolvedTransform {
  * EgressProxy provides an HTTP/HTTPS forward proxy for Claude Code sandbox
  * network egress control.
  *
- * Scope: Claude Code's sandbox.network proxy only intercepts traffic from
+ * Scope: The SDK's sandbox.network proxy only intercepts traffic from
  * Bash tool subprocesses (git, gh, npm, curl, etc.). Claude's own inference
  * API calls, MCP server traffic, and built-in file tools (Read/Edit/Write)
  * are NOT routed through this proxy.
- * @see https://code.claude.com/docs/en/sandboxing#network-isolation
+ * @see https://docs.anthropic.com/en/docs/claude-code/security#sandbox
  *
  * Capabilities:
  * - Domain-based allow/deny filtering for subprocess traffic
