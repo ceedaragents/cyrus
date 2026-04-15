@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAllTools } from "cyrus-claude-runner";
 import {
+	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
 	type EdgeWorkerConfig,
 	type RepositoryConfig,
@@ -68,7 +69,7 @@ if (!existsSync(CYRUS_REPO_PATH)) {
 function setupDirectories(): void {
 	const requiredDirs = [
 		CYRUS_HOME,
-		join(CYRUS_HOME, "repos"),
+		process.env.CYRUS_REPOS_DIR?.trim() || join(CYRUS_HOME, DEFAULT_REPOS_DIR),
 		DEFAULT_WORKTREES_BASE_DIR,
 		join(CYRUS_HOME, "mcp-configs"),
 		join(CYRUS_HOME, "state"),

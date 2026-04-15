@@ -2,11 +2,18 @@ import { exec } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { DEFAULT_REPOS_DIR } from "cyrus-core";
 import type {
 	ApiResponse,
 	DeleteRepositoryPayload,
 	RepositoryPayload,
 } from "../types.js";
+
+function getDefaultReposDir(cyrusHome: string): string {
+	return (
+		process.env.CYRUS_REPOS_DIR?.trim() || join(cyrusHome, DEFAULT_REPOS_DIR)
+	);
+}
 
 const execAsync = promisify(exec);
 
@@ -59,8 +66,8 @@ export async function handleRepository(
 		const repoName =
 			payload.repository_name || getRepoNameFromUrl(payload.repository_url);
 
-		// Construct path within ~/.cyrus/repos
-		const reposDir = join(cyrusHome, "repos");
+		// Construct path within repos directory (defaults to ~/.cyrus/repos, overridable via CYRUS_REPOS_DIR)
+		const reposDir = getDefaultReposDir(cyrusHome);
 		const repoPath = join(reposDir, repoName);
 
 		// Ensure repos directory exists
@@ -164,7 +171,7 @@ export async function handleRepositoryDelete(
 		}
 
 		const repoName = payload.repository_name;
-		const reposDir = join(cyrusHome, "repos");
+		const reposDir = getDefaultReposDir(cyrusHome);
 		const repoPath = join(reposDir, repoName);
 
 		// Check if repository exists

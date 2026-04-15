@@ -9,6 +9,7 @@ import {
 	type EdgeConfig,
 	migrateEdgeConfig,
 } from "cyrus-core";
+import { getDefaultReposDir } from "../utils/getDefaultReposDir.js";
 import { getDefaultWorktreesDir } from "../utils/getDefaultWorktreesDir.js";
 import { BaseCommand } from "./ICommand.js";
 
@@ -224,7 +225,10 @@ export class SelfAddRepoCommand extends BaseCommand {
 			}
 
 			// Clone the repo
-			const repositoryPath = resolve(this.app.cyrusHome, "repos", repoName);
+			const repositoryPath = resolve(
+				getDefaultReposDir(this.app.cyrusHome),
+				repoName,
+			);
 
 			if (existsSync(repositoryPath)) {
 				console.log(`Repository already exists at ${repositoryPath}`);
