@@ -1,7 +1,7 @@
 ---
 name: f1-test-drive
 description: Orchestrate F1 test drives to validate the Cyrus agent system end-to-end. Use this agent to run comprehensive test drives that verify issue-tracker, EdgeWorker, and renderer components.
-tools: Bash, Read, Write, Glob, Grep, TodoWrite
+tools: Bash, Read, Write, Glob, Grep, TaskCreate, TaskUpdate
 model: sonnet
 ---
 

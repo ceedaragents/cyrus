@@ -16,10 +16,10 @@ Controls which tools Claude can use when processing issues. Default: all standar
 
 Examples:
 
-- `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
-- `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
-- `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
-- `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
+- `["Read", "Edit", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
+- `["Read", "Edit", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
+- `["Read", "Edit", "mcp__github"]` - Allow all tools from the GitHub MCP server
+- `["Read", "Edit", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
 
 For security configuration details, see: https://code.claude.com/docs/en/settings#permission-settings
 
@@ -114,7 +114,7 @@ Routes issues to different AI modes based on Linear labels and optionally config
   },
   "scoper": {
     "labels": ["PRD"],
-    "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+    "allowedTools": ["Read", "Glob", "Grep", "WebFetch", "mcp__linear"]
   }
 }
 ```
@@ -127,16 +127,16 @@ Routes issues to different AI modes based on Linear labels and optionally config
 
 **Tool Presets:**
 
-- **`"readOnly"`**: Only tools that read/view content (9 tools)
-   - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `TodoWrite`, `NotebookRead`, `Task`, `Batch`, `Skill`
+- **`"readOnly"`**: Only tools that read/view content (17 tools)
+   - `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`, `Task`, `Skill`, `ListMcpResourcesTool`, `ReadMcpResourceTool`, `Monitor`, `TaskOutput`, `EnterPlanMode`, `ExitPlanMode`
 
-- **`"safe"`**: All tools except Bash (11 tools)
-   - All readOnly tools plus: `Edit(**)`, `NotebookEdit`
+- **`"safe"`**: All tools except Bash (32 tools)
+   - All readOnly tools plus: `Edit`, `Write`, `NotebookEdit`, `AskUserQuestion`, `SendMessage`, `EnterWorktree`, `ExitWorktree`, `CronCreate`, `CronDelete`, `CronList`, `RemoteTrigger`, `ScheduleWakeup`, `TaskStop`, `TeamCreate`, `TeamDelete`
 
-- **`"all"`**: All available tools including Bash (12 tools)
+- **`"all"`**: All available tools including Bash (33 tools)
    - All safe tools plus: `Bash`
 
-- **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`
+- **Custom array**: Specify exact tools needed, e.g., `["Read", "Edit", "Task"]`
 
 Note: Linear MCP tools (`mcp__linear`) are always included automatically. Slack MCP tools (`mcp__slack`) are included when the `SLACK_BOT_TOKEN` environment variable is set (Linear and Slack sessions only; excluded from GitHub sessions).
 
@@ -372,7 +372,7 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
       "allowedTools": "safe"
     },
     "scoper": {
-      "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+      "allowedTools": ["Read", "Glob", "Grep", "WebFetch", "mcp__linear"]
     }
   }
 }
@@ -412,7 +412,7 @@ When determining allowed tools, Cyrus follows this priority order:
     "id": "workspace-123456",
     "name": "my-app",
     "repositoryPath": "/path/to/repo",
-    "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
+    "allowedTools": ["Read", "Edit", "Bash(git:*)", "Bash(gh:*)", "Task"],
     "mcpConfigPath": "./mcp-config.json",
     "teamKeys": ["BACKEND"],
     "projectKeys": ["API Service", "Backend Infrastructure"],
