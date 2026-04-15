@@ -115,6 +115,25 @@ describe("EgressProxy", () => {
 			// and the domain matching logic returns true for any domain
 		});
 
+		it("blocks all traffic when allow map is empty (deny-all)", async () => {
+			const policy: NetworkPolicy = {
+				allow: {},
+			};
+
+			proxy = new EgressProxy(
+				createConfig({
+					httpProxyPort: httpPort,
+					socksProxyPort: socksPort,
+					networkPolicy: policy,
+				}),
+				TEST_CYRUS_HOME,
+			);
+			await proxy.start();
+
+			const result = await connectViaProxy(httpPort, "example.com:443");
+			expect(result).toBe(403);
+		});
+
 		it("blocks domains not in allow list", async () => {
 			const policy: NetworkPolicy = {
 				allow: {

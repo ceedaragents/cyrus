@@ -2233,9 +2233,10 @@ ${taskSection}`;
 
 		if (wasEnabled && isEnabled) {
 			// Policy update — proxy stays running, rules change
-			if (newConfig.sandbox?.networkPolicy) {
-				this.egressProxy!.updateNetworkPolicy(newConfig.sandbox.networkPolicy);
-			}
+			// Pass current policy (or empty object to reset to allow-all)
+			this.egressProxy!.updateNetworkPolicy(
+				newConfig.sandbox?.networkPolicy ?? {},
+			);
 			// Handle systemWideCert toggling while proxy is running
 			if (newConfig.sandbox?.systemWideCert) {
 				this.egressCaCertPath = null;

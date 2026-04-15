@@ -367,6 +367,16 @@ export class EgressProxy {
 			};
 		}
 
+		// Warn if subnet rules are configured (not yet enforced)
+		if (
+			this.networkPolicy.subnets?.allow?.length ||
+			this.networkPolicy.subnets?.deny?.length
+		) {
+			this.logger.warn(
+				"[EgressProxy] Subnet allow/deny rules are configured but not yet enforced — only domain rules are active",
+			);
+		}
+
 		if (!this.networkPolicy.allow) return;
 
 		const allow = this.networkPolicy.allow;
@@ -411,9 +421,14 @@ export class EgressProxy {
 	 * npm, curl, etc.). Claude's inference API and MCP traffic bypass it.
 	 */
 	private isDomainAllowed(hostname: string): boolean {
-		// allow-all: no policy or no allow rules
-		if (!this.networkPolicy?.allow || this.allowedDomains.size === 0) {
+		// allow-all: no policy or no allow rules defined
+		if (!this.networkPolicy?.allow) {
 			return true;
+		}
+
+		// deny-all: policy has allow map but it's empty (no domains listed)
+		if (this.allowedDomains.size === 0) {
+			return false;
 		}
 
 		// user-defined: deny-all default, check explicit allow list
