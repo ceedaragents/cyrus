@@ -7,6 +7,7 @@ import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
 import { Logger } from "./services/Logger.js";
 import { WorkerService } from "./services/WorkerService.js";
+import { getDefaultReposDir } from "./utils/getDefaultReposDir.js";
 import { getDefaultWorktreesDir } from "./utils/getDefaultWorktreesDir.js";
 
 /**
@@ -98,11 +99,13 @@ export class Application {
 
 	/**
 	 * Ensure required Cyrus directories exist
-	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
+	 * Creates repos dir (CYRUS_REPOS_DIR or ~/.cyrus/repos),
+	 * worktrees dir (CYRUS_WORKTREES_DIR or ~/.cyrus/worktrees),
+	 * and ~/.cyrus/mcp-configs
 	 */
 	private ensureRequiredDirectories(): void {
 		const requiredDirs = [
-			join(this.cyrusHome, "repos"),
+			getDefaultReposDir(this.cyrusHome),
 			getDefaultWorktreesDir(this.cyrusHome),
 			join(this.cyrusHome, "mcp-configs"),
 		];

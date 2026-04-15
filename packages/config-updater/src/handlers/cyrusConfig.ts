@@ -1,18 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEFAULT_WORKTREES_DIR, type EdgeConfig } from "cyrus-core";
+import { type EdgeConfig, getDefaultWorktreesDir } from "cyrus-core";
 import {
 	type ApiResponse,
 	type CyrusConfigPayload,
 	CyrusConfigPayloadSchema,
 } from "../types.js";
-
-function getDefaultWorktreesDir(cyrusHome: string): string {
-	return (
-		process.env.CYRUS_WORKTREES_DIR?.trim() ||
-		join(cyrusHome, DEFAULT_WORKTREES_DIR)
-	);
-}
 
 /**
  * Handle Cyrus configuration update

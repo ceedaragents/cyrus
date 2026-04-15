@@ -78,7 +78,10 @@ export {
 	DEFAULT_BASE_BRANCH,
 	DEFAULT_CONFIG_FILENAME,
 	DEFAULT_PROXY_URL,
+	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
+	getDefaultReposDir,
+	getDefaultWorktreesDir,
 } from "./constants.js";
 // Issue Tracker Abstraction
 export type {

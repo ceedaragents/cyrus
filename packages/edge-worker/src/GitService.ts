@@ -16,7 +16,7 @@ import type {
 	RepositoryConfig,
 	Workspace,
 } from "cyrus-core";
-import { createLogger, DEFAULT_WORKTREES_DIR, type ILogger } from "cyrus-core";
+import { createLogger, getDefaultWorktreesDir, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 export interface CreateGitWorktreeOptions {
@@ -51,16 +51,6 @@ export class GitService {
 		this.cyrusHome = options?.cyrusHome ?? join(homedir(), ".cyrus");
 	}
 
-	/**
-	 * Resolves the workspace base directory dynamically on every access,
-	 * so that runtime changes to CYRUS_WORKTREES_DIR are reflected.
-	 */
-	private get workspaceBaseDir(): string {
-		return (
-			process.env.CYRUS_WORKTREES_DIR?.trim() ||
-			join(this.cyrusHome, DEFAULT_WORKTREES_DIR)
-		);
-	}
 	/**
 	 * Check if a branch exists locally or remotely
 	 */
@@ -892,7 +882,10 @@ export class GitService {
 	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
 	 */
 	deleteWorktree(issueIdentifier: string): void {
-		const workspacePath = join(this.workspaceBaseDir, issueIdentifier);
+		const workspacePath = join(
+			getDefaultWorktreesDir(this.cyrusHome),
+			issueIdentifier,
+		);
 
 		if (!existsSync(workspacePath)) {
 			this.logger.info(
