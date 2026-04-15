@@ -52,13 +52,6 @@ export class GitService {
 	}
 
 	/**
-	 * Resolves the workspace base directory dynamically on every access,
-	 * so that runtime changes to CYRUS_WORKTREES_DIR are reflected.
-	 */
-	private get workspaceBaseDir(): string {
-		return getDefaultWorktreesDir(this.cyrusHome);
-	}
-	/**
 	 * Check if a branch exists locally or remotely
 	 */
 	async branchExists(branchName: string, repoPath: string): Promise<boolean> {
@@ -889,7 +882,10 @@ export class GitService {
 	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
 	 */
 	deleteWorktree(issueIdentifier: string): void {
-		const workspacePath = join(this.workspaceBaseDir, issueIdentifier);
+		const workspacePath = join(
+			getDefaultWorktreesDir(this.cyrusHome),
+			issueIdentifier,
+		);
 
 		if (!existsSync(workspacePath)) {
 			this.logger.info(
