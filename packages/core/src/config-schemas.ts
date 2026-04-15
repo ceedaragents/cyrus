@@ -212,6 +212,15 @@ export const SandboxConfigSchema = z.object({
 	networkPolicy: NetworkPolicySchema.optional(),
 
 	/**
+	 * Whether the CA certificate has been trusted system-wide (e.g., via
+	 * `sudo security add-trusted-cert` on macOS). When true, per-session
+	 * CA cert env vars (NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, etc.) are
+	 * skipped — the OS cert store handles trust for all tools.
+	 * @default false
+	 */
+	systemWideCert: z.boolean().optional(),
+
+	/**
 	 * Log all proxied requests (method, URL, domain, status).
 	 * @default true
 	 */

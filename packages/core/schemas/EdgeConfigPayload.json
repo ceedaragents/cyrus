@@ -896,6 +896,9 @@
 					},
 					"additionalProperties": false
 				},
+				"systemWideCert": {
+					"type": "boolean"
+				},
 				"logRequests": {
 					"type": "boolean"
 				}

@@ -222,6 +222,7 @@ Controls network egress for agent sessions. When enabled, all Bash-spawned subpr
 - **`enabled`** (boolean) - Enable or disable the egress proxy. Default: `false`
 - **`httpProxyPort`** (number) - HTTP proxy port. Default: `9080`
 - **`socksProxyPort`** (number) - SOCKS proxy port. Default: `9081`
+- **`systemWideCert`** (boolean) - Set to `true` after trusting the CA cert system-wide (e.g., via `sudo security add-trusted-cert`). When true, per-session CA cert env vars (`NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, etc.) are skipped — the OS cert store handles trust for all tools. Default: `false`
 - **`logRequests`** (boolean) - Log all proxied requests. Default: `true`
 - **`networkPolicy`** (object) - Domain allow/deny rules and header transforms. If omitted, all traffic is allowed (passthrough mode with logging).
 
@@ -258,7 +259,7 @@ When `networkPolicy.allow` is specified, all domains not in the list are blocked
 
 The egress proxy generates a CA certificate at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception of domains with transform rules. This cert is stable across restarts — once trusted, it stays trusted.
 
-**Automatic (per-session):** Cyrus sets the following env vars automatically for every agent session:
+**Automatic (per-session, when `systemWideCert: false`):** Cyrus sets the following env vars automatically for every agent session:
 
 | Env Var | Covers |
 |---------|--------|
@@ -274,15 +275,15 @@ The egress proxy generates a CA certificate at `~/.cyrus/certs/cyrus-egress-ca.p
 
 If `NODE_EXTRA_CA_CERTS` is already set in the host environment (e.g., corporate proxy), Cyrus merges both certs into a combined bundle.
 
-**Not covered by env vars (require system keychain trust):**
+**Not covered by env vars (require system-wide trust):**
 
 - **Bun** — uses the system cert store; no env var override
 - **.NET (dotnet/nuget)** — uses the system cert store on macOS
 - **curl on macOS** — when compiled against SecureTransport (the default), uses the system keychain rather than `CURL_CA_BUNDLE`
 
-For these tools, system-wide trust (see below) is required.
+For these tools, system-wide trust is required.
 
-**System-wide (optional, requires sudo):** For tools that use the OS certificate store, trust the cert in the system keychain:
+**System-wide trust (recommended):** Trust the cert in the OS certificate store, then set `systemWideCert: true` to skip per-session env vars:
 
 ```bash
 # macOS
@@ -293,13 +294,25 @@ sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyru
 sudo update-ca-certificates
 ```
 
-On startup, Cyrus checks whether the cert is already trusted in the macOS System keychain and logs the result:
+Then update config.json:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "systemWideCert": true
+  }
+}
+```
+
+On startup, Cyrus checks whether the cert is trusted system-wide (macOS keychain or Linux CA certificates) and logs the result:
 
 ```
-🛡️  CA certificate is already trusted in the macOS System keychain ✓
+🛡️  CA certificate is trusted system-wide ✓
+🛡️  systemWideCert: true — per-session CA cert env vars are skipped (OS cert store handles trust)
 ```
 
-or:
+or, if not yet trusted:
 
 ```
 [WARN] 🛡️  CA certificate is NOT trusted in the macOS System keychain. To trust (requires sudo):

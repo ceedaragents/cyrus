@@ -165,21 +165,23 @@ If sandbox is enabled, check trust status:
 security find-certificate -c "Cyrus Egress Proxy CA" /Library/Keychains/System.keychain 2>&1
 ```
 
-- If the cert is found (exit code 0): report ✓ trusted, no action needed.
+- If the cert is found (exit code 0): report ✓ trusted. Offer to set `sandbox.systemWideCert: true` in config.json to skip per-session cert env vars.
 - If not found (exit code 44): inform the user and offer to run the trust command:
 
 ```bash
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem
 ```
 
-On Linux:
+On Linux, check with `test -f /usr/local/share/ca-certificates/cyrus-egress-ca.crt`. If not present:
 
 ```bash
 sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyrus-egress-ca.crt
 sudo update-ca-certificates
 ```
 
-**Note:** System-wide trust is optional — Cyrus automatically sets `NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`, `CURL_CA_BUNDLE`, `CARGO_HTTP_CAINFO`, `AWS_CA_BUNDLE`, and `DENO_CERT` per-session for agent subprocesses. System-wide trust only matters for tools that use the OS certificate store directly (Bun, .NET, curl on macOS with SecureTransport).
+After trusting system-wide, offer to set `sandbox.systemWideCert: true` in config.json. This skips per-session cert env vars (`NODE_EXTRA_CA_CERTS`, `GIT_SSL_CAINFO`, etc.) since the OS cert store handles trust for all tools.
+
+If the user declines system-wide trust, Cyrus still works — it sets cert env vars per-session. But some tools (Bun, .NET, curl on macOS with SecureTransport) will only work with system-wide trust.
 
 ## Step 6: Verify Running
 
