@@ -46,6 +46,7 @@ export const availableTools = [
 	// User interaction tools
 	"AskUserQuestion",
 	"SendMessage",
+	"PushNotification",
 
 	// Plan and worktree management
 	"EnterPlanMode",
@@ -60,10 +61,6 @@ export const availableTools = [
 	"RemoteTrigger",
 	"ScheduleWakeup",
 
-	// MCP resource tools
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
-
 	// Monitoring and task lifecycle
 	"Monitor",
 	"TaskOutput",
@@ -72,6 +69,12 @@ export const availableTools = [
 	// Team management
 	"TeamCreate",
 	"TeamDelete",
+
+	// IDE/LSP integration
+	"LSP",
+
+	// Tool discovery
+	"ToolSearch",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -93,12 +96,11 @@ export const readOnlyTools: ToolName[] = [
 	"TaskList",
 	"Task",
 	"Skill",
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
 	"Monitor",
 	"TaskOutput",
 	"EnterPlanMode",
 	"ExitPlanMode",
+	"ToolSearch",
 ];
 
 /**

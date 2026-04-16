@@ -13,7 +13,7 @@ describe("Prompt Assembly - Component Order", () => {
 
 		const session = {
 			issueId: "c3d4e5f6-a7b8-9012-cdef-123456789012",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 

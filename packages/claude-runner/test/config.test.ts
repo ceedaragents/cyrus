@@ -31,6 +31,7 @@ describe("config", () => {
 				"Skill",
 				"AskUserQuestion",
 				"SendMessage",
+				"PushNotification",
 				"EnterPlanMode",
 				"ExitPlanMode",
 				"EnterWorktree",
@@ -40,15 +41,15 @@ describe("config", () => {
 				"CronList",
 				"RemoteTrigger",
 				"ScheduleWakeup",
-				"ListMcpResourcesTool",
-				"ReadMcpResourceTool",
 				"Monitor",
 				"TaskOutput",
 				"TaskStop",
 				"TeamCreate",
 				"TeamDelete",
+				"LSP",
+				"ToolSearch",
 			]);
-			expect(availableTools).toHaveLength(33);
+			expect(availableTools).toHaveLength(34);
 		});
 
 		it("should define read-only tools", () => {
@@ -64,14 +65,13 @@ describe("config", () => {
 				"TaskList",
 				"Task",
 				"Skill",
-				"ListMcpResourcesTool",
-				"ReadMcpResourceTool",
 				"Monitor",
 				"TaskOutput",
 				"EnterPlanMode",
 				"ExitPlanMode",
+				"ToolSearch",
 			]);
-			expect(readOnlyTools).toHaveLength(17);
+			expect(readOnlyTools).toHaveLength(16);
 		});
 
 		it("should define write tools", () => {
