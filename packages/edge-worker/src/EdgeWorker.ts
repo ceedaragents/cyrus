@@ -516,11 +516,13 @@ export class EdgeWorker extends EventEmitter {
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
+				// Update Linear workspace tokens BEFORE adding new repositories.
+				// New repositories need their workspace's Linear token during
+				// initialization, so the token must be available first.
+				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
-				// Detect and apply workspace token changes before overwriting config
-				this.updateLinearWorkspaceTokens(changes.newConfig);
 				// Live-update sandbox / egress proxy settings
 				await this.applySandboxConfigChanges(changes.newConfig);
 				this.config = changes.newConfig;

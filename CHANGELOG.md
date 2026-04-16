@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
 
 ## [0.2.45] - 2026-04-15
