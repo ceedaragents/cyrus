@@ -486,7 +486,6 @@ export class EdgeWorker extends EventEmitter {
 			repositories: this.repositories,
 			issueTrackers: this.issueTrackers,
 			gitService: this.gitService,
-			config: this.config,
 		});
 		this.defaultSkillsDeployer = new DefaultSkillsDeployer(
 			this.cyrusHome,
@@ -5258,6 +5257,14 @@ ${taskSection}`;
 			input,
 			!!labelBasedSystemPrompt,
 		);
+		// Build workspace repo paths map for prompt context.
+		// For multi-repo sessions, workspace.repoPaths maps each repo ID to its worktree.
+		// For single-repo sessions, use workspace.path as the worktree for the primary repo.
+		const workspaceRepoPaths =
+			input.session.workspace.repoPaths ??
+			(repositories.length === 1
+				? { [repositories[0]!.id]: input.session.workspace.path }
+				: undefined);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
 			repositories,
@@ -5266,6 +5273,7 @@ ${taskSection}`;
 			input.guidance,
 			input.agentSession,
 			input.resolvedBaseBranches,
+			workspaceRepoPaths,
 		);
 
 		parts.push(issueContext.prompt);
@@ -5410,6 +5418,7 @@ ${input.userComment}
 		guidance?: GuidanceRule[],
 		agentSession?: WebhookAgentSession,
 		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
+		workspaceRepoPaths?: Record<string, string>,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
@@ -5445,6 +5454,7 @@ ${input.userComment}
 			attachmentManifest,
 			guidance,
 			resolvedBaseBranches,
+			workspaceRepoPaths,
 		);
 	}
 

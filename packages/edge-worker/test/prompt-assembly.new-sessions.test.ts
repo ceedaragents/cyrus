@@ -14,7 +14,7 @@ describe("Prompt Assembly - New Sessions", () => {
 		// Create minimal test data
 		const session = {
 			issueId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -105,7 +105,7 @@ Analyze the issue description, labels, and any user comments to determine which 
 		// Create minimal test data
 		const session = {
 			issueId: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
