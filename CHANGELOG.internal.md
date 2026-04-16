@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Fixed four typos in `packages/CLAUDE.md` documentation for Linear webhook constraints (`additonal` → `additional`, `repsoitory` → `repository`, `agentSesion` → `agentSession`, `intitialized` → `initialized`). ([ENG-117](https://linear.app/payton-test1/issue/ENG-117/find-a-small-improvement))
+
 ### Changed
 - Removed `config: EdgeWorkerConfig` dependency from `PromptBuilder` — it was only used to check `handlers?.createWorkspace` for the working directory placeholder. Working directory is now passed explicitly via `workspaceRepoPaths` parameter through `buildIssueContextPrompt` → `buildIssueContextForPromptAssembly` → `buildNewSessionPrompt`. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
 
