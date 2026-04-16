@@ -6,6 +6,16 @@
  */
 
 /**
+ * Auth-related env vars forwarded from the parent process.
+ * The SDK subprocess needs these for API calls.
+ */
+const AUTH_ENV_KEYS = [
+	"ANTHROPIC_API_KEY",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"ANTHROPIC_AUTH_TOKEN",
+] as const;
+
+/**
  * Cyrus-specific env vars injected into every Claude Code subprocess.
  * Both `ClaudeRunner.start()` and `EdgeWorker.warmupRecentSessions()`
  * must use the same set — keep this as the single source of truth.
@@ -18,27 +28,41 @@ export const CYRUS_SESSION_ENV = {
 } as const;
 
 /**
+ * Extra env flag for pre-warm sessions.
+ * MCP servers connect in the background so startup() returns in ~500 ms.
+ */
+export const WARMUP_ENV = {
+	MCP_CONNECTION_NONBLOCKING: "true",
+} as const;
+
+/**
  * Build the base `env` object for a Claude SDK session.
  *
- * Forwards only a minimal set of parent-process env vars (PATH + auth tokens)
- * plus the Cyrus session flags above. Callers can spread additional vars on top
- * (e.g., `MCP_CONNECTION_NONBLOCKING` for warmup, repository .env for live runs).
+ * Forwards PATH + auth tokens from the parent process, sets the subprocess
+ * env-scrub flag, and applies the shared Cyrus session flags.
+ * Callers can spread additional vars on top (e.g., repository .env for live runs).
  */
 export function buildBaseSessionEnv(
 	extra?: Record<string, string>,
 ): Record<string, string> {
+	const env: Record<string, string> = {};
+
+	// Forward PATH
+	if (process.env.PATH) {
+		env.PATH = process.env.PATH;
+	}
+
+	// Forward auth credentials — CLAUDE_CODE_SUBPROCESS_ENV_SCRUB prevents
+	// them from leaking into Bash subprocesses spawned by Claude.
+	for (const key of AUTH_ENV_KEYS) {
+		if (process.env[key]) {
+			env[key] = process.env[key];
+		}
+	}
+	env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1";
+
 	return {
-		...(process.env.PATH && { PATH: process.env.PATH }),
-		...(process.env.ANTHROPIC_API_KEY && {
-			ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-		}),
-		...(process.env.CLAUDE_CODE_OAUTH_TOKEN && {
-			CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-		}),
-		...(process.env.ANTHROPIC_AUTH_TOKEN && {
-			ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
-		}),
-		CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+		...env,
 		...CYRUS_SESSION_ENV,
 		...extra,
 	};

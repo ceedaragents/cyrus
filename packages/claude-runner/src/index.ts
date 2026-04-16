@@ -28,6 +28,7 @@ export {
 	buildBaseSessionEnv,
 	CYRUS_SESSION_ENV,
 	normalizeMcpHttpTransport,
+	WARMUP_ENV,
 } from "./session-env.js";
 export type {
 	APIAssistantMessage,
