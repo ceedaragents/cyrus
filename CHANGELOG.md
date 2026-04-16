@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.111 and `@anthropic-ai/sdk` to v0.90.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP`, `ToolSearch`, and `PushNotification`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
 
 ### Fixed
+- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
 
 ## [0.2.45] - 2026-04-15

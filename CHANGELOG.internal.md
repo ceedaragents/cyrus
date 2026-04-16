@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Fixed config reload ordering in `EdgeWorker.configChanged` handler — `updateLinearWorkspaceTokens()` now runs before `addNewRepositories()` so new repositories can look up their Linear workspace token during initialization. Previously, tokens were updated after repo addition, causing failures when both a new workspace and its first repository arrived in the same config change. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
+
 ### Changed
 - Removed `config: EdgeWorkerConfig` dependency from `PromptBuilder` — it was only used to check `handlers?.createWorkspace` for the working directory placeholder. Working directory is now passed explicitly via `workspaceRepoPaths` parameter through `buildIssueContextPrompt` → `buildIssueContextForPromptAssembly` → `buildNewSessionPrompt`. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
 
