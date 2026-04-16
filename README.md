@@ -82,7 +82,9 @@ This project is licensed under the Apache 2.0 license - see the [LICENSE](LICENS
 
 ## Credits
 
-This project builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
+This project builds on the technologies built by the awesome teams at Linear, Anthropic, Google, and OpenAI:
 
 - [Linear API](https://linear.app/developers)
 - [Anthropic Claude Code](https://www.claude.com/product/claude-code)
+- [Google Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- [OpenAI Codex CLI](https://github.com/openai/codex)
