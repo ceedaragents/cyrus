@@ -1,19 +1,3 @@
-## Temporary Module Augmentations
-
-### `startup()` from `@anthropic-ai/claude-agent-sdk`
-
-`startup()` is exported at runtime from `sdk.mjs` but is missing from `sdk.d.ts` (as of v0.2.89).
-One augmentation file fills the gap:
-
-- `packages/claude-runner/src/claude-agent-sdk.d.ts` — declares `WarmSession` and `startup()`
-
-Edge-worker includes it via `tsconfig.json` `include` rather than duplicating it.
-
-**TODO: delete both files** once `startup()` appears in the upstream `.d.ts`. Track the SDK changelog:
-https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md
-
----
-
 ## Linear Webhook Constraints
 
 ### agentSessionCreated

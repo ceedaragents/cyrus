@@ -11,7 +11,7 @@ import type {
 	SDKSystemMessage,
 	SDKUserMessage,
 	SdkPluginConfig,
-	WarmSession,
+	WarmQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
 
@@ -68,7 +68,7 @@ export interface ClaudeRunnerConfig {
 	 * Pre-warmed session from startup() — when set, the first streaming query uses
 	 * this warm instance instead of spawning a cold process (~20x faster first turn).
 	 */
-	warmSession?: WarmSession;
+	warmSession?: WarmQuery;
 }
 
 export interface ClaudeSessionInfo {

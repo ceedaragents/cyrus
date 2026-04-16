@@ -9,7 +9,7 @@ import type {
 	ClaudeRunnerConfig,
 	McpServerConfig,
 	SDKMessage,
-	WarmSession,
+	WarmQuery,
 } from "cyrus-claude-runner";
 import {
 	buildBaseSessionEnv,
@@ -195,7 +195,7 @@ export class EdgeWorker extends EventEmitter {
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
 	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
-	private warmInstances: Map<string, WarmSession> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
+	private warmInstances: Map<string, WarmQuery> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
