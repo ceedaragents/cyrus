@@ -22,6 +22,13 @@ export {
 	ClaudeMessageFormatter,
 	type IMessageFormatter,
 } from "./formatter.js";
+export {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+	resetSandboxRequirementsCacheForTesting,
+	type SandboxRequirementFailure,
+	type SandboxRequirementsResult,
+} from "./sandbox-requirements.js";
 export type {
 	APIAssistantMessage,
 	APIUserMessage,
