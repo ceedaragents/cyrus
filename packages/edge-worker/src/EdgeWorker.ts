@@ -2551,26 +2551,9 @@ ${taskSection}`;
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker for this workspace if not already present
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					const linearToken = this.getLinearTokenForWorkspace(
-						requireLinearWorkspaceId(repo),
-					);
-					const issueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: linearToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
-				}
+				// Issue tracker for this workspace is guaranteed to exist here:
+				// updateLinearWorkspaceTokens() runs before addNewRepositories()
+				// and creates trackers for any new workspaces from newConfig.
 
 				// Create activity sink for this repository
 				const issueTracker = this.issueTrackers.get(
