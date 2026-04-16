@@ -2597,44 +2597,10 @@ ${taskSection}`;
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// If workspace changed or token was updated, ensure issue tracker is current
-				const currentToken = this.getLinearTokenForWorkspace(
-					requireLinearWorkspaceId(repo),
-				);
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					this.logger.info(
-						`  🔑 Creating issue tracker for workspace ${requireLinearWorkspaceId(repo)}`,
-					);
-					const newIssueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: currentToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					const wsId = requireLinearWorkspaceId(repo);
-					this.issueTrackers.set(wsId, newIssueTracker);
-					this.activitySinks.set(
-						wsId,
-						new LinearActivitySink(newIssueTracker, wsId),
-					);
-				} else {
-					// Update token on existing issue tracker if it changed
-					const issueTracker = this.issueTrackers.get(
-						requireLinearWorkspaceId(repo),
-					);
-					if (issueTracker && currentToken) {
-						(issueTracker as LinearIssueTrackerService).setAccessToken(
-							currentToken,
-						);
-					}
-				}
+				// Issue tracker and activity sink for this workspace are guaranteed
+				// to exist: updateLinearWorkspaceTokens() runs before
+				// updateModifiedRepositories() and creates/updates trackers + sinks
+				// for all workspaces.
 
 				// If active status changed
 				if (oldRepo.isActive !== repo.isActive) {
