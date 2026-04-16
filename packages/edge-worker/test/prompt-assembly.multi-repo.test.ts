@@ -91,6 +91,161 @@ No comments yet.
 		});
 	});
 
+	describe("workspace repoPaths overrides repositoryPath", () => {
+		it("should use worktree paths from session workspace instead of repository source paths", async () => {
+			const repoA = {
+				id: "repo-a-uuid",
+				name: "frontend-app",
+				repositoryPath: "/repos/frontend",
+				baseBranch: "main",
+				linearWorkspaceId: "ws-1",
+				workspaceBaseDir: "/test/workspaces",
+			};
+			const repoB = {
+				id: "repo-b-uuid",
+				name: "backend-api",
+				repositoryPath: "/repos/backend",
+				baseBranch: "develop",
+				linearWorkspaceId: "ws-1",
+				workspaceBaseDir: "/test/workspaces",
+			};
+
+			const worker = createTestWorker([repoA, repoB]);
+
+			// Session with repoPaths set — simulates real multi-repo worktree creation
+			const session = {
+				issueId: "worktree-issue-uuid",
+				workspace: {
+					path: "/worktrees/CEE-300",
+					repoPaths: {
+						"repo-a-uuid": "/worktrees/CEE-300/frontend-app",
+						"repo-b-uuid": "/worktrees/CEE-300/backend-api",
+					},
+				},
+				metadata: {},
+			};
+
+			const issue = {
+				id: "worktree-issue-uuid",
+				identifier: "CEE-300",
+				title: "Multi-repo worktree test",
+				description: "Tests worktree paths",
+			};
+
+			await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepositories([repoA, repoB])
+				.withUserComment("")
+				.withLabels()
+				.expectUserPrompt(`<repositories>
+  <repository name="frontend-app">
+    <working_directory>/worktrees/CEE-300/frontend-app</working_directory>
+    <base_branch>main</base_branch>
+  </repository>
+  <repository name="backend-api">
+    <working_directory>/worktrees/CEE-300/backend-api</working_directory>
+    <base_branch>develop</base_branch>
+  </repository>
+</repositories>
+
+<linear_issue>
+  <id>worktree-issue-uuid</id>
+  <identifier>CEE-300</identifier>
+  <title>Multi-repo worktree test</title>
+  <description>
+Tests worktree paths
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>`)
+				.expectPromptType("fallback")
+				.expectComponents("issue-context")
+				.verify();
+		});
+
+		it("single repo should use workspace.path as working directory", async () => {
+			const repo = {
+				id: "single-repo-uuid",
+				name: "my-app",
+				repositoryPath: "/repos/my-app",
+				baseBranch: "main",
+				linearWorkspaceId: "ws-1",
+				workspaceBaseDir: "/test/workspaces",
+			};
+
+			const worker = createTestWorker([repo]);
+
+			// Single repo: workspace.path is the worktree, no repoPaths
+			const session = {
+				issueId: "single-wt-uuid",
+				workspace: { path: "/worktrees/CEE-400" },
+				metadata: {},
+			};
+
+			const issue = {
+				id: "single-wt-uuid",
+				identifier: "CEE-400",
+				title: "Single repo worktree test",
+				description: "Tests single-repo worktree path",
+			};
+
+			await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepositories([repo])
+				.withUserComment("")
+				.withLabels()
+				.expectUserPrompt(`<context>
+  <repository>my-app</repository>
+  <working_directory>/worktrees/CEE-400</working_directory>
+  <base_branch>main</base_branch>
+</context>
+
+<linear_issue>
+  <id>single-wt-uuid</id>
+  <identifier>CEE-400</identifier>
+  <title>Single repo worktree test</title>
+  <description>
+Tests single-repo worktree path
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>`)
+				.expectPromptType("fallback")
+				.expectComponents("issue-context")
+				.verify();
+		});
+	});
+
 	describe("single repo backward compat", () => {
 		it("should produce single-repo context section when only 1 repo in array", async () => {
 			const repo = {
