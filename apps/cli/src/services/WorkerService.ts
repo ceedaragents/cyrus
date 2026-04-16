@@ -275,6 +275,8 @@ export class WorkerService {
 				): Promise<Workspace> => {
 					return this.gitService.createGitWorktree(issue, repositories, {
 						globalSetupScript: edgeConfig.global_setup_script,
+						globalSetupScriptTimeoutMs:
+							edgeConfig.global_setup_script_timeout_ms,
 						baseBranchOverrides: options?.baseBranchOverrides,
 					});
 				},

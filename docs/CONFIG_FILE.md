@@ -70,6 +70,14 @@ Routes Linear issues with specific labels to this repository. This is useful whe
 
 Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
 
+### `setupScriptTimeoutMs` (number)
+
+Timeout in milliseconds for the repository setup script (`cyrus-setup.sh` et al.). Defaults to `300000` (5 minutes). Raise this when the setup script performs long-running work such as restoring a database dump.
+
+Example: `"setupScriptTimeoutMs": 1800000` - allow the setup script up to 30 minutes before it is killed
+
+See [Setup Scripts](./SETUP_SCRIPTS.md) for details on how setup scripts work.
+
 ---
 
 ## Routing Priority Order
@@ -381,6 +389,12 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
 ### `global_setup_script` (string)
 
 Path to a script that runs for all repositories when creating new worktrees. See the main README for details on setup scripts.
+
+### `global_setup_script_timeout_ms` (number)
+
+Timeout in milliseconds for the global setup script. Defaults to `300000` (5 minutes). Raise this when the global setup script performs long-running work (for example restoring a shared database).
+
+Example: `"global_setup_script_timeout_ms": 1800000` - allow the global setup script up to 30 minutes before it is killed.
 
 ---
 

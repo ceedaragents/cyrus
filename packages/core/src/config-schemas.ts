@@ -311,6 +311,13 @@ export const RepositoryConfigSchema = z.object({
 
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
+
+	/**
+	 * Timeout for the repository setup script (`cyrus-setup.sh` et al.) in
+	 * milliseconds. Overrides the default 5-minute timeout, useful for
+	 * long-running setup steps like database restores. Defaults to 300000.
+	 */
+	setupScriptTimeoutMs: z.number().int().positive().optional(),
 });
 
 /**
@@ -374,6 +381,13 @@ export const EdgeConfigSchema = z.object({
 
 	/** Optional path to global setup script that runs for all repositories */
 	global_setup_script: z.string().optional(),
+
+	/**
+	 * Timeout for the global setup script in milliseconds. Overrides the
+	 * default 5-minute timeout. Useful for long-running setup steps like
+	 * database restores. Defaults to 300000.
+	 */
+	global_setup_script_timeout_ms: z.number().int().positive().optional(),
 
 	/** Default tools to allow across all repositories */
 	defaultAllowedTools: z.array(z.string()).optional(),

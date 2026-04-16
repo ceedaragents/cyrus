@@ -47,6 +47,7 @@ describe("JSON Schema export", () => {
 				"defaultModel",
 				"defaultFallbackModel",
 				"global_setup_script",
+				"global_setup_script_timeout_ms",
 				"defaultAllowedTools",
 				"defaultDisallowedTools",
 				"issueUpdateTrigger",
@@ -118,6 +119,7 @@ describe("JSON Schema export", () => {
 				"promptTemplatePath",
 				"labelPrompts",
 				"userAccessControl",
+				"setupScriptTimeoutMs",
 			];
 			for (const field of fields) {
 				expect(schema.properties).toHaveProperty(field);

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Configurable setup script timeout** — Setup scripts used to be killed after a hard-coded 5 minutes, which was too short for steps like full database restores. You can now raise the limit per repository with `setupScriptTimeoutMs` on a repository entry, or for the global setup script with `global_setup_script_timeout_ms`, both in `~/.cyrus/config.json`. Values are in milliseconds; the default is still 300000 (5 minutes). ([CYPACK-1080](https://linear.app/ceedar/issue/CYPACK-1080))
+
 ### Fixed
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
 

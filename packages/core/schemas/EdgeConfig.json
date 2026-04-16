@@ -475,6 +475,11 @@
 							}
 						},
 						"additionalProperties": false
+					},
+					"setupScriptTimeoutMs": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 9007199254740991
 					}
 				},
 				"required": [
@@ -545,6 +550,11 @@
 		},
 		"global_setup_script": {
 			"type": "string"
+		},
+		"global_setup_script_timeout_ms": {
+			"type": "integer",
+			"exclusiveMinimum": 0,
+			"maximum": 9007199254740991
 		},
 		"defaultAllowedTools": {
 			"type": "array",

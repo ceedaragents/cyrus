@@ -19,8 +19,16 @@ import type {
 import { createLogger, getDefaultWorktreesDir, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
+/** Default setup script timeout: 5 minutes. */
+export const DEFAULT_SETUP_SCRIPT_TIMEOUT_MS = 5 * 60 * 1000;
+
 export interface CreateGitWorktreeOptions {
 	globalSetupScript?: string;
+	/**
+	 * Timeout for the global setup script in milliseconds.
+	 * Defaults to {@link DEFAULT_SETUP_SCRIPT_TIMEOUT_MS} (5 minutes).
+	 */
+	globalSetupScriptTimeoutMs?: number;
 	/**
 	 * Override workspace base directory. Required for 0-repo workspaces.
 	 * For 1+ repos, defaults to the first repository's workspaceBaseDir.
@@ -141,6 +149,7 @@ export class GitService {
 		scriptType: "global" | "repository",
 		workspacePath: string,
 		issue: Issue,
+		timeoutMs: number = DEFAULT_SETUP_SCRIPT_TIMEOUT_MS,
 	): Promise<void> {
 		// Expand ~ to home directory
 		const expandedPath = scriptPath.replace(/^~/, homedir());
@@ -202,16 +211,17 @@ export class GitService {
 					LINEAR_ISSUE_IDENTIFIER: issue.identifier,
 					LINEAR_ISSUE_TITLE: issue.title || "",
 				},
-				timeout: 5 * 60 * 1000, // 5 minute timeout
+				timeout: timeoutMs,
 			});
 
 			this.logger.info(
 				`✅ ${scriptType === "global" ? "Global" : "Repository"} setup script completed successfully`,
 			);
 		} catch (error) {
+			const timeoutMinutes = Math.round((timeoutMs / 60_000) * 10) / 10;
 			const errorMessage =
 				(error as any).signal === "SIGTERM"
-					? "Script execution timed out (exceeded 5 minutes)"
+					? `Script execution timed out (exceeded ${timeoutMinutes} minutes)`
 					: (error as Error).message;
 
 			this.logger.error(
@@ -469,6 +479,7 @@ export class GitService {
 	): Promise<Workspace> {
 		const {
 			globalSetupScript,
+			globalSetupScriptTimeoutMs,
 			workspaceBaseDir: overrideBaseDir,
 			baseBranchOverrides,
 		} = options ?? {};
@@ -494,6 +505,7 @@ export class GitService {
 					"global",
 					workspacePath,
 					issue,
+					globalSetupScriptTimeoutMs,
 				);
 			}
 
@@ -516,6 +528,7 @@ export class GitService {
 				globalSetupScript,
 				undefined,
 				overrideValue,
+				globalSetupScriptTimeoutMs,
 			);
 		}
 
@@ -529,7 +542,13 @@ export class GitService {
 
 		// Run global setup script once in the parent directory
 		if (globalSetupScript) {
-			await this.runSetupScript(globalSetupScript, "global", parentPath, issue);
+			await this.runSetupScript(
+				globalSetupScript,
+				"global",
+				parentPath,
+				issue,
+				globalSetupScriptTimeoutMs,
+			);
 		}
 
 		const repoPaths: Record<string, string> = {};
@@ -587,6 +606,7 @@ export class GitService {
 		globalSetupScript?: string,
 		workspacePathOverride?: string,
 		baseBranchOverride?: string,
+		globalSetupScriptTimeoutMs?: number,
 	): Promise<Workspace> {
 		this.logger.info(
 			`createSingleRepoWorktree for ${repository.name} (id=${repository.id}): baseBranchOverride=${baseBranchOverride ?? "undefined"}`,
@@ -824,6 +844,7 @@ export class GitService {
 					"global",
 					workspacePath,
 					issue,
+					globalSetupScriptTimeoutMs,
 				);
 			}
 
@@ -832,6 +853,7 @@ export class GitService {
 				repository.repositoryPath,
 				workspacePath,
 				issue,
+				repository.setupScriptTimeoutMs,
 			);
 
 			return {
@@ -1036,6 +1058,7 @@ export class GitService {
 		repositoryPath: string,
 		workspacePath: string,
 		issue: Issue,
+		timeoutMs?: number,
 	): Promise<void> {
 		const isWindows = process.platform === "win32";
 		const setupScripts = [
@@ -1079,7 +1102,13 @@ export class GitService {
 
 		if (scriptToRun) {
 			const scriptPath = join(repositoryPath, scriptToRun.file);
-			await this.runSetupScript(scriptPath, "repository", workspacePath, issue);
+			await this.runSetupScript(
+				scriptPath,
+				"repository",
+				workspacePath,
+				issue,
+				timeoutMs,
+			);
 		}
 	}
 }
