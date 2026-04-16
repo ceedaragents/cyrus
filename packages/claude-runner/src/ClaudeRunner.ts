@@ -474,7 +474,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// back to unscrubbed env (and log resolution guidance to stdout)
 			// instead of failing opaquely mid-session.
 			const sandboxRequirements = checkLinuxSandboxRequirements();
-			logSandboxRequirementFailures(sandboxRequirements);
+			logSandboxRequirementFailures(sandboxRequirements, this.logger);
 
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,

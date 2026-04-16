@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import type { ILogger } from "cyrus-core";
 
 /**
  * A single failed sandbox requirement, with user-facing guidance
@@ -111,39 +112,33 @@ export function checkLinuxSandboxRequirements(): SandboxRequirementsResult {
 }
 
 /**
- * Print requirement failures to stdout with resolution guidance. The message
- * is printed at most once per process; subsequent calls are no-ops.
- *
- * The output is written to stdout (via `console.log`) so users running Cyrus
- * interactively can see it alongside regular startup logs without needing to
- * enable a debug log level.
+ * Log requirement failures as WARN-level messages via the dedicated logger.
+ * The warnings are emitted at most once per process; subsequent calls are
+ * no-ops regardless of which logger instance is passed.
  */
 export function logSandboxRequirementFailures(
 	result: SandboxRequirementsResult,
+	logger: ILogger,
 ): void {
 	if (result.supported || hasLoggedFailures) {
 		return;
 	}
 	hasLoggedFailures = true;
 
-	const lines: string[] = [];
-	lines.push(
-		"[ClaudeRunner] Linux sandbox requirements are not met — skipping CLAUDE_CODE_SUBPROCESS_ENV_SCRUB.",
+	logger.warn(
+		"Linux sandbox requirements are not met — skipping CLAUDE_CODE_SUBPROCESS_ENV_SCRUB.",
 	);
-	lines.push(
-		"[ClaudeRunner] Claude sessions will continue, but subprocess env scrubbing will be disabled until these are resolved:",
+	logger.warn(
+		"Claude sessions will continue, but subprocess env scrubbing will be disabled until these are resolved:",
 	);
 
 	for (const failure of result.failures) {
-		lines.push("");
-		lines.push(`  - [${failure.check}] ${failure.message}`);
-		for (const line of failure.resolution.split("\n")) {
-			lines.push(`      ${line}`);
-		}
+		const resolutionBlock = failure.resolution
+			.split("\n")
+			.map((line) => `      ${line}`)
+			.join("\n");
+		logger.warn(`  [${failure.check}] ${failure.message}\n${resolutionBlock}`);
 	}
-
-	lines.push("");
-	console.log(lines.join("\n"));
 }
 
 /**

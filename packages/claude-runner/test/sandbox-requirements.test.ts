@@ -56,18 +56,29 @@ function setPlatform(platform: NodeJS.Platform): void {
 	});
 }
 
+function createMockLogger() {
+	return {
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		withContext: vi.fn(),
+		getLevel: vi.fn(),
+		setLevel: vi.fn(),
+	};
+}
+
 describe("sandbox-requirements", () => {
-	let logSpy: ReturnType<typeof vi.spyOn>;
+	let mockLogger: ReturnType<typeof createMockLogger>;
 
 	beforeEach(() => {
 		resetSandboxRequirementsCacheForTesting();
 		spawnSyncMock.mockReset();
-		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		mockLogger = createMockLogger();
 	});
 
 	afterEach(() => {
 		setPlatform(ORIGINAL_PLATFORM);
-		logSpy.mockRestore();
 	});
 
 	it("short-circuits to supported on non-Linux platforms without probing the host", () => {
@@ -209,33 +220,39 @@ describe("sandbox-requirements", () => {
 
 	describe("logSandboxRequirementFailures", () => {
 		it("does nothing when requirements are supported", () => {
-			logSandboxRequirementFailures({
-				supported: true,
-				platform: "linux",
-				failures: [],
-			});
-			expect(logSpy).not.toHaveBeenCalled();
+			logSandboxRequirementFailures(
+				{ supported: true, platform: "linux", failures: [] },
+				mockLogger as any,
+			);
+			expect(mockLogger.warn).not.toHaveBeenCalled();
 		});
 
-		it("writes a stdout summary with each failure's resolution on the first call", () => {
-			logSandboxRequirementFailures({
-				supported: false,
-				platform: "linux",
-				failures: [
-					{
-						check: "socat",
-						message: "`socat` is not installed or not on PATH.",
-						resolution: "Install socat.",
-					},
-				],
-			});
+		it("logs warn-level messages with each failure's resolution on the first call", () => {
+			logSandboxRequirementFailures(
+				{
+					supported: false,
+					platform: "linux",
+					failures: [
+						{
+							check: "socat",
+							message: "`socat` is not installed or not on PATH.",
+							resolution: "Install socat.",
+						},
+					],
+				},
+				mockLogger as any,
+			);
 
-			expect(logSpy).toHaveBeenCalledTimes(1);
-			const output = logSpy.mock.calls[0]?.[0] as string;
-			expect(output).toContain("Linux sandbox requirements are not met");
-			expect(output).toContain("skipping CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
-			expect(output).toContain("[socat]");
-			expect(output).toContain("Install socat.");
+			// Should have: 1 header, 1 "sessions will continue" line, 1 per-failure detail
+			expect(mockLogger.warn).toHaveBeenCalledTimes(3);
+			expect(mockLogger.warn.mock.calls[0]?.[0]).toContain(
+				"Linux sandbox requirements are not met",
+			);
+			expect(mockLogger.warn.mock.calls[0]?.[0]).toContain(
+				"skipping CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
+			);
+			expect(mockLogger.warn.mock.calls[2]?.[0]).toContain("[socat]");
+			expect(mockLogger.warn.mock.calls[2]?.[0]).toContain("Install socat.");
 		});
 
 		it("is a no-op on subsequent calls within the same process", () => {
@@ -250,10 +267,11 @@ describe("sandbox-requirements", () => {
 					},
 				],
 			};
-			logSandboxRequirementFailures(result);
-			logSandboxRequirementFailures(result);
+			logSandboxRequirementFailures(result, mockLogger as any);
+			logSandboxRequirementFailures(result, mockLogger as any);
 
-			expect(logSpy).toHaveBeenCalledTimes(1);
+			// Only the first call should have emitted warnings
+			expect(mockLogger.warn).toHaveBeenCalledTimes(3);
 		});
 	});
 });

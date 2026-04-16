@@ -235,6 +235,7 @@ describe("Environment variable isolation", () => {
 		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBeUndefined();
 		expect(logSandboxRequirementFailures).toHaveBeenCalledWith(
 			expect.objectContaining({ supported: false }),
+			expect.anything(),
 		);
 	});
 
