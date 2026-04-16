@@ -106,7 +106,7 @@ No comments yet.
 
 			const session = {
 				issueId: "solo-issue-uuid",
-				workspace: { path: "/test" },
+				workspace: { path: "/test/solo" },
 				metadata: {},
 			};
 
