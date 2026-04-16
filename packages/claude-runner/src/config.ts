@@ -58,20 +58,20 @@ export const availableTools = [
 	"CronDelete",
 	"CronList",
 	"RemoteTrigger",
-	"ScheduleWakeup",
 
-	// MCP resource tools
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
-
-	// Monitoring and task lifecycle
-	"Monitor",
+	// Task lifecycle
 	"TaskOutput",
 	"TaskStop",
 
 	// Team management
 	"TeamCreate",
 	"TeamDelete",
+
+	// IDE/LSP integration
+	"LSP",
+
+	// Tool discovery
+	"ToolSearch",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -93,12 +93,10 @@ export const readOnlyTools: ToolName[] = [
 	"TaskList",
 	"Task",
 	"Skill",
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
-	"Monitor",
 	"TaskOutput",
 	"EnterPlanMode",
 	"ExitPlanMode",
+	"ToolSearch",
 ];
 
 /**
