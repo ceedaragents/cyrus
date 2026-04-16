@@ -12,12 +12,33 @@
 
 set -euo pipefail
 
+# Resolve the cli.js bundled inside @anthropic-ai/claude-agent-sdk using Node's
+# module resolution — the same logic used by ClaudeRunner.ts at runtime.
+# This ensures we extract tools from the *installed SDK version*, not whatever
+# system-wide `claude` binary happens to be on PATH.
+CLI_PATH=$(node -e "
+  const { createRequire } = require('module');
+  const { dirname, join } = require('path');
+  const { existsSync } = require('fs');
+  // Resolve from claude-runner's package.json context since that's where the SDK is a direct dep
+  const req = createRequire(require.resolve('./packages/claude-runner/package.json'));
+  const sdkPath = req.resolve('@anthropic-ai/claude-agent-sdk');
+  const cliPath = join(dirname(sdkPath), 'cli.js');
+  if (!existsSync(cliPath)) { process.stderr.write('cli.js not found at: ' + cliPath + '\n'); process.exit(1); }
+  process.stdout.write(cliPath);
+" 2>/dev/null) || {
+  echo "ERROR: Could not resolve @anthropic-ai/claude-agent-sdk cli.js."
+  echo "Make sure dependencies are installed: pnpm install"
+  exit 1
+}
+
+echo "Using SDK CLI: $CLI_PATH"
 echo "Running Claude Code to capture init block..."
 # Capture full output to a temp file to avoid SIGPIPE from head -1
 # (pipefail + head causes claude to exit non-zero when the pipe closes early)
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
-claude -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
+node "$CLI_PATH" -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
 init_json=$(head -1 "$tmpfile")
 
 # The first line of stream-json output is the init message containing the tool list

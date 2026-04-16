@@ -46,6 +46,7 @@ export const availableTools = [
 	// User interaction tools
 	"AskUserQuestion",
 	"SendMessage",
+	"PushNotification",
 
 	// Plan and worktree management
 	"EnterPlanMode",
@@ -58,8 +59,10 @@ export const availableTools = [
 	"CronDelete",
 	"CronList",
 	"RemoteTrigger",
+	"ScheduleWakeup",
 
-	// Task lifecycle
+	// Monitoring and task lifecycle
+	"Monitor",
 	"TaskOutput",
 	"TaskStop",
 
@@ -93,6 +96,7 @@ export const readOnlyTools: ToolName[] = [
 	"TaskList",
 	"Task",
 	"Skill",
+	"Monitor",
 	"TaskOutput",
 	"EnterPlanMode",
 	"ExitPlanMode",
