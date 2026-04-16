@@ -5,12 +5,16 @@ describe("AgentSessionManager.getSessionsByBaseBranch", () => {
 	let manager: AgentSessionManager;
 
 	beforeEach(() => {
-		manager = new AgentSessionManager(undefined, undefined, {
-			getNextSubroutine: () => null,
-			getCurrentSubroutine: () => null,
-			advanceToNextSubroutine: () => {},
-			getLastSubroutineResult: () => undefined,
-		} as any);
+		const noopLogger = {
+			info: () => {},
+			warn: () => {},
+			error: () => {},
+			debug: () => {},
+			withContext: function () {
+				return this;
+			},
+		} as any;
+		manager = new AgentSessionManager(undefined, undefined, noopLogger);
 	});
 
 	it("returns sessions tracking the specified base branch and repository", () => {

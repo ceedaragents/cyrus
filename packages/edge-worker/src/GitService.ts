@@ -1,5 +1,12 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
@@ -9,7 +16,7 @@ import type {
 	RepositoryConfig,
 	Workspace,
 } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, getDefaultWorktreesDir, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 export interface CreateGitWorktreeOptions {
@@ -26,17 +33,24 @@ export interface CreateGitWorktreeOptions {
 	baseBranchOverrides?: Map<string, string>;
 }
 
+export interface GitServiceOptions {
+	cyrusHome?: string;
+}
+
 /**
  * Service responsible for Git worktree operations
  */
 export class GitService {
 	private logger: ILogger;
 	private worktreeIncludeService: WorktreeIncludeService;
+	private cyrusHome: string;
 
-	constructor(logger?: ILogger) {
+	constructor(options?: GitServiceOptions, logger?: ILogger) {
 		this.logger = logger ?? createLogger({ component: "GitService" });
 		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
+		this.cyrusHome = options?.cyrusHome ?? join(homedir(), ".cyrus");
 	}
+
 	/**
 	 * Check if a branch exists locally or remotely
 	 */
@@ -67,10 +81,21 @@ export class GitService {
 	}
 
 	/**
-	 * Sanitize branch name by removing backticks to prevent command injection
+	 * Sanitize branch name by removing characters invalid in git refs.
+	 * Git branch names cannot contain: space, ~, ^, :, ?, *, [, \, backtick,
+	 * consecutive dots (..), ASCII control chars, or start/end with dot or slash.
+	 * See `git check-ref-format` for the full specification.
 	 */
 	public sanitizeBranchName(name: string): string {
-		return name ? name.replace(/`/g, "") : name;
+		if (!name) return name;
+		return name
+			.replace(/[`~^:?*[\]\\@{}\s]/g, "-") // replace invalid chars with dash
+			.replace(/\.{2,}/g, ".") // collapse consecutive dots
+			.replace(/\/{2,}/g, "/") // collapse consecutive slashes
+			.replace(/\.lock(\/|$)/g, "$1") // remove .lock component
+			.replace(/^[.\-/]+/, "") // strip leading dots, dashes, slashes
+			.replace(/[.\-/]+$/, "") // strip trailing dots, dashes, slashes
+			.replace(/-{2,}/g, "-"); // collapse consecutive dashes
 	}
 
 	/**
@@ -625,15 +650,38 @@ export class GitService {
 					encoding: "utf-8",
 				});
 
-				if (worktrees.includes(workspacePath)) {
+				// Use exact line match to avoid substring false positives
+				// (e.g., "/path/CYSV-56" matching "/path/CYSV-56/cyrus")
+				const worktreeLines = worktrees
+					.split("\n")
+					.filter((line) => line.startsWith("worktree "))
+					.map((line) => line.substring("worktree ".length));
+
+				if (worktreeLines.includes(workspacePath)) {
+					// Verify the worktree is actually valid on disk (not a stale entry
+					// from a previous cleanup that deleted the directory)
+					if (this.isGitWorktree(workspacePath)) {
+						this.logger.info(
+							`Worktree already exists at ${workspacePath}, using existing`,
+						);
+						return {
+							path: workspacePath,
+							isGitWorktree: true,
+							resolvedBaseBranches: { [repository.id]: resolution },
+						};
+					}
+					// Stale worktree entry — prune and continue with creation
 					this.logger.info(
-						`Worktree already exists at ${workspacePath}, using existing`,
+						`Stale worktree entry found for ${workspacePath}, pruning and recreating`,
 					);
-					return {
-						path: workspacePath,
-						isGitWorktree: true,
-						resolvedBaseBranches: { [repository.id]: resolution },
-					};
+					try {
+						execSync("git worktree prune", {
+							cwd: repository.repositoryPath,
+							stdio: "pipe",
+						});
+					} catch {
+						// Prune failed, continue anyway
+					}
 				}
 			} catch (_e) {
 				// git worktree command failed, continue with creation
@@ -821,6 +869,163 @@ export class GitService {
 				isGitWorktree: false,
 				resolvedBaseBranches: { [repository.id]: fallbackResolution },
 			};
+		}
+	}
+
+	/**
+	 * Delete worktrees for a given issue identifier.
+	 *
+	 * Removes all git worktrees under the workspace directory for the issue,
+	 * handling both single-repo and multi-repo layouts since the issue identifier
+	 * directory is the root in both cases.
+	 *
+	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
+	 */
+	deleteWorktree(issueIdentifier: string): void {
+		const workspacePath = join(
+			getDefaultWorktreesDir(this.cyrusHome),
+			issueIdentifier,
+		);
+
+		if (!existsSync(workspacePath)) {
+			this.logger.info(
+				`Worktree directory does not exist for ${issueIdentifier}, nothing to delete`,
+			);
+			return;
+		}
+
+		this.logger.info(
+			`Deleting worktree directory for ${issueIdentifier} at ${workspacePath}`,
+		);
+
+		// Find all git worktrees that are within this workspace path.
+		// In multi-repo layouts, there may be subdirectories that are each worktrees.
+		const worktreePaths = this.findWorktreesUnderPath(workspacePath);
+
+		// Collect parent repository paths so we can prune stale entries after deletion
+		const parentRepoPaths = new Set<string>();
+
+		for (const wtPath of worktreePaths) {
+			try {
+				this.logger.info(`Removing git worktree: ${wtPath}`);
+				// Derive the main repository path from the worktree's .git file
+				// so we can run the command from a valid git context.
+				const mainRepoPath = this.getMainRepoFromWorktree(wtPath);
+				if (mainRepoPath) {
+					parentRepoPaths.add(mainRepoPath);
+				}
+				// Fall back to the worktree path itself (git reads its .git file to find the parent)
+				const cwd = mainRepoPath ?? wtPath;
+				execSync(`git worktree remove --force "${wtPath}"`, {
+					cwd,
+					stdio: "pipe",
+					timeout: 30_000,
+				});
+			} catch (error) {
+				this.logger.warn(
+					`Failed to remove git worktree at ${wtPath}: ${(error as Error).message}`,
+				);
+				// Continue with directory deletion even if git worktree remove fails
+			}
+		}
+
+		// Remove the entire workspace directory
+		try {
+			rmSync(workspacePath, { recursive: true, force: true });
+			this.logger.info(`Deleted worktree directory for ${issueIdentifier}`);
+		} catch (error) {
+			this.logger.error(
+				`Failed to delete worktree directory for ${issueIdentifier}: ${(error as Error).message}`,
+			);
+		}
+
+		// Prune stale worktree entries from parent repositories.
+		// If git worktree remove failed above, the filesystem directory was still deleted
+		// by rmSync, leaving stale entries in git's internal tracking.
+		for (const repoPath of parentRepoPaths) {
+			try {
+				execSync("git worktree prune", {
+					cwd: repoPath,
+					stdio: "pipe",
+					timeout: 10_000,
+				});
+			} catch {
+				// Best-effort: prune failure is not critical
+			}
+		}
+	}
+
+	/**
+	 * Find all git worktree paths that are located under a given directory.
+	 * Checks the directory itself and its immediate subdirectories (for multi-repo layouts).
+	 */
+	private findWorktreesUnderPath(dirPath: string): string[] {
+		const worktrees: string[] = [];
+
+		// Check if the directory itself is a git worktree
+		if (this.isGitWorktree(dirPath)) {
+			worktrees.push(dirPath);
+			return worktrees;
+		}
+
+		// Check immediate subdirectories (multi-repo layout: each repo is a subdirectory)
+		try {
+			const entries = readdirSync(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					const subPath = join(dirPath, entry.name);
+					if (this.isGitWorktree(subPath)) {
+						worktrees.push(subPath);
+					}
+				}
+			}
+		} catch {
+			// Directory listing failed, skip
+		}
+
+		return worktrees;
+	}
+
+	/**
+	 * Check if a directory is a git worktree (has a .git file, not a .git directory).
+	 */
+	private isGitWorktree(dirPath: string): boolean {
+		try {
+			const gitPath = join(dirPath, ".git");
+			if (!existsSync(gitPath)) {
+				return false;
+			}
+			const stats = statSync(gitPath);
+			// Worktrees have a .git file (not directory) that points to the main repo
+			return stats.isFile();
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Extract the main repository path from a worktree's .git file.
+	 * Worktree .git files contain "gitdir: /path/to/main-repo/.git/worktrees/<name>".
+	 * Returns the main repository directory, or null if it cannot be determined.
+	 */
+	private getMainRepoFromWorktree(worktreePath: string): string | null {
+		try {
+			const gitFilePath = join(worktreePath, ".git");
+			if (!existsSync(gitFilePath)) return null;
+			const stats = statSync(gitFilePath);
+			if (!stats.isFile()) return null;
+
+			const content = readFileSync(gitFilePath, "utf-8").trim();
+			const match = content.match(/^gitdir:\s+(.+)$/);
+			if (!match?.[1]) return null;
+
+			// gitdir points to main-repo/.git/worktrees/<name>
+			// Resolve to absolute path (may be relative), then go up 3 levels
+			const gitDir = pathResolve(worktreePath, match[1]);
+			const mainRepoDir = pathResolve(gitDir, "..", "..", "..");
+			return existsSync(mainRepoDir) ? mainRepoDir : null;
+		} catch {
+			return null;
 		}
 	}
 

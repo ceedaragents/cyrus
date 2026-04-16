@@ -4,11 +4,13 @@ import type {
 	JsonSchemaOutputFormat,
 	McpServerConfig,
 	OutputFormat,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
+	SdkPluginConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
 
@@ -43,7 +45,12 @@ export interface ClaudeRunnerConfig {
 		systemPromptVersion?: string;
 	};
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
+	plugins?: SdkPluginConfig[]; // Plugins providing skills, agents, hooks, and MCP servers
 	outputFormat?: OutputFormatConfig; // Structured output format configuration
+	sandbox?: SandboxSettings; // Sandbox settings (enabled, network proxy ports, etc.)
+	/** Additional environment variables to pass to the Claude child process (merged after process.env) */
+	additionalEnv?: Record<string, string>;
+	pathToClaudeCodeExecutable?: string; // Explicit path to Claude Code CLI executable (auto-resolved if not set)
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
 	/**
 	 * Callback for handling AskUserQuestion tool invocations.
@@ -79,6 +86,7 @@ export type {
 	JsonSchemaOutputFormat,
 	McpServerConfig,
 	OutputFormat,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKRateLimitEvent,
@@ -86,15 +94,14 @@ export type {
 	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
+	SdkPluginConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 
 // Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']
 export type JsonSchema = JsonSchemaOutputFormat["schema"];
+export type { BetaMessage as APIAssistantMessage } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 // Re-export Anthropic API message types
-export type {
-	Message as APIAssistantMessage,
-	MessageParam as APIUserMessage,
-} from "@anthropic-ai/sdk/resources/messages.js";
+export type { MessageParam as APIUserMessage } from "@anthropic-ai/sdk/resources/messages.js";
 // Type aliases for re-export
 export type ClaudeSystemMessage = SDKSystemMessage;
 export type ClaudeUserMessage = SDKUserMessage;

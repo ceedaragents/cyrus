@@ -46,10 +46,12 @@ export type {
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
 	LinearWorkspaceConfig,
+	NetworkPolicy,
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
 	RunnerType,
+	SandboxConfig,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
@@ -59,11 +61,14 @@ export {
 	EdgeConfigSchema,
 	LinearWorkspaceConfigSchema,
 	migrateEdgeConfig,
+	NetworkPolicySchema,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	RunnerTypeSchema,
 	requireLinearWorkspaceId,
 	resolvePath,
+	SandboxConfigSchema,
+	TRUSTED_DOMAINS,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
 } from "./config-types.js";
@@ -73,7 +78,10 @@ export {
 	DEFAULT_BASE_BRANCH,
 	DEFAULT_CONFIG_FILENAME,
 	DEFAULT_PROXY_URL,
+	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
+	getDefaultReposDir,
+	getDefaultWorktreesDir,
 } from "./constants.js";
 // Issue Tracker Abstraction
 export type {
@@ -103,7 +111,9 @@ export type {
 	IAgentEventTransport,
 	IIssueTrackerService,
 	Issue,
+	IssueDeletedWebhook,
 	IssueRelation,
+	IssueStateChangeWebhook,
 	IssueUnassignedWebhook,
 	IssueUpdateInput,
 	IssueUpdateWebhook,
@@ -134,8 +144,10 @@ export {
 	isIssueAssignedEvent,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
+	isIssueDeletedWebhook,
 	isIssueNewCommentWebhook,
 	isIssueStateChangeWebhook,
+	isIssueStateIdUpdateWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedEvent,
 	isIssueUnassignedWebhook,
@@ -148,11 +160,16 @@ export type {
 	GitHubPlatformRef,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
+	GitLabPlatformRef,
+	GitLabSessionStartPlatformData,
+	GitLabUserPromptPlatformData,
 	GuidanceItem,
 	IMessageTranslator,
 	InternalMessage,
 	InternalMessageBase,
+	IssueStateChangeMessage,
 	LinearContentUpdatePlatformData,
+	LinearIssueStateChangePlatformData,
 	LinearPlatformRef,
 	LinearSessionStartPlatformData,
 	LinearStopSignalPlatformData,
@@ -174,12 +191,16 @@ export type {
 export {
 	hasGitHubSessionStartPlatformData,
 	hasGitHubUserPromptPlatformData,
+	hasGitLabSessionStartPlatformData,
+	hasGitLabUserPromptPlatformData,
 	hasLinearSessionStartPlatformData,
 	hasLinearUserPromptPlatformData,
 	hasSlackSessionStartPlatformData,
 	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
 	isGitHubMessage,
+	isGitLabMessage,
+	isIssueStateChangeMessage,
 	isLinearMessage,
 	isSessionStartMessage,
 	isSlackMessage,
@@ -200,7 +221,18 @@ export {
 	PersistenceManager,
 } from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
-
+export type {
+	WebhookIpValidatorOptions,
+	WebhookProvider,
+} from "./security/index.js";
+// Webhook IP validation
+export {
+	GITHUB_WEBHOOK_CIDRS_FALLBACK,
+	GITLAB_WEBHOOK_CIDRS,
+	ipMatchesAllowlist,
+	LINEAR_WEBHOOK_IPS,
+	WebhookIpValidator,
+} from "./security/index.js";
 // Simple Agent Runner types
 export type {
 	IAgentProgressEvent,

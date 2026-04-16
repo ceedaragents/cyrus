@@ -1,10 +1,10 @@
 import {
-	isIssueStateChangeWebhook,
+	isIssueStateIdUpdateWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 } from "cyrus-core";
 import { describe, expect, it } from "vitest";
 
-describe("isIssueStateChangeWebhook type guard", () => {
+describe("isIssueStateIdUpdateWebhook type guard", () => {
 	it("returns true for an Issue update webhook with stateId in updatedFrom", () => {
 		const webhook = {
 			type: "Issue",
@@ -22,7 +22,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			createdAt: "2025-01-01T00:00:00Z",
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(true);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(true);
 	});
 
 	it("returns false for an Issue update webhook without stateId in updatedFrom", () => {
@@ -41,7 +41,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			createdAt: "2025-01-01T00:00:00Z",
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(false);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(false);
 	});
 
 	it("returns false for non-Issue webhook types", () => {
@@ -50,7 +50,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			action: "created",
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(false);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(false);
 	});
 
 	it("returns false for Issue webhook without updatedFrom", () => {
@@ -62,7 +62,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			},
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(false);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(false);
 	});
 
 	it("returns false for Issue create/remove actions", () => {
@@ -77,7 +77,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			},
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(false);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(false);
 	});
 
 	it("does not conflict with isIssueTitleOrDescriptionUpdateWebhook", () => {
@@ -99,7 +99,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 			createdAt: "2025-01-01T00:00:00Z",
 		};
 
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(true);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(true);
 		expect(isIssueTitleOrDescriptionUpdateWebhook(webhook as any)).toBe(true);
 	});
 
@@ -121,7 +121,7 @@ describe("isIssueStateChangeWebhook type guard", () => {
 		};
 
 		// Should match state change but NOT title/description
-		expect(isIssueStateChangeWebhook(webhook as any)).toBe(true);
+		expect(isIssueStateIdUpdateWebhook(webhook as any)).toBe(true);
 		expect(isIssueTitleOrDescriptionUpdateWebhook(webhook as any)).toBe(false);
 	});
 });

@@ -9,6 +9,7 @@ export interface RepositoryPayload {
 	repository_url: string; // Git clone URL
 	repository_name: string; // Repository name (required)
 	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
+	gitlabUrl?: string; // GitLab repository URL (e.g., "https://gitlab.com/group/project") - used for Linear select signal
 }
 
 /**
@@ -89,6 +90,19 @@ export interface CheckGhData {
 }
 
 /**
+ * Check GitLab CLI payload (empty - no parameters needed)
+ */
+export type CheckGlabPayload = Record<string, never>;
+
+/**
+ * Check GitLab CLI response data
+ */
+export interface CheckGlabData {
+	isInstalled: boolean;
+	isAuthenticated: boolean;
+}
+
+/**
  * Error response to send back to cyrus-hosted
  */
 export interface ErrorResponse {
@@ -107,3 +121,38 @@ export interface SuccessResponse {
 }
 
 export type ApiResponse = SuccessResponse | ErrorResponse;
+
+/**
+ * Create or update a user skill
+ * Sent by cyrus-hosted when a user creates/edits a skill
+ */
+export interface UpdateSkillPayload {
+	/** Skill name — used as the directory name and invocation name */
+	name: string;
+	/** One-line description shown in the Skill tool's list */
+	description: string;
+	/** Full skill content (Markdown body, excluding the frontmatter — frontmatter is generated from name + description) */
+	content: string;
+}
+
+/**
+ * Delete a user skill
+ * Sent by cyrus-hosted when a user removes a skill
+ */
+export interface DeleteSkillPayload {
+	/** Skill name to delete */
+	name: string;
+}
+
+/**
+ * List user skills payload (empty — no parameters needed)
+ */
+export type ListSkillsPayload = Record<string, never>;
+
+/**
+ * Skill info returned in list responses
+ */
+export interface SkillInfo {
+	name: string;
+	description: string;
+}

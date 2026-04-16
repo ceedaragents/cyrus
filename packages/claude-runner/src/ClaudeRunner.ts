@@ -7,7 +7,8 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
 	type CanUseTool,
 	type PermissionResult,
@@ -29,6 +30,44 @@ export class AbortError extends Error {
 	constructor(message?: string) {
 		super(message);
 		this.name = "AbortError";
+	}
+}
+
+// Create a require function for resolving module paths in ESM
+const require = createRequire(import.meta.url);
+
+/**
+ * Resolves the path to the Claude Agent SDK's cli.js executable.
+ * This is needed because the SDK's default path resolution (via import.meta.url)
+ * can fail in symlinked environments like global npm installs or pnpm workspaces.
+ *
+ * @returns The resolved path to cli.js, or undefined if resolution fails
+ */
+function resolveClaudeCodeExecutablePath(): string | undefined {
+	try {
+		// Resolve the SDK's main entry point using Node's module resolution
+		const sdkPath = require.resolve("@anthropic-ai/claude-agent-sdk");
+		// The SDK exports sdk.mjs, but cli.js is in the same directory
+		const sdkDir = dirname(sdkPath);
+		const cliPath = join(sdkDir, "cli.js");
+
+		// Verify the cli.js file exists
+		if (existsSync(cliPath)) {
+			return cliPath;
+		}
+
+		console.warn(
+			`[ClaudeRunner] Resolved SDK path but cli.js not found at: ${cliPath}`,
+		);
+		return undefined;
+	} catch (error) {
+		// This can happen if the SDK is not installed or path resolution fails
+		// In this case, let the SDK use its own default resolution logic
+		console.warn(
+			"[ClaudeRunner] Failed to resolve SDK executable path:",
+			error instanceof Error ? error.message : error,
+		);
+		return undefined;
 	}
 }
 
@@ -71,6 +110,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
 	private canUseToolCallback: CanUseTool | undefined;
+	private repositoryEnv: Record<string, string> = {};
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -416,6 +456,12 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
+			// Resolve pathToClaudeCodeExecutable: use config value if provided,
+			// otherwise auto-resolve to fix issues in symlinked environments (CYPACK-762)
+			const pathToClaudeCodeExecutable =
+				this.config.pathToClaudeCodeExecutable ||
+				resolveClaudeCodeExecutablePath();
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
@@ -436,7 +482,23 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
 					env: {
-						...process.env,
+						...(process.env.PATH && { PATH: process.env.PATH }),
+						// Forward auth credentials from parent process — the SDK needs
+						// these for API calls. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 prevents
+						// them from leaking to Bash subprocesses.
+						// See: https://code.claude.com/docs/en/env-vars
+						...(process.env.ANTHROPIC_API_KEY && {
+							ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+						}),
+						...(process.env.CLAUDE_CODE_OAUTH_TOKEN && {
+							CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+						}),
+						...(process.env.ANTHROPIC_AUTH_TOKEN && {
+							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
+						}),
+						CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+						...this.repositoryEnv,
+						...this.config.additionalEnv,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 						CLAUDE_CODE_ENABLE_TASKS: "true",
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
@@ -459,12 +521,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
+					...(this.config.plugins?.length && { plugins: this.config.plugins }),
 					...(this.config.tools !== undefined && { tools: this.config.tools }),
 					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
 					...(this.config.outputFormat && {
 						outputFormat: this.config.outputFormat,
 					}),
+					...(this.config.sandbox && { sandbox: this.config.sandbox }),
 					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
+					...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
 				},
 			};
 
@@ -752,29 +817,34 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
-	 * Load environment variables from repository .env file
-	 * Does not override existing process.env values
+	 * Load environment variables from repository .env file into an isolated
+	 * object. The parsed vars are merged only into the child subprocess env,
+	 * never into the EdgeWorker's own process.env, so different sessions
+	 * (potentially across different repositories) cannot poison each other.
+	 * Re-reads the file on every call so updated/removed vars take effect.
 	 */
 	private loadRepositoryEnv(workingDirectory: string): void {
 		try {
 			const envPath = join(workingDirectory, ".env");
 
 			if (existsSync(envPath)) {
-				// Load but don't override existing env vars
-				const result = dotenv.config({
-					path: envPath,
-					override: false, // Existing process.env takes precedence
-				});
+				const content = readFileSync(envPath, "utf8");
+				const parsed = dotenv.parse(content);
 
-				if (result.error) {
-					this.logger.warn("Failed to parse .env file:", result.error);
-				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
+				// Store as isolated per-session env — replaces any previous load
+				this.repositoryEnv = parsed;
+
+				if (Object.keys(parsed).length > 0) {
 					this.logger.debug("Loaded environment variables from .env");
 				}
+			} else {
+				// No .env file — clear any previously loaded vars
+				this.repositoryEnv = {};
 			}
 		} catch (error) {
 			this.logger.warn("Error loading repository .env:", error);
 			// Don't fail the session, just warn
+			this.repositoryEnv = {};
 		}
 	}
 

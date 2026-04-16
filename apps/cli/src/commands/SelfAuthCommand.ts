@@ -11,7 +11,7 @@ import open from "open";
 import { BaseCommand } from "./ICommand.js";
 
 /**
- * Self-auth command - authenticate with Linear OAuth directly from CLI
+ * Self-auth-linear command - authenticate with Linear OAuth directly from CLI
  * Handles the complete OAuth flow without requiring EdgeWorker
  */
 export class SelfAuthCommand extends BaseCommand {
@@ -109,7 +109,7 @@ export class SelfAuthCommand extends BaseCommand {
 			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 
 			this.logSuccess(`Saved credentials for workspace: ${workspace.name}`);
-			if (config.repositories.length === 0) {
+			if (!config.repositories || config.repositories.length === 0) {
 				console.log(
 					"   No repositories configured yet. Run 'cyrus self-add-repo' to add one.",
 				);
@@ -187,8 +187,12 @@ export class SelfAuthCommand extends BaseCommand {
 				reject(new Error("Missing authorization code"));
 			});
 
+			const isExternalHost =
+				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+			const listenHost = isExternalHost ? "0.0.0.0" : "localhost";
+
 			this.server
-				.listen({ port: this.callbackPort, host: "localhost" })
+				.listen({ port: this.callbackPort, host: listenHost })
 				.then(() => {
 					console.log(
 						`Waiting for authorization on port ${this.callbackPort}...`,

@@ -1,8 +1,26 @@
 # End-to-End Self-Hosting Guide
 
-This guide walks you through setting up Cyrus completely self-hosted, including your own Linear OAuth application. This is the free, zero-cost option that gives you full control.
+## Quick Start (Recommended)
 
-> **Tip:** If you're using Claude, Cursor, or any AI coding agent, ask it to read this file and help you implement all the steps. Example: *"Read docs/SELF_HOSTING.md and help me set up self-hosted Cyrus"*
+If you're using any AI coding agent (Claude Code, Codex, Cursor, etc.), set up Cyrus with a single command:
+
+```bash
+npx skills add ceedaragents/cyrus -g
+```
+
+Then in your agent:
+
+```
+/cyrus-setup
+```
+
+The setup skill walks you through everything below — automatically.
+
+---
+
+## Manual Setup
+
+This guide walks you through setting up Cyrus completely self-hosted, including your own Linear OAuth application. This is the free, zero-cost option that gives you full control.
 
 ---
 
@@ -56,7 +74,7 @@ Linear needs to send webhooks to your Cyrus instance. Choose one option:
 | Option | Best For | Persistence |
 |--------|----------|-------------|
 | [Cloudflare Tunnel](./CLOUDFLARE_TUNNEL.md) | Production | Permanent URL |
-| ngrok | Development/testing | Changes on restart |
+| ngrok | Development/testing | Free static domain included |
 | Public server/domain | VPS or cloud hosting | Permanent URL |
 | Reverse proxy (nginx/caddy) | Existing infrastructure | Permanent URL |
 
@@ -184,7 +202,7 @@ ANTHROPIC_API_KEY=your-api-key
 ### 5.1 Authorize with Linear
 
 ```bash
-cyrus self-auth
+cyrus self-auth-linear
 ```
 
 This will:

@@ -92,6 +92,9 @@ describe("SelfAuthCommand", () => {
 		command = new SelfAuthCommand(mockApp as any);
 		originalEnv = { ...process.env };
 
+		// Ensure environment-dependent code paths are deterministic
+		delete process.env.CLOUDFLARE_TOKEN;
+
 		// Reset Fastify mock instance
 		mocks.mockFastifyInstance.get.mockReset();
 		mocks.mockFastifyInstance.listen.mockReset();
@@ -472,7 +475,7 @@ describe("SelfAuthCommand", () => {
 				"Workspace",
 			);
 
-			// Repositories are NOT modified — self-auth only saves credentials
+			// Repositories are NOT modified — self-auth-linear only saves credentials
 			expect(writtenConfig.repositories).toEqual([
 				{ id: "repo-1", linearWorkspaceId: "ws-123" },
 				{ id: "repo-2", linearWorkspaceId: "ws-456" },

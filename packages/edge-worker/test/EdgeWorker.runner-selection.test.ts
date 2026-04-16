@@ -200,7 +200,6 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
-			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
 			setActivitySink: vi.fn(),
 			on: vi.fn(), // EventEmitter method
@@ -310,8 +309,7 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
-			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(ClaudeRunner).not.toHaveBeenCalled();
 		});
 
 		it("should select Gemini runner with gemini-2.5-pro model when 'gemini-2.5-pro' label is present", async () => {
@@ -342,8 +340,7 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
-			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(ClaudeRunner).not.toHaveBeenCalled();
 			expect(capturedRunnerConfig.model).toBe("gemini-2.5-pro");
 		});
 
@@ -435,8 +432,7 @@ Issue: {{issue_identifier}}`;
 
 			expect(capturedRunnerType).toBe("codex");
 			expect(CodexRunner).toHaveBeenCalled();
-			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
-			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(ClaudeRunner).not.toHaveBeenCalled();
 		});
 
 		it("should select Codex runner with gpt-5-codex model when 'gpt-5-codex' label is present", async () => {
@@ -1024,9 +1020,9 @@ Issue: {{issue_identifier}}`;
 			const labels = ["opus"]; // Claude model label
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// Assert
 			expect(runnerSelection.runnerType).toBe("claude");
@@ -1041,9 +1037,9 @@ Issue: {{issue_identifier}}`;
 			const labels = ["gemini-3-pro"];
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// Assert
 			expect(runnerSelection.runnerType).toBe("gemini");
@@ -1055,9 +1051,9 @@ Issue: {{issue_identifier}}`;
 		it("should correctly identify runner type mismatch between label and session", () => {
 			// This test verifies the logic that would run in resumeAgentSession
 			const labels = ["sonnet"]; // Claude label
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// If continuing a Gemini session (hasGeminiSession=true, hasClaudeSession=false)
 			const useClaudeRunner = false; // Would be determined by session IDs
@@ -1073,7 +1069,9 @@ Issue: {{issue_identifier}}`;
 		});
 
 		it("should preserve explicit agent and ignore conflicting model", () => {
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection([
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection([
 				"claude",
 				"gpt-5-codex",
 			]);

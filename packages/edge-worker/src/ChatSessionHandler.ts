@@ -1,7 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { getReadOnlyTools } from "cyrus-claude-runner";
+import type { SDKMessage } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
@@ -11,6 +10,8 @@ import type {
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
+import type { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 
 /**
  * Defines what each chat platform must provide for the generic session lifecycle.
@@ -54,8 +55,10 @@ export interface ChatPlatformAdapter<TEvent> {
  */
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
-	mcpConfig?: Record<string, McpServerConfig>;
-	chatRepositoryPaths?: string[];
+	/** Provider for live repository paths, default repo, and workspace ID */
+	chatRepositoryProvider: ChatRepositoryProvider;
+	/** Shared RunnerConfigBuilder for constructing runner configs */
+	runnerConfigBuilder: RunnerConfigBuilder;
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
@@ -91,8 +94,6 @@ export class ChatSessionHandler<TEvent> {
 		this.sessionManager = new AgentSessionManager(
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
-			undefined, // No procedure analyzer
-			undefined, // No shared application server
 		);
 	}
 
@@ -214,7 +215,7 @@ export class ChatSessionHandler<TEvent> {
 			// Track this thread → session mapping for follow-up messages
 			this.threadSessions.set(threadKey, sessionId);
 
-			// Initialize procedure metadata
+			// Initialize session metadata
 			if (!session.metadata) {
 				session.metadata = {};
 			}
@@ -379,7 +380,7 @@ export class ChatSessionHandler<TEvent> {
 
 	/**
 	 * Build a runner config for a chat session.
-	 * Used by both handleEvent (new session) and resumeSession to eliminate duplication.
+	 * Delegates to RunnerConfigBuilder for config assembly.
 	 */
 	private buildRunnerConfig(
 		workspacePath: string,
@@ -392,37 +393,24 @@ export class ChatSessionHandler<TEvent> {
 			sessionId,
 			platform: this.adapter.platformName,
 		});
-		// When MCP servers are configured, include their tool permissions
-		const mcpToolPermissions = this.deps.mcpConfig
-			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
-			: [];
-		const repositoryPaths = Array.from(
-			new Set((this.deps.chatRepositoryPaths ?? []).filter(Boolean)),
-		);
-		const allowedTools = Array.from(
-			new Set([
-				...getReadOnlyTools(),
-				...mcpToolPermissions,
-				"Bash(git -C * pull)",
-			]),
-		);
-		sessionLogger.debug("Chat session allowed tools:", allowedTools);
 
-		return {
-			workingDirectory: workspacePath,
-			allowedTools,
-			disallowedTools: [] as string[],
-			allowedDirectories: [workspacePath, ...repositoryPaths],
+		// Read live values from the provider at session-build time
+		const provider = this.deps.chatRepositoryProvider;
+
+		return this.deps.runnerConfigBuilder.buildChatConfig({
+			workspacePath,
 			workspaceName,
+			systemPrompt,
+			sessionId,
+			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
-			appendSystemPrompt: systemPrompt,
-			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
-			...(resumeSessionId ? { resumeSessionId } : {}),
+			linearWorkspaceId: provider.getDefaultLinearWorkspaceId(),
+			repository: provider.getDefaultRepository(),
+			repositoryPaths: provider.getRepositoryPaths(),
 			logger: sessionLogger,
-			maxTurns: 200,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),
 			onError: (error: Error) => this.deps.onClaudeError(error),
-		};
+		});
 	}
 }

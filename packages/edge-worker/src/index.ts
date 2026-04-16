@@ -16,19 +16,34 @@ export type {
 	AskUserQuestionHandlerDeps,
 } from "./AskUserQuestionHandler.js";
 export { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
+export type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
+export { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 export type {
 	ChatPlatformAdapter,
 	ChatPlatformName,
 	ChatSessionHandlerDeps,
 } from "./ChatSessionHandler.js";
 export { ChatSessionHandler } from "./ChatSessionHandler.js";
+export { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 export { EdgeWorker } from "./EdgeWorker.js";
+export { EgressProxy } from "./EgressProxy.js";
 export type { CreateGitWorktreeOptions } from "./GitService.js";
 export { GitService } from "./GitService.js";
 export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+export type { McpConfigServiceDeps } from "./McpConfigService.js";
+export { McpConfigService } from "./McpConfigService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
+export type {
+	ChatRunnerConfigInput,
+	IChatToolResolver,
+	IMcpConfigProvider,
+	IRunnerSelector,
+	IssueRunnerConfigInput,
+} from "./RunnerConfigBuilder.js";
+export { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
+export { SkillsPluginResolver } from "./SkillsPluginResolver.js";
 export { SlackChatAdapter } from "./SlackChatAdapter.js";
 export type {
 	ActivityPostOptions,
@@ -37,6 +52,8 @@ export type {
 	IActivitySink,
 } from "./sinks/index.js";
 export { LinearActivitySink } from "./sinks/index.js";
+export type { PromptType } from "./ToolPermissionResolver.js";
+export { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 export type { EdgeWorkerEvents } from "./types.js";
 // User access control
 export {
@@ -44,14 +61,5 @@ export {
 	DEFAULT_BLOCK_MESSAGE,
 	UserAccessControl,
 } from "./UserAccessControl.js";
-// Export validation loop module
-export {
-	DEFAULT_VALIDATION_LOOP_CONFIG,
-	parseValidationResult,
-	VALIDATION_RESULT_SCHEMA,
-	type ValidationFixerContext,
-	type ValidationLoopConfig,
-	type ValidationLoopState,
-	type ValidationResult,
-} from "./validation/index.js";
+
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";
