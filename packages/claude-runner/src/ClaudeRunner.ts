@@ -25,6 +25,10 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
+import {
+	buildBaseSessionEnv,
+	normalizeMcpHttpTransport,
+} from "./session-env.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -422,17 +426,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					const mcpConfigContent = readFileSync(path, "utf8");
 					const mcpConfig = JSON.parse(mcpConfigContent);
 					const servers = mcpConfig.mcpServers || {};
-					// Normalize transport type for file-loaded configs.
-					// Config files (.mcp.json, mcp-*.json) often omit the `type` field,
-					// but the SDK requires an explicit discriminator for non-stdio transports.
-					for (const config of Object.values(servers) as Record<
-						string,
-						unknown
-					>[]) {
-						if (!config.type && typeof config.url === "string") {
-							config.type = "http";
-						}
-					}
+					normalizeMcpHttpTransport(servers);
 					mcpServers = { ...mcpServers, ...servers };
 					this.logger.debug(
 						`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
@@ -484,27 +478,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
 					env: {
-						...(process.env.PATH && { PATH: process.env.PATH }),
-						// Forward auth credentials from parent process — the SDK needs
-						// these for API calls. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 prevents
-						// them from leaking to Bash subprocesses.
-						// See: https://code.claude.com/docs/en/env-vars
-						...(process.env.ANTHROPIC_API_KEY && {
-							ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-						}),
-						...(process.env.CLAUDE_CODE_OAUTH_TOKEN && {
-							CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-						}),
-						...(process.env.ANTHROPIC_AUTH_TOKEN && {
-							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
-						}),
-						CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+						...buildBaseSessionEnv(),
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
-						CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
 					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,

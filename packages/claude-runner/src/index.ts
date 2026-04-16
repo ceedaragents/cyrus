@@ -24,6 +24,11 @@ export {
 	ClaudeMessageFormatter,
 	type IMessageFormatter,
 } from "./formatter.js";
+export {
+	buildBaseSessionEnv,
+	CYRUS_SESSION_ENV,
+	normalizeMcpHttpTransport,
+} from "./session-env.js";
 export type {
 	APIAssistantMessage,
 	APIUserMessage,

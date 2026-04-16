@@ -11,7 +11,11 @@ import type {
 	SDKMessage,
 	WarmSession,
 } from "cyrus-claude-runner";
-import { ClaudeRunner } from "cyrus-claude-runner";
+import {
+	buildBaseSessionEnv,
+	ClaudeRunner,
+	normalizeMcpHttpTransport,
+} from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
@@ -4028,7 +4032,7 @@ ${taskSection}`;
 			}
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
-				`I've paused working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Tip:** Send stop again within 10 seconds to fully terminate the session.`,
+				`I've paused working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
 			);
 		}
 	}
@@ -5797,7 +5801,7 @@ ${input.userComment}
 						session.id,
 					);
 
-					// Merge any file-based MCP configs (same logic as ClaudeRunner)
+					// Merge any file-based MCP configs (reuses shared normalization)
 					const mcpConfigPath =
 						this.mcpConfigService.buildMergedMcpConfigPath(repo);
 					let mcpServers: Record<string, McpServerConfig> = { ...mcpConfig };
@@ -5812,15 +5816,7 @@ ${input.userComment}
 										readFileSync(filePath, "utf8"),
 									);
 									const servers = fileContent.mcpServers || {};
-									// Normalize http transport (same as ClaudeRunner)
-									for (const cfg of Object.values(servers) as Record<
-										string,
-										unknown
-									>[]) {
-										if (!cfg.type && typeof cfg.url === "string") {
-											cfg.type = "http";
-										}
-									}
+									normalizeMcpHttpTransport(servers);
 									mcpServers = { ...mcpServers, ...servers };
 								}
 							} catch {
@@ -5851,14 +5847,9 @@ ${input.userComment}
 							...(allowedTools.length > 0 && { allowedTools }),
 							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
-							env: {
-								...process.env,
+							env: buildBaseSessionEnv({
 								MCP_CONNECTION_NONBLOCKING: "true",
-								CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
-								CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-								CLAUDE_CODE_ENABLE_TASKS: "true",
-								CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
-							},
+							}),
 						},
 					});
 
