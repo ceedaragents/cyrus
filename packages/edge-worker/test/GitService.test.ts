@@ -726,6 +726,93 @@ describe("GitService", () => {
 		});
 	});
 
+	describe("setup script timeout", () => {
+		it("uses the default 5-minute timeout when no override is configured", async () => {
+			const issue = makeIssue();
+
+			mockExistsSync.mockReturnValue(true);
+			mockStatSync.mockReturnValue({ mode: 0o755 } as any);
+			mockExecSync.mockReturnValue(Buffer.from(""));
+
+			await gitService.createGitWorktree(issue, [], {
+				workspaceBaseDir: "/home/user/.cyrus/worktrees",
+				globalSetupScript: "/home/user/setup.sh",
+			});
+
+			// The setup script should be invoked with the default 5-minute timeout
+			const setupCalls = mockExecSync.mock.calls.filter((call) =>
+				String(call[0]).includes("/home/user/setup.sh"),
+			);
+			expect(setupCalls.length).toBeGreaterThan(0);
+			expect(setupCalls[0]![1]).toMatchObject({ timeout: 5 * 60 * 1000 });
+		});
+
+		it("honors globalSetupScriptTimeoutMs override for the global setup script", async () => {
+			const issue = makeIssue();
+
+			mockExistsSync.mockReturnValue(true);
+			mockStatSync.mockReturnValue({ mode: 0o755 } as any);
+			mockExecSync.mockReturnValue(Buffer.from(""));
+
+			await gitService.createGitWorktree(issue, [], {
+				workspaceBaseDir: "/home/user/.cyrus/worktrees",
+				globalSetupScript: "/home/user/setup.sh",
+				globalSetupScriptTimeoutMs: 30 * 60 * 1000, // 30 minutes
+			});
+
+			const setupCalls = mockExecSync.mock.calls.filter((call) =>
+				String(call[0]).includes("/home/user/setup.sh"),
+			);
+			expect(setupCalls.length).toBeGreaterThan(0);
+			expect(setupCalls[0]![1]).toMatchObject({ timeout: 30 * 60 * 1000 });
+		});
+
+		it("honors repository.setupScriptTimeoutMs for the repository setup script", async () => {
+			const issue = makeIssue();
+			const repository = makeRepository({
+				setupScriptTimeoutMs: 20 * 60 * 1000, // 20 minutes
+			});
+
+			mockStatSync.mockReturnValue({ mode: 0o755 } as any);
+			mockExecSync.mockImplementation((cmd: any) => {
+				const cmdStr = String(cmd);
+				if (cmdStr === "git rev-parse --git-dir") {
+					return Buffer.from(".git\n");
+				}
+				if (cmdStr === "git worktree list --porcelain") {
+					return "";
+				}
+				if (cmdStr.includes("git rev-parse --verify")) {
+					throw new Error("not found");
+				}
+				if (cmdStr.includes("git fetch origin")) {
+					return Buffer.from("");
+				}
+				if (cmdStr.includes("git ls-remote")) {
+					return Buffer.from("abc123\trefs/heads/main\n");
+				}
+				if (cmdStr.includes("git worktree add")) {
+					return Buffer.from("");
+				}
+				return Buffer.from("");
+			});
+
+			// existsSync returns true for cyrus-setup.sh and executable checks
+			mockExistsSync.mockReturnValue(true);
+
+			await gitService.createGitWorktree(issue, [repository]);
+
+			// Find the exec call for the repository setup script (cyrus-setup.sh)
+			const repoSetupCalls = mockExecSync.mock.calls.filter((call) =>
+				String(call[0]).includes("cyrus-setup.sh"),
+			);
+			expect(repoSetupCalls.length).toBeGreaterThan(0);
+			expect(repoSetupCalls[0]![1]).toMatchObject({
+				timeout: 20 * 60 * 1000,
+			});
+		});
+	});
+
 	describe("createGitWorktree - N repos (multi-repo)", () => {
 		it("creates parent folder with per-repo worktree subdirectories", async () => {
 			const issue = makeIssue();

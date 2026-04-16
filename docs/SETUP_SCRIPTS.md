@@ -35,6 +35,27 @@ echo "Repository setup complete for issue: $LINEAR_ISSUE_IDENTIFIER"
 
 Make sure the script is executable: `chmod +x cyrus-setup.sh`
 
+### Increasing the timeout
+
+By default the repository setup script is killed after 5 minutes. If your
+setup does something longer-running (for example restoring a database dump),
+add `setupScriptTimeoutMs` to the repository entry in `~/.cyrus/config.json`:
+
+```json
+{
+  "repositories": [
+    {
+      "id": "workspace-123456",
+      "name": "my-app",
+      "repositoryPath": "/path/to/repo",
+      "setupScriptTimeoutMs": 1800000
+    }
+  ]
+}
+```
+
+The value is in milliseconds (`1800000` = 30 minutes).
+
 ---
 
 ## Global Setup Script
@@ -69,8 +90,27 @@ Both scripts receive the same environment variables and run in the worktree dire
 
 Make sure the script is executable: `chmod +x /opt/cyrus/bin/global-setup.sh`
 
+### Increasing the timeout
+
+By default the global setup script is killed after 5 minutes. To raise the
+limit (for example when the script restores a shared database), add
+`global_setup_script_timeout_ms` to `~/.cyrus/config.json`:
+
+```json
+{
+  "repositories": [...],
+  "global_setup_script": "/opt/cyrus/bin/global-setup.sh",
+  "global_setup_script_timeout_ms": 1800000
+}
+```
+
+The value is in milliseconds (`1800000` = 30 minutes). Per-repository setup
+scripts use `setupScriptTimeoutMs` on the repository entry instead.
+
 ### Error Handling
 
 - If the global script fails, Cyrus logs the error but continues with repository script execution
-- Both scripts have a 5-minute timeout to prevent hanging
+- Both scripts default to a 5-minute timeout; raise it with
+  `global_setup_script_timeout_ms` (global) or `setupScriptTimeoutMs`
+  (per-repository) when longer setup steps are needed
 - Script failures don't prevent worktree creation
