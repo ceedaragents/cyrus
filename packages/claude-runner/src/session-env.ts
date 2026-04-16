@@ -50,7 +50,9 @@ export function buildBaseSessionEnv(
 		env.PATH = process.env.PATH;
 	}
 
-	// Forward auth credentials
+	// Forward auth credentials — safe because CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
+	// (set in CYRUS_SESSION_ENV) prevents these from leaking into Bash
+	// subprocesses spawned by Claude.
 	for (const key of AUTH_ENV_KEYS) {
 		if (process.env[key]) {
 			env[key] = process.env[key];
