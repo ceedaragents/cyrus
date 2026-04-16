@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.110 and `@anthropic-ai/sdk` to v0.89.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP` and `ToolSearch`; removes `ScheduleWakeup`, `ListMcpResourcesTool`, `ReadMcpResourceTool`, and `Monitor`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.110 and `@anthropic-ai/sdk` to v0.89.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP` and `ToolSearch`; removes `ScheduleWakeup`, `ListMcpResourcesTool`, `ReadMcpResourceTool`, and `Monitor`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
 
 ### Fixed
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
