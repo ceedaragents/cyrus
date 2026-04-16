@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - **Base branch update notifications** - When your base branch receives new commits while Cyrus is working, the active session is automatically notified to rebase, helping avoid merge conflicts. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 - **Blocked-by dependency deferral** - Issues with unresolved `blocked_by` relationships are now automatically deferred instead of starting immediately. Cyrus posts an acknowledgment and starts work automatically when all blocking issues are resolved. User re-prompts also re-check blocking status. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 
+### Fixed
+- **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
+
 ## [0.2.45] - 2026-04-15
 
 ### Added

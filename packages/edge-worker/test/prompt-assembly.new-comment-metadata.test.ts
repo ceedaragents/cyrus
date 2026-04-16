@@ -18,7 +18,7 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 		// Create test data for an agent session with comment metadata
 		const session = {
 			issueId: "test-issue-123",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -112,7 +112,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		const session = {
 			issueId: "test-issue-456",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
