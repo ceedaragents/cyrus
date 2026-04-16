@@ -511,9 +511,6 @@ export class EdgeWorker extends EventEmitter {
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
-				// Update Linear workspace tokens BEFORE adding new repositories.
-				// New repositories need their workspace's Linear token during
-				// initialization, so the token must be available first.
 				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
@@ -2550,10 +2547,6 @@ ${taskSection}`;
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Activity sink for this workspace is guaranteed to exist:
-				// updateLinearWorkspaceTokens() runs before addNewRepositories()
-				// and creates trackers + sinks for any new workspaces.
-
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
 				this.logger.error(`❌ Failed to add repository ${repo.name}:`, error);
@@ -2596,11 +2589,6 @@ ${taskSection}`;
 
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
-
-				// Issue tracker and activity sink for this workspace are guaranteed
-				// to exist: updateLinearWorkspaceTokens() runs before
-				// updateModifiedRepositories() and creates/updates trackers + sinks
-				// for all workspaces.
 
 				// If active status changed
 				if (oldRepo.isActive !== repo.isActive) {
