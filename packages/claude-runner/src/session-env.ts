@@ -19,27 +19,25 @@ const AUTH_ENV_KEYS = [
  * Cyrus-specific env vars injected into every Claude Code subprocess.
  * Both `ClaudeRunner.start()` and `EdgeWorker.warmupRecentSessions()`
  * must use the same set — keep this as the single source of truth.
+ *
+ * - SUBPROCESS_ENV_SCRUB prevents auth tokens from leaking to Bash subprocesses.
+ * - MCP_CONNECTION_NONBLOCKING lets MCP servers connect in the background so
+ *   both cold-start and pre-warm sessions return faster.
  */
 export const CYRUS_SESSION_ENV = {
+	CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
 	CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 	CLAUDE_CODE_ENABLE_TASKS: "true",
 	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 	CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
-} as const;
-
-/**
- * Extra env flag for pre-warm sessions.
- * MCP servers connect in the background so startup() returns in ~500 ms.
- */
-export const WARMUP_ENV = {
 	MCP_CONNECTION_NONBLOCKING: "true",
 } as const;
 
 /**
  * Build the base `env` object for a Claude SDK session.
  *
- * Forwards PATH + auth tokens from the parent process, sets the subprocess
- * env-scrub flag, and applies the shared Cyrus session flags.
+ * Forwards PATH + auth tokens from the parent process and applies the
+ * shared Cyrus session flags.
  * Callers can spread additional vars on top (e.g., repository .env for live runs).
  */
 export function buildBaseSessionEnv(
@@ -52,14 +50,12 @@ export function buildBaseSessionEnv(
 		env.PATH = process.env.PATH;
 	}
 
-	// Forward auth credentials — CLAUDE_CODE_SUBPROCESS_ENV_SCRUB prevents
-	// them from leaking into Bash subprocesses spawned by Claude.
+	// Forward auth credentials
 	for (const key of AUTH_ENV_KEYS) {
 		if (process.env[key]) {
 			env[key] = process.env[key];
 		}
 	}
-	env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1";
 
 	return {
 		...env,

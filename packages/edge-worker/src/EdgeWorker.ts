@@ -15,7 +15,6 @@ import {
 	buildBaseSessionEnv,
 	ClaudeRunner,
 	normalizeMcpHttpTransport,
-	WARMUP_ENV,
 } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -5848,7 +5847,7 @@ ${input.userComment}
 							...(allowedTools.length > 0 && { allowedTools }),
 							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
-							env: buildBaseSessionEnv(WARMUP_ENV),
+							env: buildBaseSessionEnv(),
 						},
 					});
 
