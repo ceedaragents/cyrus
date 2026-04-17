@@ -7,7 +7,9 @@ export type {
 	LogContext,
 	SessionCompletedEvent,
 	SessionFailedEvent,
+	SessionResumedEvent,
 	SessionStartedEvent,
+	SessionStoppedEvent,
 	TelemetryConfig,
 } from "./logging/index.js";
 export {

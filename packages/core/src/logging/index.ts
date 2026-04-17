@@ -5,7 +5,9 @@ export {
 	type ErrorClass,
 	type SessionCompletedEvent,
 	type SessionFailedEvent,
+	type SessionResumedEvent,
 	type SessionStartedEvent,
+	type SessionStoppedEvent,
 } from "./events.js";
 export type { ILogger, LogContext } from "./ILogger.js";
 export { LogLevel } from "./ILogger.js";

@@ -295,6 +295,42 @@ describe("telemetry", () => {
 			expect(attrs["event.inputTokens"]).toBeUndefined();
 			expect(attrs["event.sessionId"]).toBe("sess_1");
 		});
+
+		it("emits session.resumed distinct from session.started", () => {
+			const logger = createLogger({
+				component: "ClaudeRunner",
+				level: LogLevel.DEBUG,
+			});
+			logger.event({
+				name: "session.resumed",
+				sessionId: "sess_new",
+				runner: "claude",
+				model: "opus",
+				resumedFromSessionId: "sess_old",
+			});
+
+			const record = exporter.getFinishedLogRecords()[0]!;
+			expect(record.attributes["event.name"]).toBe("session.resumed");
+			expect(record.attributes["event.resumedFromSessionId"]).toBe("sess_old");
+		});
+
+		it("emits session.stopped with reason and duration", () => {
+			const logger = createLogger({
+				component: "AgentSessionManager",
+				level: LogLevel.DEBUG,
+			});
+			logger.event({
+				name: "session.stopped",
+				sessionId: "sess_1",
+				reason: "user_requested",
+				durationMs: 5000,
+			});
+
+			const attrs = exporter.getFinishedLogRecords()[0]!.attributes;
+			expect(attrs["event.name"]).toBe("session.stopped");
+			expect(attrs["event.reason"]).toBe("user_requested");
+			expect(attrs["event.durationMs"]).toBe(5000);
+		});
 	});
 
 	describe("classifyError", () => {

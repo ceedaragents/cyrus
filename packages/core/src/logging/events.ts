@@ -25,6 +25,15 @@ export interface SessionStartedEvent {
 	repository?: string;
 }
 
+export interface SessionResumedEvent {
+	name: "session.resumed";
+	sessionId: string;
+	runner: string;
+	model: string;
+	repository?: string;
+	resumedFromSessionId: string;
+}
+
 export interface SessionCompletedEvent {
 	name: "session.completed";
 	sessionId: string;
@@ -33,6 +42,13 @@ export interface SessionCompletedEvent {
 	outputTokens?: number;
 	totalCostUsd?: number;
 	stopReason: string;
+}
+
+export interface SessionStoppedEvent {
+	name: "session.stopped";
+	sessionId: string;
+	reason: string;
+	durationMs?: number;
 }
 
 export interface SessionFailedEvent {
@@ -44,7 +60,9 @@ export interface SessionFailedEvent {
 
 export type CyrusEvent =
 	| SessionStartedEvent
+	| SessionResumedEvent
 	| SessionCompletedEvent
+	| SessionStoppedEvent
 	| SessionFailedEvent;
 
 /**
