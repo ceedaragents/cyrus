@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **OpenTelemetry logs sink** — Every Cyrus log record can now also be shipped to an OTLP/HTTP collector alongside the existing stdout/stderr output. Configure via the new `telemetry` block in `~/.cyrus/config.json` or standard `OTEL_*` environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`, etc.). Log body, severity, component, and session/issue/repository context are emitted as structured attributes. Disabled by default — no overhead when no endpoint is configured. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095))
+- **OpenTelemetry logs sink** — Every Cyrus log record can now also be shipped to an OTLP/HTTP collector alongside the existing stdout/stderr output. Configure via the new `telemetry` block in `~/.cyrus/config.json` or standard `OTEL_*` environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`, etc.). Log body, severity, component, and session/issue/repository context are emitted as structured attributes. Disabled by default — no overhead when no endpoint is configured. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095), [#1122](https://github.com/ceedaragents/cyrus/pull/1122))
 
 ### Changed
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.112** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1093](https://linear.app/ceedar/issue/CYPACK-1093), [#1121](https://github.com/ceedaragents/cyrus/pull/1121))
