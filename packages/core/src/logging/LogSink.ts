@@ -1,3 +1,4 @@
+import type { CyrusEvent } from "./events.js";
 import type { LogContext, LogLevel } from "./ILogger.js";
 
 export interface LogRecord {
@@ -9,6 +10,14 @@ export interface LogRecord {
 	timestamp: Date;
 }
 
+export interface EventRecord {
+	event: CyrusEvent;
+	component: string;
+	context: LogContext;
+	timestamp: Date;
+}
+
 export interface LogSink {
 	emit(record: LogRecord): void;
+	emitEvent(record: EventRecord): void;
 }

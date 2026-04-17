@@ -1,5 +1,5 @@
 import { type LogContext, LogLevel } from "./ILogger.js";
-import type { LogRecord, LogSink } from "./LogSink.js";
+import type { EventRecord, LogRecord, LogSink } from "./LogSink.js";
 
 const LEVEL_LABELS: Record<LogLevel, string> = {
 	[LogLevel.DEBUG]: "DEBUG",
@@ -46,6 +46,18 @@ export class ConsoleLogSink implements LogSink {
 				return;
 			default:
 				console.log(line, ...record.args);
+		}
+	}
+
+	emitEvent(record: EventRecord): void {
+		const timestamp = record.timestamp.toISOString();
+		const ctx = formatContext(record.context);
+		const { name, ...attrs } = record.event;
+		const prefix = `${timestamp} [EVENT] [${record.component}]${ctx} ${name}`;
+		if (Object.keys(attrs).length > 0) {
+			console.log(prefix, attrs);
+		} else {
+			console.log(prefix);
 		}
 	}
 }

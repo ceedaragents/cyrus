@@ -109,19 +109,42 @@ describe("telemetry", () => {
 			});
 		});
 
-		it("emits a log record per info call with body and severity", () => {
+		it("emits a log record for WARN with body and severity", () => {
 			const logger = createLogger({
 				component: "TestComp",
 				level: LogLevel.DEBUG,
 			});
-			logger.info("hello world");
+			logger.warn("hello world");
 
 			const records = exporter.getFinishedLogRecords();
 			expect(records).toHaveLength(1);
 			expect(records[0]!.body).toBe("hello world");
-			expect(records[0]!.severityNumber).toBe(SeverityNumber.INFO);
-			expect(records[0]!.severityText).toBe("INFO");
+			expect(records[0]!.severityNumber).toBe(SeverityNumber.WARN);
+			expect(records[0]!.severityText).toBe("WARN");
 			expect(records[0]!.attributes["log.component"]).toBe("TestComp");
+		});
+
+		it("does not forward INFO or DEBUG log records to OTel", () => {
+			const logger = createLogger({
+				component: "TestComp",
+				level: LogLevel.DEBUG,
+			});
+			logger.debug("debug line");
+			logger.info("info line");
+
+			expect(exporter.getFinishedLogRecords()).toHaveLength(0);
+		});
+
+		it("forwards ERROR log records to OTel", () => {
+			const logger = createLogger({
+				component: "TestComp",
+				level: LogLevel.DEBUG,
+			});
+			logger.error("boom");
+
+			const records = exporter.getFinishedLogRecords();
+			expect(records).toHaveLength(1);
+			expect(records[0]!.severityNumber).toBe(SeverityNumber.ERROR);
 		});
 
 		it("attaches resource attributes from config", () => {
@@ -165,7 +188,7 @@ describe("telemetry", () => {
 				component: "Svc",
 				level: LogLevel.DEBUG,
 			});
-			logger.info("context", { requestId: "req-1", count: 3 });
+			logger.warn("context", { requestId: "req-1", count: 3 });
 
 			const records = exporter.getFinishedLogRecords();
 			const args = records[0]!.attributes["log.args"] as unknown as unknown[];
@@ -194,15 +217,102 @@ describe("telemetry", () => {
 		it("does not emit when the level filter rejects the message", () => {
 			const logger = createLogger({
 				component: "Svc",
-				level: LogLevel.WARN,
+				level: LogLevel.ERROR,
 			});
 			logger.debug("filtered");
 			logger.info("also filtered");
-			logger.warn("kept");
+			logger.warn("still filtered");
+
+			expect(exporter.getFinishedLogRecords()).toHaveLength(0);
+		});
+	});
+
+	describe("event emission", () => {
+		let exporter: InMemoryLogRecordExporter;
+
+		beforeEach(() => {
+			exporter = new InMemoryLogRecordExporter();
+			initTelemetry({
+				enabled: true,
+				serviceName: "cyrus-test",
+				processor: new SimpleLogRecordProcessor(exporter),
+			});
+		});
+
+		it("forwards events to OTel with event.name attribute", () => {
+			const logger = createLogger({
+				component: "ClaudeRunner",
+				level: LogLevel.WARN,
+			});
+			logger.event({
+				name: "session.started",
+				sessionId: "sess_1",
+				runner: "claude",
+				model: "opus",
+				repository: "cyrus",
+			});
 
 			const records = exporter.getFinishedLogRecords();
 			expect(records).toHaveLength(1);
-			expect(records[0]!.body).toBe("kept");
+			expect(records[0]!.body).toBe("session.started");
+			expect(records[0]!.severityText).toBe("EVENT");
+			expect(records[0]!.attributes["event.name"]).toBe("session.started");
+			expect(records[0]!.attributes["event.sessionId"]).toBe("sess_1");
+			expect(records[0]!.attributes["event.runner"]).toBe("claude");
+			expect(records[0]!.attributes["event.model"]).toBe("opus");
+			expect(records[0]!.attributes["event.repository"]).toBe("cyrus");
+			expect(records[0]!.attributes["log.component"]).toBe("ClaudeRunner");
+		});
+
+		it("emits events even when level is SILENT", () => {
+			const logger = createLogger({
+				component: "Svc",
+				level: LogLevel.SILENT,
+			});
+			logger.event({
+				name: "session.completed",
+				sessionId: "sess_1",
+				durationMs: 1234,
+				stopReason: "success",
+			});
+
+			expect(exporter.getFinishedLogRecords()).toHaveLength(1);
+		});
+
+		it("skips undefined event fields", () => {
+			const logger = createLogger({
+				component: "Svc",
+				level: LogLevel.DEBUG,
+			});
+			logger.event({
+				name: "session.completed",
+				sessionId: "sess_1",
+				stopReason: "success",
+			});
+
+			const attrs = exporter.getFinishedLogRecords()[0]!.attributes;
+			expect(attrs["event.durationMs"]).toBeUndefined();
+			expect(attrs["event.inputTokens"]).toBeUndefined();
+			expect(attrs["event.sessionId"]).toBe("sess_1");
+		});
+	});
+
+	describe("classifyError", () => {
+		it("buckets errors into operational classes", async () => {
+			const { classifyError } = await import("../../src/logging/events.js");
+			expect(classifyError(new Error("429 Too Many Requests"))).toBe(
+				"rate_limit",
+			);
+			expect(classifyError(new Error("401 Unauthorized"))).toBe("auth");
+			expect(classifyError(new Error("ECONNRESET reading stream"))).toBe(
+				"network",
+			);
+			expect(classifyError(new Error("socket timeout"))).toBe("timeout");
+			const abort = new Error("aborted");
+			abort.name = "AbortError";
+			expect(classifyError(abort)).toBe("abort");
+			expect(classifyError(new Error("kaboom"))).toBe("unknown");
+			expect(classifyError("not an error")).toBe("unknown");
 		});
 	});
 
@@ -219,7 +329,7 @@ describe("telemetry", () => {
 				component: "Svc",
 				level: LogLevel.DEBUG,
 			});
-			logger.info("last breath");
+			logger.warn("last breath");
 
 			// SimpleLogRecordProcessor is synchronous, so the record is already
 			// in the exporter by the time we observe it.

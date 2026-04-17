@@ -15,6 +15,7 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	classifyError,
 	createLogger,
 	type IAgentRunner,
 	type ILogger,
@@ -371,6 +372,25 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		log.info(`Session completed (subtype: ${resultMessage.subtype})`);
+
+		if (status === AgentSessionStatus.Complete) {
+			log.event({
+				name: "session.completed",
+				sessionId,
+				durationMs: resultMessage.duration_ms,
+				inputTokens: resultMessage.usage?.input_tokens,
+				outputTokens: resultMessage.usage?.output_tokens,
+				totalCostUsd: resultMessage.total_cost_usd,
+				stopReason: resultMessage.subtype,
+			});
+		} else {
+			log.event({
+				name: "session.failed",
+				sessionId,
+				errorClass: "unknown",
+				errorMessage: `Session ended with subtype: ${resultMessage.subtype}`,
+			});
+		}
 	}
 
 	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {
@@ -492,6 +512,12 @@ export class AgentSessionManager extends EventEmitter {
 			log.error(`Error handling message:`, error);
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
+			log.event({
+				name: "session.failed",
+				sessionId,
+				errorClass: classifyError(error),
+				errorMessage: error instanceof Error ? error.message : String(error),
+			});
 		}
 	}
 

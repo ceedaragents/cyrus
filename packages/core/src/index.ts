@@ -1,7 +1,17 @@
 // Logging
 
-export type { ILogger, LogContext, TelemetryConfig } from "./logging/index.js";
+export type {
+	CyrusEvent,
+	ErrorClass,
+	ILogger,
+	LogContext,
+	SessionCompletedEvent,
+	SessionFailedEvent,
+	SessionStartedEvent,
+	TelemetryConfig,
+} from "./logging/index.js";
 export {
+	classifyError,
 	createLogger,
 	initTelemetry,
 	isTelemetryActive,

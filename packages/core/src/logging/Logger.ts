@@ -1,4 +1,5 @@
 import { ConsoleLogSink } from "./ConsoleLogSink.js";
+import type { CyrusEvent } from "./events.js";
 import type { ILogger, LogContext } from "./ILogger.js";
 import { LogLevel } from "./ILogger.js";
 import type { LogSink } from "./LogSink.js";
@@ -76,6 +77,18 @@ class Logger implements ILogger {
 
 	error(message: string, ...args: unknown[]): void {
 		this.dispatch(LogLevel.ERROR, message, args);
+	}
+
+	event(event: CyrusEvent): void {
+		const record = {
+			event,
+			component: this.component,
+			context: this.context,
+			timestamp: new Date(),
+		};
+		for (const sink of this.sinks) {
+			sink.emitEvent(record);
+		}
 	}
 
 	withContext(context: LogContext): ILogger {

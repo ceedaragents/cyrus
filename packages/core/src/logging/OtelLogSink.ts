@@ -2,9 +2,10 @@ import {
 	type AnyValueMap,
 	logs,
 	type Logger as OtelLogger,
+	SeverityNumber,
 } from "@opentelemetry/api-logs";
-import type { LogContext } from "./ILogger.js";
-import type { LogRecord, LogSink } from "./LogSink.js";
+import { type LogContext, LogLevel } from "./ILogger.js";
+import type { EventRecord, LogRecord, LogSink } from "./LogSink.js";
 import {
 	isTelemetryActive,
 	severityNumberFor,
@@ -66,6 +67,12 @@ export class OtelLogSink implements LogSink {
 		if (!isTelemetryActive()) {
 			return;
 		}
+		// Production filter: only WARN+ reaches the OTel sink. INFO/DEBUG
+		// stay on stdout so operators still see them locally while keeping
+		// the OTel log volume bounded to genuinely actionable signals.
+		if (record.level < LogLevel.WARN) {
+			return;
+		}
 		const attributes: AnyValueMap = {
 			"log.component": record.component,
 			...contextToAttributes(record.context),
@@ -79,6 +86,30 @@ export class OtelLogSink implements LogSink {
 			severityNumber: severityNumberFor(record.level),
 			severityText: severityTextFor(record.level),
 			body: record.message,
+			attributes,
+		});
+	}
+
+	emitEvent(record: EventRecord): void {
+		if (!isTelemetryActive()) {
+			return;
+		}
+		const { name, ...payload } = record.event;
+		const attributes: AnyValueMap = {
+			"log.component": record.component,
+			"event.name": name,
+			...contextToAttributes(record.context),
+		};
+		for (const [key, value] of Object.entries(payload)) {
+			if (value === undefined) {
+				continue;
+			}
+			attributes[`event.${key}`] = serializeArg(value) as AnyValueMap[string];
+		}
+		this.otelLogger.emit({
+			severityNumber: SeverityNumber.INFO,
+			severityText: "EVENT",
+			body: name,
 			attributes,
 		});
 	}
