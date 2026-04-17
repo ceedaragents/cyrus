@@ -1,3 +1,4 @@
+import { diag } from "@opentelemetry/api";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import {
 	InMemoryLogRecordExporter,
@@ -27,6 +28,7 @@ describe("telemetry", () => {
 		delete process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
 		delete process.env.OTEL_SERVICE_NAME;
 		delete process.env.OTEL_SDK_DISABLED;
+		delete process.env.OTEL_LOG_LEVEL;
 	});
 
 	describe("severity mapping", () => {
@@ -240,6 +242,56 @@ describe("telemetry", () => {
 				level: LogLevel.DEBUG,
 			});
 			expect(() => logger.info("works")).not.toThrow();
+		});
+	});
+
+	describe("diag logger", () => {
+		it("routes OTel internal warnings to console.warn with [OTel] prefix", () => {
+			const exporter = new InMemoryLogRecordExporter();
+			initTelemetry({
+				enabled: true,
+				processor: new SimpleLogRecordProcessor(exporter),
+			});
+
+			const warnSpy = vi.spyOn(console, "warn");
+			warnSpy.mockClear();
+			diag.warn("simulated exporter failure");
+
+			expect(warnSpy).toHaveBeenCalledWith("[OTel] simulated exporter failure");
+		});
+
+		it("silences internal logs after shutdownTelemetry", async () => {
+			const exporter = new InMemoryLogRecordExporter();
+			initTelemetry({
+				enabled: true,
+				processor: new SimpleLogRecordProcessor(exporter),
+			});
+			await shutdownTelemetry();
+
+			const warnSpy = vi.spyOn(console, "warn");
+			warnSpy.mockClear();
+			diag.warn("should not appear");
+
+			expect(warnSpy).not.toHaveBeenCalled();
+		});
+
+		it("honours OTEL_LOG_LEVEL=ERROR to suppress warnings", () => {
+			process.env.OTEL_LOG_LEVEL = "ERROR";
+			const exporter = new InMemoryLogRecordExporter();
+			initTelemetry({
+				enabled: true,
+				processor: new SimpleLogRecordProcessor(exporter),
+			});
+
+			const warnSpy = vi.spyOn(console, "warn");
+			const errorSpy = vi.spyOn(console, "error");
+			warnSpy.mockClear();
+			errorSpy.mockClear();
+			diag.warn("warn filtered");
+			diag.error("error kept");
+
+			expect(warnSpy).not.toHaveBeenCalled();
+			expect(errorSpy).toHaveBeenCalledWith("[OTel] error kept");
 		});
 	});
 });

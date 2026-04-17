@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { type DiagLogger, DiagLogLevel, diag } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
@@ -70,6 +71,52 @@ export interface TelemetryConfig {
 }
 
 let provider: LoggerProvider | undefined;
+let diagInstalled = false;
+
+/**
+ * Parse the standard `OTEL_LOG_LEVEL` env var into a `DiagLogLevel`.
+ * Defaults to WARN so transient export successes stay quiet but auth/network
+ * failures bubble up to the operator.
+ */
+function resolveDiagLevel(): DiagLogLevel {
+	const envLevel = process.env.OTEL_LOG_LEVEL?.toUpperCase();
+	switch (envLevel) {
+		case "NONE":
+			return DiagLogLevel.NONE;
+		case "ERROR":
+			return DiagLogLevel.ERROR;
+		case "WARN":
+			return DiagLogLevel.WARN;
+		case "INFO":
+			return DiagLogLevel.INFO;
+		case "DEBUG":
+			return DiagLogLevel.DEBUG;
+		case "VERBOSE":
+			return DiagLogLevel.VERBOSE;
+		case "ALL":
+			return DiagLogLevel.ALL;
+		default:
+			return DiagLogLevel.WARN;
+	}
+}
+
+/**
+ * A DiagLogger that writes directly to the standard console streams.
+ *
+ * Deliberately does NOT route through our `ILogger` — that logger emits to the
+ * OTel sink, which would create a feedback loop when the exporter itself fails
+ * (failed export → diag.error → logger.error → exporter → failed export → …).
+ */
+function createConsoleDiagLogger(): DiagLogger {
+	const prefix = "[OTel]";
+	return {
+		verbose: (msg, ...args) => console.debug(`${prefix} ${msg}`, ...args),
+		debug: (msg, ...args) => console.debug(`${prefix} ${msg}`, ...args),
+		info: (msg, ...args) => console.log(`${prefix} ${msg}`, ...args),
+		warn: (msg, ...args) => console.warn(`${prefix} ${msg}`, ...args),
+		error: (msg, ...args) => console.error(`${prefix} ${msg}`, ...args),
+	};
+}
 
 /**
  * Map an internal LogLevel to the OTel SeverityNumber.
@@ -162,6 +209,13 @@ export function initTelemetry(config: TelemetryConfig = {}): boolean {
 		provider = undefined;
 	}
 
+	// Surface exporter auth/network errors that would otherwise be swallowed
+	// by BatchLogRecordProcessor's background retries.
+	if (!diagInstalled) {
+		diag.setLogger(createConsoleDiagLogger(), resolveDiagLevel());
+		diagInstalled = true;
+	}
+
 	const resource = resourceFromAttributes(buildResourceAttributes(config));
 
 	let processor = config.processor;
@@ -201,6 +255,10 @@ export async function shutdownTelemetry(): Promise<void> {
 	} finally {
 		await current.shutdown();
 		logs.disable();
+		if (diagInstalled) {
+			diag.disable();
+			diagInstalled = false;
+		}
 	}
 }
 
