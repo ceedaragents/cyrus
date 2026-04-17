@@ -399,6 +399,8 @@ export class RunnerConfigBuilder {
 				enableWeakerNetworkIsolation: true,
 				filesystem: {
 					...input.sandboxSettings.filesystem,
+					// "." resolves to the cwd of the primary folder Claude is working in.
+					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
 					allowRead: ["."],
 					denyRead: ["~/"],
 					// Restrict subprocess writes to the session worktree only
