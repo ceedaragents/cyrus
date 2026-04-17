@@ -254,6 +254,63 @@ const PromptDefaultsSchema = z.object({
 });
 
 /**
+ * OpenTelemetry logs sink configuration.
+ *
+ * When enabled, every Cyrus log record is also emitted to an OTLP/HTTP
+ * collector alongside the existing stdout/stderr output. Standard OTEL_*
+ * environment variables take precedence over fields declared here; when
+ * neither is set, telemetry stays disabled (no overhead).
+ *
+ * @see https://opentelemetry.io/docs/specs/otel/
+ */
+export const TelemetryConfigSchema = z.object({
+	/**
+	 * Master toggle. When omitted, telemetry auto-enables if an OTLP
+	 * endpoint is resolvable (either `endpoint` here or an `OTEL_EXPORTER_OTLP_*`
+	 * env var) and disables otherwise.
+	 */
+	enabled: z.boolean().optional(),
+
+	/**
+	 * Logical service name recorded as the `service.name` resource attribute.
+	 * Defaults to `OTEL_SERVICE_NAME` env var or "cyrus".
+	 */
+	serviceName: z.string().optional(),
+
+	/**
+	 * OTLP/HTTP endpoint for log records. Falls back to
+	 * `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` then `OTEL_EXPORTER_OTLP_ENDPOINT`.
+	 */
+	endpoint: z.string().optional(),
+
+	/**
+	 * Additional HTTP headers attached to every OTLP export request.
+	 * Use for bearer tokens, tenant headers, or vendor-specific auth.
+	 */
+	headers: z.record(z.string(), z.string()).optional(),
+
+	/**
+	 * Extra resource attributes merged into the OTel Resource.
+	 * Common keys: `deployment.environment`, `service.namespace`.
+	 */
+	resourceAttributes: z.record(z.string(), z.string()).optional(),
+
+	/**
+	 * Minimum log severity forwarded to OTel. Records below this threshold
+	 * are dropped at the sink. Defaults to "WARN" to keep export volume
+	 * bounded; lower it if dashboards need INFO-level correlation.
+	 */
+	minLogLevel: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).optional(),
+
+	/**
+	 * Timeout (milliseconds) for the final flush + shutdown performed on
+	 * graceful exit. Prevents the process from hanging when the OTel
+	 * backend is unreachable at shutdown. Defaults to 3000.
+	 */
+	shutdownTimeoutMs: z.number().int().positive().optional(),
+});
+
+/**
  * Configuration for a Linear workspace's credentials.
  * Keyed by workspace ID in EdgeConfig.linearWorkspaces.
  */
@@ -403,6 +460,13 @@ export const EdgeConfigSchema = z.object({
 	 * all agent network traffic through it for inspection and filtering.
 	 */
 	sandbox: SandboxConfigSchema.optional(),
+
+	/**
+	 * OpenTelemetry logs sink configuration.
+	 * When an endpoint is configured (here or via OTEL_EXPORTER_OTLP_* env
+	 * vars) every Cyrus log record is also emitted via OTLP/HTTP.
+	 */
+	telemetry: TelemetryConfigSchema.optional(),
 });
 
 /**
@@ -511,6 +575,7 @@ export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type NetworkPolicy = z.infer<typeof NetworkPolicySchema>;
+export type TelemetryConfigOptions = z.infer<typeof TelemetryConfigSchema>;
 export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema
 >;

@@ -1,7 +1,29 @@
 // Logging
 
-export type { ILogger, LogContext } from "./logging/index.js";
-export { createLogger, LogLevel } from "./logging/index.js";
+export type {
+	CyrusEvent,
+	ErrorClass,
+	ILogger,
+	LogContext,
+	OtelLogSinkOptions,
+	SessionCompletedEvent,
+	SessionFailedEvent,
+	SessionResumedEvent,
+	SessionStartedEvent,
+	SessionStoppedEvent,
+	TelemetryConfig,
+	TelemetryInitOptions,
+} from "./logging/index.js";
+export {
+	classifyError,
+	createLogger,
+	initTelemetry,
+	isTelemetryActive,
+	LogLevel,
+	severityNumberFor,
+	severityTextFor,
+	shutdownTelemetry,
+} from "./logging/index.js";
 
 // export { Session } from './Session.js'
 // export type { SessionOptions, , NarrativeItem } from './Session.js'

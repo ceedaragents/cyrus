@@ -2950,7 +2950,7 @@ ${taskSection}`;
 			this.logger.info(
 				`Stopping agent runner for ${message.workItemIdentifier} (issue terminal)`,
 			);
-			this.agentSessionManager.requestSessionStop(session.id);
+			this.agentSessionManager.requestSessionStop(session.id, "issue_terminal");
 			session.agentRunner?.stop();
 		}
 
@@ -3016,7 +3016,10 @@ ${taskSection}`;
 						`Found ${sessions.length} session(s) for unassigned issue ${webhook.notification.issue.identifier} but no repository mapping, stopping sessions without farewell comment`,
 					);
 					for (const session of sessions) {
-						this.agentSessionManager.requestSessionStop(session.id);
+						this.agentSessionManager.requestSessionStop(
+							session.id,
+							"unassigned",
+						);
 						session.agentRunner?.stop();
 					}
 					return;
@@ -3891,17 +3894,12 @@ ${taskSection}`;
 			return;
 		}
 
-		// Stop the existing runner if it's active
-		const existingRunner = foundSession.agentRunner;
-		this.agentSessionManager.requestSessionStop(agentSessionId);
-		if (existingRunner) {
-			existingRunner.stop();
-			log.info(
-				`Stopped agent session for agent activity session ${agentSessionId}`,
-			);
-		}
-
-		// Post confirmation
+		// Post confirmation FIRST, before any local abort work. Linear's
+		// backend begins tearing down the agent session's query-runner as
+		// soon as it processes the stop signal, so a later activity POST
+		// can race against that cleanup and fail with
+		// "Database connection provided by a query runner was already
+		// released". Posting immediately narrows that race window.
 		const issueTitle = issue?.title || "this issue";
 		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
@@ -3909,6 +3907,19 @@ ${taskSection}`;
 			agentSessionId,
 			stopConfirmation,
 		);
+
+		// Then mark the session stopped locally and abort the runner.
+		const existingRunner = foundSession.agentRunner;
+		this.agentSessionManager.requestSessionStop(
+			agentSessionId,
+			"user_requested",
+		);
+		if (existingRunner) {
+			existingRunner.stop();
+			log.info(
+				`Stopped agent session for agent activity session ${agentSessionId}`,
+			);
+		}
 	}
 
 	/**
@@ -4388,7 +4399,7 @@ ${taskSection}`;
 		// Stop all agent runners for this issue
 		for (const session of sessions) {
 			this.logger.info(`Stopping agent runner for issue ${issue.identifier}`);
-			this.agentSessionManager.requestSessionStop(session.id);
+			this.agentSessionManager.requestSessionStop(session.id, "unassigned");
 			session.agentRunner?.stop();
 		}
 

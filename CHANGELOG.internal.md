@@ -4,7 +4,13 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- `OtelLogSink` now accepts `OtelLogSinkOptions` with a `minLogLevel` floor (default `WARN`), and `TelemetryInitOptions` exposes `minLogLevel` and `shutdownTimeoutMs`. `Logger.event()` filters through an `alwaysEmitEvents` sink-capability flag so `OtelLogSink` can publish lifecycle events even when the local `Logger` level is `SILENT`, while `ConsoleLogSink` continues to respect the logger level. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095), [#1122](https://github.com/ceedaragents/cyrus/pull/1122))
+- PII redaction in `OtelLogSink` — recursive key-name redaction (depth-bounded) matches common secret naming (`token`, `secret`, `password`, `bearer`, `credential`, `apiKey`, `authorization`, `cookie`, `privateKey`, `clientSecret`, etc.) across casings and dotted paths before log args are flattened into OTel attributes. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095), [#1122](https://github.com/ceedaragents/cyrus/pull/1122))
+- Bounded-shutdown helper `raceWithTimeout` in `telemetry.ts` wraps both `forceFlush` and `shutdown` phases of `shutdownTelemetry()` with a configurable timeout (default 3s) and emits a `diag.warn` instead of hanging when the collector is unreachable. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095), [#1122](https://github.com/ceedaragents/cyrus/pull/1122))
+
 ### Changed
+- Renamed `TelemetryConfig` → `TelemetryInitOptions` to disambiguate from the zod-backed `TelemetryConfig` in `config-schemas.ts`; kept `TelemetryConfig` as a deprecated type alias for backward compatibility. Application boot log now reads "📡 OpenTelemetry logs sink configured" with a comment clarifying that transport success surfaces later via the OTel diag logger. ([CYPACK-1095](https://linear.app/ceedar/issue/CYPACK-1095), [#1122](https://github.com/ceedaragents/cyrus/pull/1122))
 - Stopped deleting workspace-level issue trackers and activity sinks when removing repositories — they are keyed by workspace ID and may be needed by other repos in the same workspace or by repos about to be added in the same `configChanged` cycle. They are naturally replaced when workspace tokens are updated. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
 
 ## [0.2.46] - 2026-04-16

@@ -565,6 +565,24 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					this.logger.info(
 						`Session ID assigned by Claude: ${message.session_id}`,
 					);
+					if (this.config.resumeSessionId) {
+						this.logger.event({
+							name: "session.resumed",
+							sessionId: message.session_id,
+							runner: "claude",
+							model: this.config.model ?? "opus",
+							repository: this.config.workingDirectory,
+							resumedFromSessionId: this.config.resumeSessionId,
+						});
+					} else {
+						this.logger.event({
+							name: "session.started",
+							sessionId: message.session_id,
+							runner: "claude",
+							model: this.config.model ?? "opus",
+							repository: this.config.workingDirectory,
+						});
+					}
 
 					// Update streaming prompt with session ID if it exists
 					if (this.streamingPrompt) {

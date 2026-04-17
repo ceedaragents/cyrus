@@ -1,4 +1,5 @@
 import {
+	type CyrusEvent,
 	createLogger,
 	type ILogger,
 	type LogContext,
@@ -75,6 +76,10 @@ export class Logger implements ILogger {
 	 */
 	error(message: string, ...args: any[]): void {
 		this.coreLogger.error(message, ...args);
+	}
+
+	event(event: CyrusEvent): void {
+		this.coreLogger.event(event);
 	}
 
 	/**

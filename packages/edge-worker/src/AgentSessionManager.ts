@@ -15,6 +15,7 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	classifyError,
 	createLogger,
 	type IAgentRunner,
 	type ILogger,
@@ -70,7 +71,7 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
-	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	private stopRequestedSessions: Map<string, string> = new Map(); // Sessions explicitly stopped by user signal, keyed to stop reason
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -371,6 +372,25 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		log.info(`Session completed (subtype: ${resultMessage.subtype})`);
+
+		if (status === AgentSessionStatus.Complete) {
+			log.event({
+				name: "session.completed",
+				sessionId,
+				durationMs: resultMessage.duration_ms,
+				inputTokens: resultMessage.usage?.input_tokens,
+				outputTokens: resultMessage.usage?.output_tokens,
+				totalCostUsd: resultMessage.total_cost_usd,
+				stopReason: resultMessage.subtype,
+			});
+		} else {
+			log.event({
+				name: "session.failed",
+				sessionId,
+				errorClass: "unknown",
+				errorMessage: `Session ended with subtype: ${resultMessage.subtype}`,
+			});
+		}
 	}
 
 	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {
@@ -382,8 +402,27 @@ export class AgentSessionManager extends EventEmitter {
 		return true;
 	}
 
-	requestSessionStop(linearAgentActivitySessionId: string): void {
-		this.stopRequestedSessions.add(linearAgentActivitySessionId);
+	requestSessionStop(
+		linearAgentActivitySessionId: string,
+		reason: string,
+	): void {
+		// Idempotent: keep the first reason recorded so repeated stop signals
+		// don't emit duplicate events or overwrite the original intent.
+		if (this.stopRequestedSessions.has(linearAgentActivitySessionId)) {
+			return;
+		}
+		this.stopRequestedSessions.set(linearAgentActivitySessionId, reason);
+
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		const log = this.sessionLog(linearAgentActivitySessionId);
+		log.event({
+			name: "session.stopped",
+			sessionId: linearAgentActivitySessionId,
+			reason,
+			...(session?.createdAt !== undefined && {
+				durationMs: Date.now() - session.createdAt,
+			}),
+		});
 	}
 
 	/**
@@ -492,6 +531,12 @@ export class AgentSessionManager extends EventEmitter {
 			log.error(`Error handling message:`, error);
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
+			log.event({
+				name: "session.failed",
+				sessionId,
+				errorClass: classifyError(error),
+				errorMessage: error instanceof Error ? error.message : String(error),
+			});
 		}
 	}
 
