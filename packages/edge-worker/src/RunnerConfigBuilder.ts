@@ -392,6 +392,10 @@ export class RunnerConfigBuilder {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
 				allowUnsandboxedCommands: false,
+				// Required for Go-based tools (gh, gcloud, terraform) to verify TLS certs
+				// when using httpProxyPort with a MITM proxy and custom CA. macOS only —
+				// opens access to com.apple.trustd.agent, which is a potential data
+				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
 				enableWeakerNetworkIsolation: true,
 				filesystem: {
 					...input.sandboxSettings.filesystem,
