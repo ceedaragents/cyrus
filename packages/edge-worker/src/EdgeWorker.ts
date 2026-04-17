@@ -3894,7 +3894,21 @@ ${taskSection}`;
 			return;
 		}
 
-		// Stop the existing runner if it's active
+		// Post confirmation FIRST, before any local abort work. Linear's
+		// backend begins tearing down the agent session's query-runner as
+		// soon as it processes the stop signal, so a later activity POST
+		// can race against that cleanup and fail with
+		// "Database connection provided by a query runner was already
+		// released". Posting immediately narrows that race window.
+		const issueTitle = issue?.title || "this issue";
+		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
+
+		await this.agentSessionManager.createResponseActivity(
+			agentSessionId,
+			stopConfirmation,
+		);
+
+		// Then mark the session stopped locally and abort the runner.
 		const existingRunner = foundSession.agentRunner;
 		this.agentSessionManager.requestSessionStop(
 			agentSessionId,
@@ -3906,15 +3920,6 @@ ${taskSection}`;
 				`Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
-
-		// Post confirmation
-		const issueTitle = issue?.title || "this issue";
-		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
-
-		await this.agentSessionManager.createResponseActivity(
-			agentSessionId,
-			stopConfirmation,
-		);
 	}
 
 	/**
