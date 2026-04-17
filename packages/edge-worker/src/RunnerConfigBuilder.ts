@@ -392,8 +392,11 @@ export class RunnerConfigBuilder {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
 				allowUnsandboxedCommands: false,
+				enableWeakerNetworkIsolation: true,
 				filesystem: {
 					...input.sandboxSettings.filesystem,
+					allowRead: ["."],
+					denyRead: ["~/"],
 					// Restrict subprocess writes to the session worktree only
 					allowWrite: [input.session.workspace.path],
 				},

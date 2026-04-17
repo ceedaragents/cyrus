@@ -14,8 +14,8 @@ describe("config", () => {
 	describe("Tool Lists", () => {
 		it("should define all available tools", () => {
 			expect(availableTools).toEqual([
-				"Read",
-				"Edit",
+				"Read(**)",
+				"Edit(**)",
 				"Write",
 				"Glob",
 				"Grep",
@@ -54,7 +54,7 @@ describe("config", () => {
 
 		it("should define read-only tools", () => {
 			expect(readOnlyTools).toEqual([
-				"Read",
+				"Read(**)",
 				"Glob",
 				"Grep",
 				"WebFetch",
@@ -75,7 +75,7 @@ describe("config", () => {
 		});
 
 		it("should define write tools", () => {
-			expect(writeTools).toEqual(["Edit", "Write", "Bash", "NotebookEdit"]);
+			expect(writeTools).toEqual(["Edit(**)", "Write", "Bash", "NotebookEdit"]);
 			expect(writeTools).toHaveLength(4);
 		});
 
@@ -124,8 +124,8 @@ describe("config", () => {
 		it("getSafeTools should return all tools except Bash", () => {
 			const tools = getSafeTools();
 
-			expect(tools).toContain("Read");
-			expect(tools).toContain("Edit");
+			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Edit(**)");
 			expect(tools).toContain("Write");
 			expect(tools).toContain("Glob");
 			expect(tools).toContain("Grep");
@@ -146,7 +146,7 @@ describe("config", () => {
 			const tools = getCoordinatorTools();
 
 			// Should include read and execution tools
-			expect(tools).toContain("Read");
+			expect(tools).toContain("Read(**)");
 			expect(tools).toContain("Glob");
 			expect(tools).toContain("Grep");
 			expect(tools).toContain("Bash"); // For running tests/builds
@@ -157,7 +157,7 @@ describe("config", () => {
 			expect(tools).toContain("Skill"); // For Skills functionality
 
 			// Should NOT include file editing tools
-			expect(tools).not.toContain("Edit");
+			expect(tools).not.toContain("Edit(**)");
 			expect(tools).not.toContain("Write");
 			expect(tools).not.toContain("NotebookEdit");
 
@@ -169,12 +169,12 @@ describe("config", () => {
 			const coordinatorTools = getCoordinatorTools();
 
 			// Can read files
-			expect(coordinatorTools).toContain("Read");
+			expect(coordinatorTools).toContain("Read(**)");
 			expect(coordinatorTools).toContain("Glob");
 			expect(coordinatorTools).toContain("Grep");
 
 			// Cannot edit files
-			expect(coordinatorTools).not.toContain("Edit");
+			expect(coordinatorTools).not.toContain("Edit(**)");
 			expect(coordinatorTools).not.toContain("Write");
 			expect(coordinatorTools).not.toContain("NotebookEdit");
 
@@ -193,7 +193,7 @@ describe("config", () => {
 	describe("Type Safety", () => {
 		it("should allow valid tool names in typed contexts", () => {
 			// This is a compile-time check, but we can verify runtime behavior
-			const validTool: ToolName = "Read";
+			const validTool: ToolName = "Read(**)";
 			expect(availableTools).toContain(validTool);
 		});
 
@@ -214,13 +214,13 @@ describe("config", () => {
 
 	describe("Tool Categorization Logic", () => {
 		it("Read should be read-only", () => {
-			expect(readOnlyTools).toContain("Read");
-			expect(writeTools).not.toContain("Read");
+			expect(readOnlyTools).toContain("Read(**)");
+			expect(writeTools).not.toContain("Read(**)");
 		});
 
 		it("Edit should be a write tool", () => {
-			expect(writeTools).toContain("Edit");
-			expect(readOnlyTools).not.toContain("Edit");
+			expect(writeTools).toContain("Edit(**)");
+			expect(readOnlyTools).not.toContain("Edit(**)");
 		});
 
 		it("Write should be a write tool", () => {
