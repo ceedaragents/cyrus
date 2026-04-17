@@ -2677,18 +2677,13 @@ ${taskSection}`;
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository from the repositories map.
+				// Note: we intentionally do NOT remove workspace-level issue trackers
+				// or activity sinks here. They are keyed by workspace ID and may be
+				// needed by other repositories in the same workspace, or by new
+				// repositories about to be added in the same configChanged cycle.
+				// They will be naturally replaced when workspace tokens are updated.
 				this.repositories.delete(repo.id);
-
-				// Only remove workspace issue tracker and activity sink if no other repos use this workspace
-				const wsId = requireLinearWorkspaceId(repo);
-				const workspaceStillInUse = Array.from(this.repositories.values()).some(
-					(r) => r.linearWorkspaceId === wsId,
-				);
-				if (!workspaceStillInUse) {
-					this.issueTrackers.delete(wsId);
-					this.activitySinks.delete(wsId);
-				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
