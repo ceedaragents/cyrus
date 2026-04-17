@@ -40,7 +40,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 	});
 
 	it("marks session as error when a session stop is requested", async () => {
-		manager.requestSessionStop(sessionId);
+		manager.requestSessionStop(sessionId, "user_requested");
 
 		await manager.completeSession(sessionId, {
 			type: "result",

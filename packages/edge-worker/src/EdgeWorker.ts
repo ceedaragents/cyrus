@@ -2950,7 +2950,7 @@ ${taskSection}`;
 			this.logger.info(
 				`Stopping agent runner for ${message.workItemIdentifier} (issue terminal)`,
 			);
-			this.agentSessionManager.requestSessionStop(session.id);
+			this.agentSessionManager.requestSessionStop(session.id, "issue_terminal");
 			session.agentRunner?.stop();
 		}
 
@@ -3016,7 +3016,10 @@ ${taskSection}`;
 						`Found ${sessions.length} session(s) for unassigned issue ${webhook.notification.issue.identifier} but no repository mapping, stopping sessions without farewell comment`,
 					);
 					for (const session of sessions) {
-						this.agentSessionManager.requestSessionStop(session.id);
+						this.agentSessionManager.requestSessionStop(
+							session.id,
+							"unassigned",
+						);
 						session.agentRunner?.stop();
 					}
 					return;
@@ -3893,7 +3896,10 @@ ${taskSection}`;
 
 		// Stop the existing runner if it's active
 		const existingRunner = foundSession.agentRunner;
-		this.agentSessionManager.requestSessionStop(agentSessionId);
+		this.agentSessionManager.requestSessionStop(
+			agentSessionId,
+			"user_requested",
+		);
 		if (existingRunner) {
 			existingRunner.stop();
 			log.info(
@@ -4388,7 +4394,7 @@ ${taskSection}`;
 		// Stop all agent runners for this issue
 		for (const session of sessions) {
 			this.logger.info(`Stopping agent runner for issue ${issue.identifier}`);
-			this.agentSessionManager.requestSessionStop(session.id);
+			this.agentSessionManager.requestSessionStop(session.id, "unassigned");
 			session.agentRunner?.stop();
 		}
 

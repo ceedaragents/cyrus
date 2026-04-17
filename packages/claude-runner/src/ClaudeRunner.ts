@@ -665,10 +665,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			if (isAbortError) {
 				// User-initiated stop - log at info level, not error
 				this.logger.info("Session stopped by user");
-				this.emitSessionStopped("user_requested");
 			} else if (isSigterm) {
 				this.logger.info("Session was terminated gracefully (SIGTERM)");
-				this.emitSessionStopped("sigterm");
 			} else {
 				// Actual error - log and emit
 				this.logger.error("Session error:", error);
@@ -745,19 +743,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				this.logger.error("Failed to write version file:", error);
 			}
 		}
-	}
-
-	private emitSessionStopped(reason: string): void {
-		const sessionId = this.sessionInfo?.sessionId;
-		if (!sessionId) return;
-		const startedAt = this.sessionInfo?.startedAt;
-		const durationMs = startedAt ? Date.now() - startedAt.getTime() : undefined;
-		this.logger.event({
-			name: "session.stopped",
-			sessionId,
-			reason,
-			...(durationMs !== undefined && { durationMs }),
-		});
 	}
 
 	/**
