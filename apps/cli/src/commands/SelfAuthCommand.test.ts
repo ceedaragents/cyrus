@@ -209,8 +209,8 @@ describe("SelfAuthCommand", () => {
 				},
 			);
 
-			// This will hang waiting for listen to resolve
-			const _executePromise = command.execute([]);
+			// This will hang waiting for listen to resolve — catch to avoid unhandled rejection
+			const _executePromise = command.execute([]).catch(() => {});
 
 			// Give it a moment to start
 			await new Promise((resolve) => setTimeout(resolve, 10));

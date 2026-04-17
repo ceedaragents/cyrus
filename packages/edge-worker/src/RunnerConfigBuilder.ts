@@ -1,4 +1,5 @@
 import type {
+	ClaudeRunnerConfig,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
@@ -203,10 +204,11 @@ export class RunnerConfigBuilder {
 	 * Issue sessions get full tool sets, runner type selection, model overrides,
 	 * hooks, and runner-specific configuration (Chrome, Cursor, etc.).
 	 */
-	buildIssueConfig(input: IssueRunnerConfigInput): {
-		config: AgentRunnerConfig;
-		runnerType: RunnerType;
-	} {
+	buildIssueConfig(
+		input: IssueRunnerConfigInput,
+	):
+		| { config: ClaudeRunnerConfig; runnerType: "claude" }
+		| { config: AgentRunnerConfig; runnerType: Exclude<RunnerType, "claude"> } {
 		const log = input.logger;
 
 		// Configure hooks: PostToolUse for screenshot tools + Stop hook for PR/summary enforcement
@@ -336,7 +338,10 @@ export class RunnerConfigBuilder {
 			config.maxTurns = input.maxTurns;
 		}
 
-		return { config, runnerType };
+		if (runnerType === "claude") {
+			return { config: config as ClaudeRunnerConfig, runnerType };
+		}
+		return { config, runnerType: runnerType as Exclude<RunnerType, "claude"> };
 	}
 
 	/**
