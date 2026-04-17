@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.46] - 2026-04-16
+
 ### Added
 - **Linux sandbox requirements precheck** — On Linux hosts, Cyrus now verifies that `socat`, `bubblewrap`, and the kernel/AppArmor configuration needed to create an unprivileged user namespace are all in place before enabling Claude Code's subprocess credential scrubbing. When a requirement is missing, the session continues but sandbox mode (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`) is left unset and resolution guidance is printed to stdout. These requirements are documented by Anthropic [here](https://code.claude.com/docs/en/sandboxing#prerequisites). The source-code of Antrhopic's sandbox runtime can be found [here](https://github.com/anthropic-experimental/sandbox-runtime). ([CYPACK-1091](https://linear.app/ceedar/issue/CYPACK-1091), [#1115](https://github.com/ceedaragents/cyrus/pull/1115))
 
@@ -12,8 +14,55 @@ All notable changes to this project will be documented in this file.
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.111 and `@anthropic-ai/sdk` to v0.90.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP`, `ToolSearch`, and `PushNotification`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
 
 ### Fixed
-- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
+- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089), [#1112](https://github.com/ceedaragents/cyrus/pull/1112))
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.46
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.46
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.46
+
+#### cyrus-core
+- cyrus-core@0.2.46
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.46
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.46
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.46
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.46
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.46
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.46
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.46
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.46
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.46
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.46
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.46
 
 ## [0.2.45] - 2026-04-15
 
