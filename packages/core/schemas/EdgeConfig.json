@@ -915,6 +915,39 @@
 			},
 			"required": ["httpProxyPort", "socksProxyPort"],
 			"additionalProperties": false
+		},
+		"telemetry": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"serviceName": {
+					"type": "string"
+				},
+				"endpoint": {
+					"type": "string"
+				},
+				"headers": {
+					"type": "object",
+					"propertyNames": {
+						"type": "string"
+					},
+					"additionalProperties": {
+						"type": "string"
+					}
+				},
+				"resourceAttributes": {
+					"type": "object",
+					"propertyNames": {
+						"type": "string"
+					},
+					"additionalProperties": {
+						"type": "string"
+					}
+				}
+			},
+			"additionalProperties": false
 		}
 	},
 	"required": ["repositories"],

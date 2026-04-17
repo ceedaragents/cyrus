@@ -1,7 +1,15 @@
 // Logging
 
-export type { ILogger, LogContext } from "./logging/index.js";
-export { createLogger, LogLevel } from "./logging/index.js";
+export type { ILogger, LogContext, TelemetryConfig } from "./logging/index.js";
+export {
+	createLogger,
+	initTelemetry,
+	isTelemetryActive,
+	LogLevel,
+	severityNumberFor,
+	severityTextFor,
+	shutdownTelemetry,
+} from "./logging/index.js";
 
 // export { Session } from './Session.js'
 // export type { SessionOptions, , NarrativeItem } from './Session.js'

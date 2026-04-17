@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEFAULT_PROXY_URL, type RepositoryConfig } from "cyrus-core";
+import {
+	DEFAULT_PROXY_URL,
+	initTelemetry,
+	type RepositoryConfig,
+	shutdownTelemetry,
+} from "cyrus-core";
 import { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
@@ -58,6 +63,37 @@ export class Application {
 			this.logger,
 			this.version,
 		);
+
+		// Initialise OpenTelemetry logs sink from config + OTEL_* env vars.
+		// Runs after .env is loaded so env-var-only setups work without edits
+		// to config.json. No-op when neither surface provides an endpoint.
+		this.initializeTelemetry();
+	}
+
+	/**
+	 * Register the OpenTelemetry logs provider using config.json + env vars.
+	 * Failures are logged but never throw — telemetry must never block boot.
+	 */
+	private initializeTelemetry(): void {
+		try {
+			const edgeConfig = this.config.load();
+			const telemetry = edgeConfig.telemetry ?? {};
+			const activated = initTelemetry({
+				enabled: telemetry.enabled,
+				serviceName: telemetry.serviceName,
+				serviceVersion: this.version,
+				endpoint: telemetry.endpoint,
+				headers: telemetry.headers,
+				resourceAttributes: telemetry.resourceAttributes,
+			});
+			if (activated) {
+				this.logger.info("📡 OpenTelemetry logs sink active");
+			}
+		} catch (error) {
+			this.logger.error(
+				`Failed to initialise OpenTelemetry: ${(error as Error).message}`,
+			);
+		}
 	}
 
 	/**
@@ -320,6 +356,8 @@ export class Application {
 		}
 
 		await this.worker.stop();
+		// Flush any pending OTel log records before exiting.
+		await shutdownTelemetry().catch(() => {});
 		process.exit(0);
 	}
 
