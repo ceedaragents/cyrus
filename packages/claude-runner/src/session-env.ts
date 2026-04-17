@@ -20,12 +20,17 @@ const AUTH_ENV_KEYS = [
  * Both `ClaudeRunner.start()` and `EdgeWorker.warmupRecentSessions()`
  * must use the same set — keep this as the single source of truth.
  *
- * - SUBPROCESS_ENV_SCRUB prevents auth tokens from leaking to Bash subprocesses.
+ * Note: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is NOT included here because it
+ * must be set conditionally — on Linux, the bubblewrap sandbox it triggers
+ * requires socat + bwrap + unprivileged user namespaces. ClaudeRunner checks
+ * these requirements via checkLinuxSandboxRequirements() and only sets the
+ * flag when they are met. On macOS (e.g. warmup path) callers can add it
+ * unconditionally since the SDK uses platform-native sandboxing.
+ *
  * - MCP_CONNECTION_NONBLOCKING lets MCP servers connect in the background so
  *   both cold-start and pre-warm sessions return faster.
  */
 export const CYRUS_SESSION_ENV = {
-	CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
 	CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 	CLAUDE_CODE_ENABLE_TASKS: "true",
 	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
@@ -50,9 +55,9 @@ export function buildBaseSessionEnv(
 		env.PATH = process.env.PATH;
 	}
 
-	// Forward auth credentials — safe because CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
-	// (set in CYRUS_SESSION_ENV) prevents these from leaking into Bash
-	// subprocesses spawned by Claude.
+	// Forward auth credentials — callers are expected to also set
+	// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (conditionally, based on sandbox
+	// requirements) to prevent these from leaking into Bash subprocesses.
 	for (const key of AUTH_ENV_KEYS) {
 		if (process.env[key]) {
 			env[key] = process.env[key];

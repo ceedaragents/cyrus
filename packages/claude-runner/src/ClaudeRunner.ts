@@ -77,6 +77,10 @@ function resolveClaudeCodeExecutablePath(): string | undefined {
 }
 
 import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
+import {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+} from "./sandbox-requirements.js";
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,
@@ -458,6 +462,16 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				this.config.pathToClaudeCodeExecutable ||
 				resolveClaudeCodeExecutablePath();
 
+			// On Linux, setting CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 causes the SDK
+			// to run tool invocations under a bubblewrap-backed sandbox. If the
+			// host lacks `socat`, `bubblewrap`, or the kernel/AppArmor config
+			// needed to create an unprivileged user namespace, the sandbox will
+			// fail at runtime. Check those requirements up front so we can fall
+			// back to unscrubbed env (and log resolution guidance to stdout)
+			// instead of failing opaquely mid-session.
+			const sandboxRequirements = checkLinuxSandboxRequirements();
+			logSandboxRequirementFailures(sandboxRequirements, this.logger);
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
@@ -479,6 +493,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					settingSources: ["user", "project", "local"],
 					env: {
 						...buildBaseSessionEnv(),
+						// Only set the scrub flag when the host can support the sandbox
+						// runtime it triggers — otherwise tool invocations would fail
+						// at runtime on Linux hosts missing bwrap/socat/kernel config.
+						// When enabled, this also prevents forwarded auth tokens (API key,
+						// OAuth token) from leaking into Bash subprocesses.
+						...(sandboxRequirements.supported && {
+							CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+						}),
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
 					},
