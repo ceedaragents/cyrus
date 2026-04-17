@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { type DiagLogger, DiagLogLevel, diag } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
 	BatchLogRecordProcessor,
