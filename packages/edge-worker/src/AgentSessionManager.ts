@@ -359,12 +359,6 @@ export class AgentSessionManager extends EventEmitter {
 
 		if (wasStopRequested) {
 			log.info(`Session was stopped by user`);
-			log.event({
-				name: "session.stopped",
-				sessionId,
-				reason: "user_requested",
-				durationMs: resultMessage.duration_ms,
-			});
 			return;
 		}
 
