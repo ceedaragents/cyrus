@@ -16,7 +16,7 @@ describe("config", () => {
 			expect(availableTools).toEqual([
 				"Read(**)",
 				"Edit(**)",
-				"Write",
+				"Write(**)",
 				"Glob",
 				"Grep",
 				"Bash",
@@ -75,7 +75,12 @@ describe("config", () => {
 		});
 
 		it("should define write tools", () => {
-			expect(writeTools).toEqual(["Edit(**)", "Write", "Bash", "NotebookEdit"]);
+			expect(writeTools).toEqual([
+				"Edit(**)",
+				"Write(**)",
+				"Bash",
+				"NotebookEdit",
+			]);
 			expect(writeTools).toHaveLength(4);
 		});
 
@@ -126,7 +131,7 @@ describe("config", () => {
 
 			expect(tools).toContain("Read(**)");
 			expect(tools).toContain("Edit(**)");
-			expect(tools).toContain("Write");
+			expect(tools).toContain("Write(**)");
 			expect(tools).toContain("Glob");
 			expect(tools).toContain("Grep");
 			expect(tools).toContain("Task");
@@ -158,7 +163,7 @@ describe("config", () => {
 
 			// Should NOT include file editing tools
 			expect(tools).not.toContain("Edit(**)");
-			expect(tools).not.toContain("Write");
+			expect(tools).not.toContain("Write(**)");
 			expect(tools).not.toContain("NotebookEdit");
 
 			// Should have all tools minus Edit, Write, NotebookEdit
@@ -224,8 +229,8 @@ describe("config", () => {
 		});
 
 		it("Write should be a write tool", () => {
-			expect(writeTools).toContain("Write");
-			expect(readOnlyTools).not.toContain("Write");
+			expect(writeTools).toContain("Write(**)");
+			expect(readOnlyTools).not.toContain("Write(**)");
 		});
 
 		it("Bash should be a write tool (can modify system)", () => {

@@ -18,7 +18,7 @@ export const availableTools = [
 	// File system tools
 	"Read(**)",
 	"Edit(**)",
-	"Write",
+	"Write(**)",
 	"Glob",
 	"Grep",
 
@@ -108,7 +108,7 @@ export const readOnlyTools: ToolName[] = [
  */
 export const writeTools: ToolName[] = [
 	"Edit(**)",
-	"Write",
+	"Write(**)",
 	"Bash",
 	"NotebookEdit",
 ];
@@ -141,6 +141,6 @@ export function getSafeTools(): string[] {
  */
 export function getCoordinatorTools(): string[] {
 	return [...availableTools].filter(
-		(t) => t !== "Edit(**)" && t !== "Write" && t !== "NotebookEdit",
+		(t) => t !== "Edit(**)" && t !== "Write(**)" && t !== "NotebookEdit",
 	);
 }
