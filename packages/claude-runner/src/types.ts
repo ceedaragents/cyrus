@@ -1,4 +1,5 @@
 import type {
+	EffortLevel,
 	HookCallbackMatcher,
 	HookEvent,
 	JsonSchemaOutputFormat,
@@ -35,6 +36,7 @@ export interface ClaudeRunnerConfig {
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
 	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
+	effort?: EffortLevel; // Effort level (e.g., "low", "medium", "high", "max")
 	maxTurns?: number; // Maximum number of turns before completing the session
 	tools?: string[]; // Built-in tools available in model context (empty array disables all tools)
 	cyrusHome: string; // Cyrus home directory
@@ -83,6 +85,7 @@ export interface ClaudeRunnerEvents {
 
 // Re-export SDK types for convenience
 export type {
+	EffortLevel,
 	JsonSchemaOutputFormat,
 	McpServerConfig,
 	OutputFormat,

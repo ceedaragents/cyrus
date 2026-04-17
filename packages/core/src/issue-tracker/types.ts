@@ -138,7 +138,12 @@ export type Comment = Pick<
 export type Label = Pick<
 	LinearSDK.IssueLabel,
 	"id" | "name" | "description" | "color"
->;
+> & {
+	/** The parent label (for grouped labels). */
+	readonly parent?: LinearSDK.IssueLabel["parent"];
+	/** The ID of the parent label. */
+	readonly parentId?: string;
+};
 
 /**
  * IssueRelation type - Represents a relationship between issues.

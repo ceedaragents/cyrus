@@ -1,4 +1,4 @@
-import type { EdgeWorkerConfig, RunnerType } from "cyrus-core";
+import type { EdgeWorkerConfig, EffortLevel, RunnerType } from "cyrus-core";
 
 export class RunnerSelectionService {
 	private config: EdgeWorkerConfig;
@@ -129,6 +129,7 @@ export class RunnerSelectionService {
 		runnerType: RunnerType;
 		modelOverride?: string;
 		fallbackModelOverride?: string;
+		effortOverride?: EffortLevel;
 	} {
 		const normalizedLabels = (labels || []).map((label) => label.toLowerCase());
 		const normalizedDescription = issueDescription || "";
@@ -310,10 +311,65 @@ export class RunnerSelectionService {
 			fallbackModelOverride = defaultFallbackByRunner[runnerType];
 		}
 
+		// Parse effort from description tag or labels (Claude runner only)
+		const VALID_EFFORTS: EffortLevel[] = [
+			"low",
+			"medium",
+			"high",
+			"xhigh",
+			"max",
+		];
+
+		const descriptionEffortTagRaw = this.parseDescriptionTag(
+			normalizedDescription,
+			"effort",
+		);
+
+		const resolveEffortFromLabel = (
+			lowercaseLabels: string[],
+		): EffortLevel | undefined => {
+			// 1) Flat leaf-name forms (highest priority):
+			//    effort-max, effort=max, max-effort
+			for (const lvl of VALID_EFFORTS) {
+				for (const lc of lowercaseLabels) {
+					if (lc.includes(`effort-${lvl}`)) return lvl;
+					if (lc.includes(`effort=${lvl}`)) return lvl;
+					if (lc.includes(`${lvl}-effort`)) return lvl;
+				}
+			}
+			// 2) Group-qualified forms: "groupName/leafName" emitted by fetchIssueLabels.
+			//    Accept a group whose name contains "effort" (case-insensitive) — this
+			//    handles "Effort Level/max", "CyrusEffort/high", etc., and works
+			//    around Linear reserving the bare name "effort".
+			for (const label of lowercaseLabels) {
+				const slashIdx = label.lastIndexOf("/");
+				if (slashIdx <= 0) continue;
+				const group = label.slice(0, slashIdx);
+				const leaf = label.slice(slashIdx + 1) as EffortLevel;
+				if (!group.includes("effort")) continue;
+				if (VALID_EFFORTS.includes(leaf)) return leaf;
+			}
+			return undefined;
+		};
+
+		let effortOverride: EffortLevel | undefined =
+			((descriptionEffortTagRaw || "")
+				.toString()
+				.toLowerCase()
+				.trim() as EffortLevel) || resolveEffortFromLabel(normalizedLabels);
+		if (effortOverride && !VALID_EFFORTS.includes(effortOverride)) {
+			effortOverride = undefined;
+		}
+		// Effort is only supported for the Claude runner
+		if (runnerType !== "claude") {
+			effortOverride = undefined;
+		}
+
 		return {
 			runnerType,
 			modelOverride,
 			fallbackModelOverride,
+			effortOverride,
 		};
 	}
 }

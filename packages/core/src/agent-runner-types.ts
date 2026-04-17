@@ -2,6 +2,7 @@ import type {
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
+	EffortLevel as SDKEffortLevel,
 	SDKMessage,
 	SDKUserMessage,
 	SdkPluginConfig,
@@ -24,6 +25,14 @@ import type { ILogger } from "./logging/ILogger.js";
  * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
  */
 export type AskUserQuestionInput = SDKAskUserQuestionInput;
+
+/**
+ * Effort level for Claude sessions.
+ * Controls how much reasoning effort the model puts into its response.
+ *
+ * Re-exported from the Claude Agent SDK.
+ */
+export type EffortLevel = SDKEffortLevel;
 
 /**
  * Simplified option type for easier API consumption.
@@ -411,6 +420,8 @@ export interface AgentRunnerConfig {
 	model?: string;
 	/** Fallback model if primary is unavailable */
 	fallbackModel?: string;
+	/** Effort level for Claude sessions (e.g., "low", "medium", "high", "max") */
+	effort?: EffortLevel;
 	/** Maximum number of turns before completing session */
 	maxTurns?: number;
 	/** Built-in tools available in model context (empty array disables all tools) */

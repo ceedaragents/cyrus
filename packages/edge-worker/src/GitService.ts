@@ -448,7 +448,24 @@ export class GitService {
 	async fetchIssueLabels(issue: Issue): Promise<string[]> {
 		try {
 			const labels = await issue.labels();
-			return labels.nodes.map((label) => label.name);
+			// Emit both leaf name AND "groupName/leafName" when the label belongs
+			// to a Linear label group, so that matchers can disambiguate
+			// (e.g., "Effort Level/max" → ["max", "effort level/max"]).
+			const out: string[] = [];
+			for (const label of labels.nodes) {
+				out.push(label.name);
+				try {
+					if (label.parentId) {
+						const parent = await label.parent;
+						if (parent?.name) {
+							out.push(`${parent.name}/${label.name}`);
+						}
+					}
+				} catch {
+					// Parent fetch failed — keep the leaf name we already pushed.
+				}
+			}
+			return out;
 		} catch (error) {
 			this.logger.error(`Failed to fetch labels for issue ${issue.id}:`, error);
 			return [];

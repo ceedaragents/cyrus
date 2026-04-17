@@ -628,9 +628,7 @@ export function createCLILabel(data: CLILabelData): Label {
 		get creator() {
 			return Promise.resolve(undefined);
 		},
-		get parent() {
-			return Promise.resolve(undefined);
-		},
+		// parent is omitted when undefined — the Label type makes it optional
 
 		// Collection methods
 		children: () => Promise.resolve({ nodes: [] }),

@@ -11,6 +11,7 @@ import type {
 import type {
 	AgentRunnerConfig,
 	CyrusAgentSession,
+	EffortLevel,
 	ILogger,
 	OnAskUserQuestion,
 	RepositoryConfig,
@@ -53,6 +54,7 @@ export interface IRunnerSelector {
 		runnerType: RunnerType;
 		modelOverride?: string;
 		fallbackModelOverride?: string;
+		effortOverride?: EffortLevel;
 	};
 	getDefaultModelForRunner(runnerType: RunnerType): string;
 	getDefaultFallbackModelForRunner(runnerType: RunnerType): string;
@@ -246,9 +248,14 @@ export class RunnerConfigBuilder {
 				this.runnerSelector.getDefaultFallbackModelForRunner("cursor");
 		}
 
+		const effortOverride = runnerSelection.effortOverride;
+
 		// Log model override if found
 		if (modelOverride) {
 			log.debug(`Model override via selector: ${modelOverride}`);
+		}
+		if (effortOverride) {
+			log.debug(`Effort override via selector: ${effortOverride}`);
 		}
 
 		// Determine final model from selectors, repository override, then runner-specific defaults
@@ -298,7 +305,12 @@ export class RunnerConfigBuilder {
 				input.sandboxSettings &&
 				this.buildSandboxConfig(input)),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
-			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
+			...(runnerType === "claude" && {
+				extraArgs: {
+					chrome: null,
+					...(effortOverride ? { effort: effortOverride } : {}),
+				},
+			}),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" &&
 				input.createAskUserQuestionCallback && {
