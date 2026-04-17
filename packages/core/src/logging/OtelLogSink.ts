@@ -29,6 +29,52 @@ function contextToAttributes(context: LogContext): Record<string, string> {
 	return attrs;
 }
 
+/**
+ * Keys whose values are scrubbed before export.
+ * Matches common secret-carrying field names regardless of case or
+ * surrounding punctuation (camelCase, snake_case, dotted paths all covered).
+ */
+const SENSITIVE_KEY_PATTERN =
+	/token|secret|password|bearer|credential|apikey|api[._-]?key|authorization|auth[._-]?header|cookie|session[._-]?cookie|private[._-]?key|client[._-]?secret/i;
+
+const REDACTED_PLACEHOLDER = "[REDACTED]";
+const MAX_REDACTION_DEPTH = 6;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (value === null || typeof value !== "object") return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Recursively redact any value whose key matches {@link SENSITIVE_KEY_PATTERN}.
+ * Walks plain objects and arrays only; other object shapes (Map, Set, class
+ * instances) are serialised as-is because `JSON.stringify` already flattens them.
+ *
+ * Depth-limited to guard against pathological cyclic-but-serialisable graphs
+ * that slip past JSON.stringify's cycle detection via `toJSON` tricks.
+ */
+function redactSensitive(value: unknown, depth = 0): unknown {
+	if (depth > MAX_REDACTION_DEPTH) {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => redactSensitive(item, depth + 1));
+	}
+	if (isPlainObject(value)) {
+		const out: Record<string, unknown> = {};
+		for (const [key, v] of Object.entries(value)) {
+			if (SENSITIVE_KEY_PATTERN.test(key)) {
+				out[key] = REDACTED_PLACEHOLDER;
+			} else {
+				out[key] = redactSensitive(v, depth + 1);
+			}
+		}
+		return out;
+	}
+	return value;
+}
+
 function serializeArg(arg: unknown): unknown {
 	if (arg === null || arg === undefined) {
 		return arg;
@@ -47,30 +93,41 @@ function serializeArg(arg: unknown): unknown {
 			stack: arg.stack,
 		};
 	}
+	let plain: unknown;
 	try {
-		return JSON.parse(JSON.stringify(arg));
+		plain = JSON.parse(JSON.stringify(arg));
 	} catch {
 		return String(arg);
 	}
+	return redactSensitive(plain);
+}
+
+export interface OtelLogSinkOptions {
+	/**
+	 * Minimum level forwarded to OTel. Log records below this threshold are
+	 * dropped at the sink. Defaults to WARN to keep export volume bounded;
+	 * operators who need INFO-level correlation can lower it.
+	 */
+	minLogLevel?: LogLevel;
 }
 
 export class OtelLogSink implements LogSink {
+	readonly alwaysEmitEvents = true;
 	private readonly otelLogger: OtelLogger;
+	private readonly minLogLevel: LogLevel;
 
-	constructor(component: string) {
+	constructor(component: string, options: OtelLogSinkOptions = {}) {
 		// Safe to resolve eagerly — the API returns a proxy that defers to the
 		// currently registered global provider (or a no-op when none is set).
 		this.otelLogger = logs.getLogger(component);
+		this.minLogLevel = options.minLogLevel ?? LogLevel.WARN;
 	}
 
 	emit(record: LogRecord): void {
 		if (!isTelemetryActive()) {
 			return;
 		}
-		// Production filter: only WARN+ reaches the OTel sink. INFO/DEBUG
-		// stay on stdout so operators still see them locally while keeping
-		// the OTel log volume bounded to genuinely actionable signals.
-		if (record.level < LogLevel.WARN) {
+		if (record.level < this.minLogLevel) {
 			return;
 		}
 		const attributes: AnyValueMap = {

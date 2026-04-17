@@ -294,6 +294,20 @@ export const TelemetryConfigSchema = z.object({
 	 * Common keys: `deployment.environment`, `service.namespace`.
 	 */
 	resourceAttributes: z.record(z.string(), z.string()).optional(),
+
+	/**
+	 * Minimum log severity forwarded to OTel. Records below this threshold
+	 * are dropped at the sink. Defaults to "WARN" to keep export volume
+	 * bounded; lower it if dashboards need INFO-level correlation.
+	 */
+	minLogLevel: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).optional(),
+
+	/**
+	 * Timeout (milliseconds) for the final flush + shutdown performed on
+	 * graceful exit. Prevents the process from hanging when the OTel
+	 * backend is unreachable at shutdown. Defaults to 3000.
+	 */
+	shutdownTimeoutMs: z.number().int().positive().optional(),
 });
 
 /**

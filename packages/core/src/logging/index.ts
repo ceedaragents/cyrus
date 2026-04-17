@@ -13,7 +13,7 @@ export type { ILogger, LogContext } from "./ILogger.js";
 export { LogLevel } from "./ILogger.js";
 export { createLogger } from "./Logger.js";
 export type { EventRecord, LogRecord, LogSink } from "./LogSink.js";
-export { OtelLogSink } from "./OtelLogSink.js";
+export { OtelLogSink, type OtelLogSinkOptions } from "./OtelLogSink.js";
 export {
 	initTelemetry,
 	isTelemetryActive,
@@ -21,4 +21,5 @@ export {
 	severityTextFor,
 	shutdownTelemetry,
 	type TelemetryConfig,
+	type TelemetryInitOptions,
 } from "./telemetry.js";

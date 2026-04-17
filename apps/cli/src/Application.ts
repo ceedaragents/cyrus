@@ -78,16 +78,20 @@ export class Application {
 		try {
 			const edgeConfig = this.config.load();
 			const telemetry = edgeConfig.telemetry ?? {};
-			const activated = initTelemetry({
+			const configured = initTelemetry({
 				enabled: telemetry.enabled,
 				serviceName: telemetry.serviceName,
 				serviceVersion: this.version,
 				endpoint: telemetry.endpoint,
 				headers: telemetry.headers,
 				resourceAttributes: telemetry.resourceAttributes,
+				minLogLevel: telemetry.minLogLevel,
+				shutdownTimeoutMs: telemetry.shutdownTimeoutMs,
 			});
-			if (activated) {
-				this.logger.info("📡 OpenTelemetry logs sink active");
+			if (configured) {
+				// Registered, but export success depends on the OTLP backend being
+				// reachable — transport errors surface later via the OTel diag logger.
+				this.logger.info("📡 OpenTelemetry logs sink configured");
 			}
 		} catch (error) {
 			this.logger.error(

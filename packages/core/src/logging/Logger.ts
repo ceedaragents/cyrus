@@ -4,6 +4,7 @@ import type { ILogger, LogContext } from "./ILogger.js";
 import { LogLevel } from "./ILogger.js";
 import type { LogSink } from "./LogSink.js";
 import { OtelLogSink } from "./OtelLogSink.js";
+import { getDefaultOtelSinkOptions } from "./telemetry.js";
 
 function parseLevelFromEnv(): LogLevel | undefined {
 	const envLevel = process.env.CYRUS_LOG_LEVEL?.toUpperCase();
@@ -42,7 +43,7 @@ class Logger implements ILogger {
 		this.context = options.context ?? {};
 		this.sinks = options.sinks ?? [
 			new ConsoleLogSink(),
-			new OtelLogSink(options.component),
+			new OtelLogSink(options.component, getDefaultOtelSinkOptions()),
 		];
 	}
 
@@ -86,7 +87,15 @@ class Logger implements ILogger {
 			context: this.context,
 			timestamp: new Date(),
 		};
+		// Events are nominally INFO-severity locally. Sinks that opt in via
+		// `alwaysEmitEvents` (e.g. OtelLogSink) still receive the record so
+		// dashboards don't lose lifecycle signals when operators silence
+		// console output.
+		const silencedLocally = this.level > LogLevel.INFO;
 		for (const sink of this.sinks) {
+			if (silencedLocally && !sink.alwaysEmitEvents) {
+				continue;
+			}
 			sink.emitEvent(record);
 		}
 	}

@@ -14,17 +14,20 @@ import {
 	ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import { LogLevel } from "./ILogger.js";
+import type { OtelLogSinkOptions } from "./OtelLogSink.js";
 
 const DEFAULT_SERVICE_NAME = "cyrus";
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 3000;
 
 /**
- * Telemetry configuration.
+ * Options accepted by {@link initTelemetry}.
  *
- * Controls the OpenTelemetry logs sink that runs alongside the existing
- * stdout/stderr logger. Standard OTEL_* env vars take precedence over
+ * Superset of the persisted {@link TelemetryConfigOptions} (the Zod-derived
+ * type exported from `config-schemas.ts`) plus test-only knobs that cannot
+ * be set from `config.json`. Standard OTEL_* env vars take precedence over
  * these fields; when neither is set, telemetry is disabled (no-op).
  */
-export interface TelemetryConfig {
+export interface TelemetryInitOptions {
 	/**
 	 * Whether telemetry is enabled. When false, no OTel provider is registered.
 	 * Defaults to true if an endpoint (via config or OTEL_EXPORTER_OTLP_*)
@@ -58,6 +61,21 @@ export interface TelemetryConfig {
 	resourceAttributes?: Record<string, string>;
 
 	/**
+	 * Minimum log severity forwarded to OTel. Records below this threshold
+	 * are dropped at the sink. Defaults to WARN to keep export volume bounded.
+	 * Accepts either a {@link LogLevel} enum value or the matching string
+	 * (`"DEBUG" | "INFO" | "WARN" | "ERROR"`) for config-file friendliness.
+	 */
+	minLogLevel?: LogLevel | "DEBUG" | "INFO" | "WARN" | "ERROR";
+
+	/**
+	 * Timeout (ms) for the final flush + shutdown performed by
+	 * {@link shutdownTelemetry}. Prevents the process from hanging if the
+	 * OTel backend is unreachable at exit. Defaults to 3000.
+	 */
+	shutdownTimeoutMs?: number;
+
+	/**
 	 * Use synchronous SimpleLogRecordProcessor instead of BatchLogRecordProcessor.
 	 * Exposed primarily for tests — production should use the batch processor.
 	 */
@@ -70,8 +88,16 @@ export interface TelemetryConfig {
 	processor?: LogRecordProcessor;
 }
 
+/**
+ * @deprecated Renamed to {@link TelemetryInitOptions}. Kept as an alias so
+ * external imports don't break; the name will be removed in a future release.
+ */
+export type TelemetryConfig = TelemetryInitOptions;
+
 let provider: LoggerProvider | undefined;
 let diagInstalled = false;
+let defaultSinkOptions: OtelLogSinkOptions = {};
+let shutdownTimeoutMs: number = DEFAULT_SHUTDOWN_TIMEOUT_MS;
 
 /**
  * Parse the standard `OTEL_LOG_LEVEL` env var into a `DiagLogLevel`.
@@ -151,7 +177,7 @@ export function severityTextFor(level: LogLevel): string {
 	}
 }
 
-function resolveEndpoint(config: TelemetryConfig): string | undefined {
+function resolveEndpoint(config: TelemetryInitOptions): string | undefined {
 	return (
 		config.endpoint ??
 		process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ??
@@ -159,7 +185,7 @@ function resolveEndpoint(config: TelemetryConfig): string | undefined {
 	);
 }
 
-function resolveEnabled(config: TelemetryConfig): boolean {
+function resolveEnabled(config: TelemetryInitOptions): boolean {
 	if (process.env.OTEL_SDK_DISABLED === "true") {
 		return false;
 	}
@@ -172,8 +198,27 @@ function resolveEnabled(config: TelemetryConfig): boolean {
 	return Boolean(resolveEndpoint(config)) || Boolean(config.processor);
 }
 
+function resolveMinLogLevel(
+	value: TelemetryInitOptions["minLogLevel"],
+): LogLevel | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === "number") return value;
+	switch (value) {
+		case "DEBUG":
+			return LogLevel.DEBUG;
+		case "INFO":
+			return LogLevel.INFO;
+		case "WARN":
+			return LogLevel.WARN;
+		case "ERROR":
+			return LogLevel.ERROR;
+		default:
+			return undefined;
+	}
+}
+
 function buildResourceAttributes(
-	config: TelemetryConfig,
+	config: TelemetryInitOptions,
 ): Record<string, string> {
 	const attrs: Record<string, string> = {
 		[ATTR_SERVICE_NAME]:
@@ -197,8 +242,11 @@ function buildResourceAttributes(
  * Safe to call multiple times — subsequent calls replace the existing provider
  * (previous one is shut down). Returns `true` if a provider was registered,
  * `false` if telemetry is disabled.
+ *
+ * Note: a `true` return means the provider is *configured* — OTLP export is
+ * asynchronous, so transport errors surface later via the installed diag logger.
  */
-export function initTelemetry(config: TelemetryConfig = {}): boolean {
+export function initTelemetry(config: TelemetryInitOptions = {}): boolean {
 	if (!resolveEnabled(config)) {
 		return false;
 	}
@@ -235,30 +283,83 @@ export function initTelemetry(config: TelemetryConfig = {}): boolean {
 	});
 
 	logs.setGlobalLoggerProvider(provider);
+
+	const resolvedMinLevel = resolveMinLogLevel(config.minLogLevel);
+	defaultSinkOptions =
+		resolvedMinLevel !== undefined ? { minLogLevel: resolvedMinLevel } : {};
+	shutdownTimeoutMs = config.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	return true;
+}
+
+/**
+ * Options used by {@link Logger} when it constructs a default OtelLogSink.
+ * Mirrors whatever was passed to {@link initTelemetry}; re-exported so the
+ * Logger does not need its own copy of configuration state.
+ */
+export function getDefaultOtelSinkOptions(): OtelLogSinkOptions {
+	return defaultSinkOptions;
+}
+
+async function raceWithTimeout(
+	action: () => Promise<void>,
+	timeoutMs: number,
+	label: string,
+): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<"timeout">((resolve) => {
+		timer = setTimeout(() => resolve("timeout"), timeoutMs);
+	});
+	try {
+		const result = await Promise.race([
+			action().then(() => "done" as const),
+			timeout,
+		]);
+		if (result === "timeout") {
+			diag.warn(
+				`${label} did not complete within ${timeoutMs}ms; continuing shutdown`,
+			);
+		}
+	} catch (error) {
+		diag.warn(
+			`${label} threw during shutdown: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }
 
 /**
  * Flush any buffered log records and shut down the telemetry provider.
  *
  * Should be called during graceful shutdown so that pending records are
- * transmitted before the process exits.
+ * transmitted before the process exits. Each phase is time-bounded
+ * (see {@link TelemetryInitOptions.shutdownTimeoutMs}) so an unreachable
+ * OTel backend cannot block process exit.
  */
 export async function shutdownTelemetry(): Promise<void> {
 	if (!provider) {
 		return;
 	}
 	const current = provider;
+	const timeout = shutdownTimeoutMs;
 	provider = undefined;
 	try {
-		await current.forceFlush();
+		await raceWithTimeout(() => current.forceFlush(), timeout, "forceFlush");
 	} finally {
-		await current.shutdown();
+		await raceWithTimeout(
+			() => current.shutdown(),
+			timeout,
+			"provider.shutdown",
+		);
 		logs.disable();
 		if (diagInstalled) {
 			diag.disable();
 			diagInstalled = false;
 		}
+		defaultSinkOptions = {};
+		shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	}
 }
 

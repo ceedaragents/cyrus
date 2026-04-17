@@ -20,4 +20,11 @@ export interface EventRecord {
 export interface LogSink {
 	emit(record: LogRecord): void;
 	emitEvent(record: EventRecord): void;
+	/**
+	 * When true, the sink receives events even if the Logger's level would
+	 * otherwise silence them locally. Used by the OTel sink so dashboards
+	 * always see lifecycle events regardless of operator log-level settings.
+	 * Defaults to false when absent.
+	 */
+	readonly alwaysEmitEvents?: boolean;
 }

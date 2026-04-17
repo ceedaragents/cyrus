@@ -5,12 +5,14 @@ export type {
 	ErrorClass,
 	ILogger,
 	LogContext,
+	OtelLogSinkOptions,
 	SessionCompletedEvent,
 	SessionFailedEvent,
 	SessionResumedEvent,
 	SessionStartedEvent,
 	SessionStoppedEvent,
 	TelemetryConfig,
+	TelemetryInitOptions,
 } from "./logging/index.js";
 export {
 	classifyError,
