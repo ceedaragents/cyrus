@@ -7,6 +7,9 @@ This changelog documents internal development changes, refactors, tooling update
 ### Changed
 - Stopped deleting workspace-level issue trackers and activity sinks when removing repositories — they are keyed by workspace ID and may be needed by other repos in the same workspace or by repos about to be added in the same `configChanged` cycle. They are naturally replaced when workspace tokens are updated. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089))
 
+### Fixed
+- Fixed typos in `packages/CLAUDE.md` webhook-constraints documentation (`additonal`, `repsoitory`, `agentSesion`, `intitialized`). ([CYPACK-1098](https://linear.app/ceedar/issue/CYPACK-1098))
+
 ## [0.2.46] - 2026-04-16
 
 ### Fixed
