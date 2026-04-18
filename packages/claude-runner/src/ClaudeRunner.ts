@@ -72,6 +72,7 @@ function resolveClaudeCodeExecutablePath(): string | undefined {
 }
 
 import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
+import { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
 import {
 	checkLinuxSandboxRequirements,
 	logSandboxRequirementFailures,
@@ -372,15 +373,22 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					: directoryTools;
 			}
 
-			// Process disallowed tools - no defaults, just pass through
-			// Only pass if array is non-empty
+			// Build home directory restrictions: deny Read on everything in ~/
+			// that is not an ancestor of the working directory. This prevents
+			// Claude from reading SSH keys, credentials, etc. without relying
+			// on tilde expansion in --disallowedTools patterns (which is not
+			// guaranteed when the CLI is spawned directly rather than via shell).
+			const homeDisallowedTools = this.config.workingDirectory
+				? buildHomeDirectoryDisallowedTools(this.config.workingDirectory)
+				: [];
+
 			const processedDisallowedTools =
-				this.config.disallowedTools && this.config.disallowedTools.length > 0
-					? this.config.disallowedTools
-					: undefined;
+				[...(this.config.disallowedTools ?? []), ...homeDisallowedTools].filter(
+					(v, i, a) => a.indexOf(v) === i,
+				) || undefined;
 
 			// Log disallowed tools if configured
-			if (processedDisallowedTools) {
+			if (processedDisallowedTools.length > 0) {
 				this.logger.debug(
 					"Disallowed tools configured:",
 					processedDisallowedTools,
@@ -529,7 +537,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						allowedDirectories: this.config.allowedDirectories,
 					}),
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-					...(processedDisallowedTools && {
+					...(processedDisallowedTools.length > 0 && {
 						disallowedTools: processedDisallowedTools,
 					}),
 					...(this.canUseToolCallback && {
