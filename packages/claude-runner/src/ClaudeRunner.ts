@@ -375,9 +375,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			// Build home directory restrictions: deny Read on everything in ~/
 			// that is not an ancestor of the working directory. This prevents
-			// Claude from reading SSH keys, credentials, etc. without relying
-			// on tilde expansion in --disallowedTools patterns (which is not
-			// guaranteed when the CLI is spawned directly rather than via shell).
+			// Claude from reading SSH keys, credentials, etc. `Read(~/**)` does
+			// not work as a disallowedTools pattern — `~` is not expanded to the
+			// home directory path, so the pattern never matches.
 			const homeDisallowedTools = this.config.workingDirectory
 				? buildHomeDirectoryDisallowedTools(this.config.workingDirectory)
 				: [];
