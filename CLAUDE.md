@@ -414,8 +414,8 @@ The agent automatically moves issues to the "started" state when assigned. Linea
    **A. Tool permissions** (`allowedTools` / `disallowedTools` → `--allowedTools` / `--disallowedTools` CLI flags)
    - Checked by Claude Code's permission layer — NOT enforced at the OS level.
    - `Read(~/**)` does **not work** as a `disallowedTools` pattern — `~` is not expanded to the home directory path by Claude Code, so the pattern never matches. Other `**` glob patterns work fine; the problem is specific to the `~` prefix.
-   - A **deny+whitelist model does NOT work** here: you cannot just disallow `Read(~/**)` and expect everything outside the worktree to be blocked. The allow set is built additively from SDK lists and `settingSources` files (`~/.claude/settings.json` etc.), so a broad allow in any source overrides your denials.
-   - Solution: `buildHomeDirectoryDisallowedTools(cwd)` in `packages/claude-runner/src/home-directory-restrictions.ts` enumerates the home directory siblings explicitly with absolute double-slash paths (e.g. `Read(//Users/alice/.ssh/**)`) — bypassing tilde expansion and covering each entry individually. This is wired into `ClaudeRunner.ts` automatically.
+   - `disallowedTools` IS an instant deny that takes precedence over `allowedTools` — if a parent path is denied, all its descendants are blocked. The problem is purely that `~` is never expanded, so `Read(~/**)` silently matches nothing.
+   - Solution: `buildHomeDirectoryDisallowedTools(cwd, allowedDirectories)` in `packages/claude-runner/src/home-directory-restrictions.ts` enumerates the home directory explicitly using absolute double-slash paths (e.g. `Read(//Users/alice/.ssh/**)`) — bypassing the tilde expansion issue by naming each sibling concretely. `allowedDirectories` paths are excluded so the attachments dir and repo paths remain readable. This is wired into `ClaudeRunner.ts` automatically.
    - Absolute paths in tool patterns require a double leading slash (e.g. `//Users/alice/.ssh/**`) per Claude Code's parser.
 
    **B. Sandbox filesystem permissions** (`sandbox.filesystem.allowRead` / `denyRead` / `allowWrite`)
