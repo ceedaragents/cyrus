@@ -401,7 +401,9 @@ export class RunnerConfigBuilder {
 					...input.sandboxSettings.filesystem,
 					// "." resolves to the cwd of the primary folder Claude is working in.
 					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
-					allowRead: ["."],
+					// allowedDirectories contains the attachments dir, repo paths, and git
+					// metadata dirs — all of which need OS-level read access alongside the worktree.
+					allowRead: [".", ...input.allowedDirectories],
 					denyRead: ["~/"],
 					// Restrict subprocess writes to the session worktree only
 					allowWrite: [input.session.workspace.path],

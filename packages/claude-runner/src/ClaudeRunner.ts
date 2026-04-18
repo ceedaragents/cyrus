@@ -379,7 +379,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// not work as a disallowedTools pattern — `~` is not expanded to the
 			// home directory path, so the pattern never matches.
 			const homeDisallowedTools = this.config.workingDirectory
-				? buildHomeDirectoryDisallowedTools(this.config.workingDirectory)
+				? buildHomeDirectoryDisallowedTools(
+						this.config.workingDirectory,
+						this.config.allowedDirectories ?? [],
+					)
 				: [];
 
 			const processedDisallowedTools =
