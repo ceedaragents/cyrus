@@ -72,6 +72,10 @@ function resolveClaudeCodeExecutablePath(): string | undefined {
 }
 
 import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
+import {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+} from "./sandbox-requirements.js";
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,
@@ -462,6 +466,16 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				this.config.pathToClaudeCodeExecutable ||
 				resolveClaudeCodeExecutablePath();
 
+			// On Linux, setting CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 causes the SDK
+			// to run tool invocations under a bubblewrap-backed sandbox. If the
+			// host lacks `socat`, `bubblewrap`, or the kernel/AppArmor config
+			// needed to create an unprivileged user namespace, the sandbox will
+			// fail at runtime. Check those requirements up front so we can fall
+			// back to unscrubbed env (and log resolution guidance to stdout)
+			// instead of failing opaquely mid-session.
+			const sandboxRequirements = checkLinuxSandboxRequirements();
+			logSandboxRequirementFailures(sandboxRequirements, this.logger);
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
@@ -495,6 +509,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						...(process.env.ANTHROPIC_AUTH_TOKEN && {
 							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
 						}),
+						// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally NOT set while
+						// the Linux bubblewrap sandbox side effects it triggers are being
+						// investigated. The sandbox requirements precheck is still run
+						// above so the diagnostics remain available when we re-enable.
+						// See: CYPACK-1108.
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
