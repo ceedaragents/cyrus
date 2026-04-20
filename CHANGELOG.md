@@ -7,8 +7,61 @@ All notable changes to this project will be documented in this file.
 ### Security
 - **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
 
+## [0.2.47] - 2026-04-20
+
+### Fixed
+- **Runtime switches no longer require restarting Cyrus** — When `cyrus auth` rotates credentials (for example, after switching between cloud and self-host runtimes), incoming config updates from the Cyrus web app now succeed immediately instead of failing with `401 Unauthorized` until the next process restart. ([CYHOST-798](https://linear.app/ceedar/issue/CYHOST-798), [#1127](https://github.com/ceedaragents/cyrus/pull/1127))
+
 ### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.114** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1096](https://linear.app/ceedar/issue/CYPACK-1096), [#1124](https://github.com/ceedaragents/cyrus/pull/1124))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.112** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1093](https://linear.app/ceedar/issue/CYPACK-1093), [#1121](https://github.com/ceedaragents/cyrus/pull/1121))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.47
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.47
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.47
+
+#### cyrus-core
+- cyrus-core@0.2.47
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.47
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.47
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.47
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.47
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.47
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.47
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.47
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.47
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.47
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.47
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.47
 
 ## [0.2.46] - 2026-04-16
 
