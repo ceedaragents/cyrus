@@ -41,27 +41,6 @@ describe("ConfigUpdater auth", () => {
 		await fastify.close();
 	});
 
-	it("accepts a string api key (backward compatibility)", async () => {
-		const updater = new ConfigUpdater(fastify, "/tmp/cyrus-home", "static-key");
-		updater.register();
-
-		const ok = await fastify.inject({
-			method: "POST",
-			url: "/api/update/cyrus-config",
-			headers: { authorization: "Bearer static-key" },
-			payload: { repositories: [] },
-		});
-		expect(ok.statusCode).toBe(200);
-
-		const bad = await fastify.inject({
-			method: "POST",
-			url: "/api/update/cyrus-config",
-			headers: { authorization: "Bearer wrong-key" },
-			payload: { repositories: [] },
-		});
-		expect(bad.statusCode).toBe(401);
-	});
-
 	it("re-reads the api key from the getter on every request", async () => {
 		let currentKey = "first-key";
 		const updater = new ConfigUpdater(

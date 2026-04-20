@@ -33,11 +33,9 @@ import type {
  * ConfigUpdater registers configuration update routes with a Fastify server
  * Handles: cyrus-config, cyrus-env, repository, update/test-mcp, update/configure-mcp, check-gh endpoints
  *
- * The apiKey argument may be either a literal string (fixed at construction)
- * or a getter function called on every auth check. Pass a getter when the
- * key can rotate at runtime — e.g. reading from `process.env.CYRUS_API_KEY`
- * so that `.env` reloads (after `cyrus auth` rotates credentials) are picked
- * up without restarting the process.
+ * `getApiKey` is invoked on every auth check, so callers reading from
+ * `process.env.CYRUS_API_KEY` pick up `.env` reloads (triggered by
+ * `cyrus auth` after a credential rotation) without restarting the process.
  */
 export class ConfigUpdater {
 	private fastify: FastifyInstance;
@@ -47,11 +45,11 @@ export class ConfigUpdater {
 	constructor(
 		fastify: FastifyInstance,
 		cyrusHome: string,
-		apiKey: string | (() => string),
+		getApiKey: () => string,
 	) {
 		this.fastify = fastify;
 		this.cyrusHome = cyrusHome;
-		this.getApiKey = typeof apiKey === "function" ? apiKey : () => apiKey;
+		this.getApiKey = getApiKey;
 	}
 
 	/**
