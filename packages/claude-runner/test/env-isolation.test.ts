@@ -204,16 +204,16 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
-	it("should set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to prevent auth token leakage", async () => {
+	it("should never set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB (disabled pending CYPACK-1108)", async () => {
 		mockSuccessfulQuery();
 		const runner = new ClaudeRunner(makeConfig("/repo-a"));
 		await runner.start("test");
 
 		const env = getQueryEnv();
-		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBeUndefined();
 	});
 
-	it("should omit CLAUDE_CODE_SUBPROCESS_ENV_SCRUB and log guidance when the Linux sandbox precheck fails", async () => {
+	it("should log sandbox requirement guidance when the Linux sandbox precheck fails", async () => {
 		vi.mocked(checkLinuxSandboxRequirements).mockReturnValueOnce({
 			supported: false,
 			platform: "linux",

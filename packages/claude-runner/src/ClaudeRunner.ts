@@ -498,8 +498,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					env: {
 						...(process.env.PATH && { PATH: process.env.PATH }),
 						// Forward auth credentials from parent process — the SDK needs
-						// these for API calls. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 prevents
-						// them from leaking to Bash subprocesses.
+						// these for API calls.
 						// See: https://code.claude.com/docs/en/env-vars
 						...(process.env.ANTHROPIC_API_KEY && {
 							ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
@@ -510,12 +509,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						...(process.env.ANTHROPIC_AUTH_TOKEN && {
 							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
 						}),
-						// Only set the scrub flag when the host can support the sandbox
-						// runtime it triggers — otherwise tool invocations would fail
-						// at runtime on Linux hosts missing bwrap/socat/kernel config.
-						...(sandboxRequirements.supported && {
-							CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
-						}),
+						// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally NOT set while
+						// the Linux bubblewrap sandbox side effects it triggers are being
+						// investigated. The sandbox requirements precheck is still run
+						// above so the diagnostics remain available when we re-enable.
+						// See: CYPACK-1108.
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
