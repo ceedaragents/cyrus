@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Security
-- **Addressed open security advisories** — Bumped transitive dependencies to patched versions via pnpm overrides to resolve critical, high, and moderate severity advisories reported by GitHub Dependabot. Covers `protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, and `@hono/node-server`. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101))
+- **Addressed open security advisories** — Bumped transitive dependencies to patched versions via pnpm overrides to resolve critical, high, and moderate severity advisories reported by GitHub Dependabot. Covers `protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, and `@hono/node-server`. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
 ### Changed
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.114** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1096](https://linear.app/ceedar/issue/CYPACK-1096), [#1124](https://github.com/ceedaragents/cyrus/pull/1124))
