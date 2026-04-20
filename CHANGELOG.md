@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Security
-- **Addressed open security advisories** — Bumped transitive dependencies to patched versions via pnpm overrides to resolve critical, high, and moderate severity advisories reported by GitHub Dependabot. Covers `protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, and `@hono/node-server`. ([CYPACK-1104](https://linear.app/ceedar/issue/CYPACK-1104))
+- **Addressed open security advisories** — Bumped transitive dependencies to patched versions via pnpm overrides to resolve critical, high, and moderate severity advisories reported by GitHub Dependabot. Covers `protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, and `@hono/node-server`. ([CYPACK-1104](https://linear.app/ceedar/issue/CYPACK-1104), [#1129](https://github.com/ceedaragents/cyrus/pull/1129))
 
 ### Fixed
 - **Runtime switches no longer require restarting Cyrus** — When `cyrus auth` rotates credentials (for example, after switching between cloud and self-host runtimes), incoming config updates from the Cyrus web app now succeed immediately instead of failing with `401 Unauthorized` until the next process restart. ([CYHOST-798](https://linear.app/ceedar/issue/CYHOST-798), [#1127](https://github.com/ceedaragents/cyrus/pull/1127))
