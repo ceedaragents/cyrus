@@ -32,16 +32,26 @@ import type {
 /**
  * ConfigUpdater registers configuration update routes with a Fastify server
  * Handles: cyrus-config, cyrus-env, repository, update/test-mcp, update/configure-mcp, check-gh endpoints
+ *
+ * The apiKey argument may be either a literal string (fixed at construction)
+ * or a getter function called on every auth check. Pass a getter when the
+ * key can rotate at runtime — e.g. reading from `process.env.CYRUS_API_KEY`
+ * so that `.env` reloads (after `cyrus auth` rotates credentials) are picked
+ * up without restarting the process.
  */
 export class ConfigUpdater {
 	private fastify: FastifyInstance;
 	private cyrusHome: string;
-	private apiKey: string;
+	private getApiKey: () => string;
 
-	constructor(fastify: FastifyInstance, cyrusHome: string, apiKey: string) {
+	constructor(
+		fastify: FastifyInstance,
+		cyrusHome: string,
+		apiKey: string | (() => string),
+	) {
 		this.fastify = fastify;
 		this.cyrusHome = cyrusHome;
-		this.apiKey = apiKey;
+		this.getApiKey = typeof apiKey === "function" ? apiKey : () => apiKey;
 	}
 
 	/**
@@ -165,11 +175,12 @@ export class ConfigUpdater {
 	 * Verify Bearer token authentication
 	 */
 	private verifyAuth(authHeader: string | undefined): boolean {
-		if (!authHeader || !this.apiKey) {
+		const apiKey = this.getApiKey();
+		if (!authHeader || !apiKey) {
 			return false;
 		}
 
-		const expectedAuth = `Bearer ${this.apiKey}`;
+		const expectedAuth = `Bearer ${apiKey}`;
 		return authHeader === expectedAuth;
 	}
 
