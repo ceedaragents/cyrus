@@ -689,7 +689,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 
 		// Register config update routes
