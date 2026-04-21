@@ -137,10 +137,10 @@ describe("ChatSessionHandler chat session permissions", () => {
 		await handler.handleEvent(event as any);
 
 		expect(capturedConfig).toBeDefined();
-		expect(capturedConfig.allowedTools).toContain("Read");
+		expect(capturedConfig.allowedTools).toContain("Read(**)");
 		expect(capturedConfig.allowedTools).toContain("Glob");
 		expect(capturedConfig.allowedTools).toContain("Bash(git -C * pull)");
-		expect(capturedConfig.allowedTools).not.toContain("Edit");
+		expect(capturedConfig.allowedTools).not.toContain("Edit(**)");
 
 		const expectedWorkspace = join(cyrusHome, "slack-workspaces", "thread-key");
 		expect(capturedConfig.allowedDirectories).toContain(expectedWorkspace);

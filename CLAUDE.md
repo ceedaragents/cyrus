@@ -408,13 +408,30 @@ The agent automatically moves issues to the "started" state when assigned. Linea
    - **Gotcha — parent process env vars**: If `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, or `CURL_CA_BUNDLE` are set in the Cyrus parent process env (e.g., from a previous test or `.env`), they can break git push/fetch from the Cyrus process itself (not child sessions). The parent process does not route through the egress proxy, so these vars should not be set in `~/.cyrus/.env`.
    - Pre-existing `NODE_EXTRA_CA_CERTS` from the host environment are merged into a combined bundle via `EgressProxy.buildCACertBundle()`.
 
-6. **Updating `@anthropic-ai/claude-agent-sdk`**: Whenever you update the `claude-agent-sdk` dependency (which bundles a specific Claude Code version), you **must refresh the tool allowance lists** in `packages/claude-runner/src/config.ts`. Run:
+6. **Two Separate Permission Systems — Tool vs. Sandbox**:
+   Claude Code enforces security through two independent mechanisms that must both be configured correctly:
+
+   **A. Tool permissions** (`allowedTools` / `disallowedTools` → `--allowedTools` / `--disallowedTools` CLI flags)
+   - Checked by Claude Code's permission layer — NOT enforced at the OS level.
+   - `Read(~/**)` does **not work** as a `disallowedTools` pattern — `~` is not expanded to the home directory path by Claude Code, so the pattern never matches. Other `**` glob patterns work fine; the problem is specific to the `~` prefix.
+   - `disallowedTools` IS an instant deny that takes precedence over `allowedTools` — if a parent path is denied, all its descendants are blocked. The problem is purely that `~` is never expanded, so `Read(~/**)` silently matches nothing.
+   - **Absolute paths in tool patterns require a double leading slash** — Claude Code's parser requires `//absolute/path` (e.g. `Read(//Users/alice/.ssh/**)`) for absolute paths. This is also the key to working with home directory paths: instead of `Read(~/**)` (which doesn't expand), you use `Read(///Users/alice/.ssh/**)` with the resolved absolute path. The double-slash is added in code as `/${fullPath}` where `fullPath` is already absolute.
+   - Solution: `buildHomeDirectoryDisallowedTools(cwd, allowedDirectories)` in `packages/claude-runner/src/home-directory-restrictions.ts` enumerates the home directory explicitly using these double-slash absolute paths — bypassing the tilde expansion issue by naming each sibling concretely. `allowedDirectories` paths are excluded so the attachments dir and repo paths remain readable. This is wired into `ClaudeRunner.ts` automatically.
+
+   **B. Sandbox filesystem permissions** (`sandbox.filesystem.allowRead` / `denyRead` / `allowWrite`)
+   - Enforced at the **OS level** via bubblewrap (Linux) or macOS sandbox — no shell or Claude Code involvement.
+   - A **true deny+whitelist model works here**: `denyRead: ["~/"]` + `allowRead: ["."]` is sufficient to deny the entire home directory while allowing the worktree. `"."` resolves to the cwd of the primary folder Claude is working in.
+   - Configured in `buildSandboxConfig()` in `packages/edge-worker/src/RunnerConfigBuilder.ts`.
+
+   **Key invariant**: If sandbox is enabled, both systems should restrict home directory reads. If sandbox is disabled (e.g. in local dev), only tool permissions apply — and those require explicit enumeration via `buildHomeDirectoryDisallowedTools`.
+
+7. **Updating `@anthropic-ai/claude-agent-sdk`**: Whenever you update the `claude-agent-sdk` dependency (which bundles a specific Claude Code version), you **must refresh the tool allowance lists** in `packages/claude-runner/src/config.ts`. Run:
    ```bash
    ./scripts/extract-claude-tools.sh
    ```
    This executes `claude -p "say hi" --output-format stream-json --verbose` and extracts the tool names from the `init` block. Compare the output against the `availableTools` array in `config.ts` and update it to match. Also review `readOnlyTools`, `writeTools`, and the helper functions to ensure new tools are categorized correctly. Failing to do this can cause sessions to silently miss new tools or reference removed ones.
 
-7. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
+8. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
    - `packages/edge-worker/src/PromptBuilder.ts` — Generates the `<repository_routing_context>` XML block included in session system prompts, documenting routing methods and priority order
    - `packages/edge-worker/src/SlackChatAdapter.ts` — Builds the Slack chat system prompt including orchestration notes with repo routing syntax
    - `packages/edge-worker/src/ActivityPoster.ts` — Posts routing activities to Linear timeline (method display names, formatting)

@@ -24,6 +24,7 @@ export {
 	ClaudeMessageFormatter,
 	type IMessageFormatter,
 } from "./formatter.js";
+export { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
 export {
 	checkLinuxSandboxRequirements,
 	logSandboxRequirementFailures,
