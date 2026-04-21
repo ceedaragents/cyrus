@@ -7,8 +7,7 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
 	type CanUseTool,
 	type PermissionResult,
@@ -25,10 +24,21 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
+import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
+import { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
+import {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+} from "./sandbox-requirements.js";
 import {
 	buildBaseSessionEnv,
 	normalizeMcpHttpTransport,
 } from "./session-env.js";
+import type {
+	ClaudeRunnerConfig,
+	ClaudeRunnerEvents,
+	ClaudeSessionInfo,
+} from "./types.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -37,56 +47,6 @@ export class AbortError extends Error {
 		this.name = "AbortError";
 	}
 }
-
-// Create a require function for resolving module paths in ESM
-const require = createRequire(import.meta.url);
-
-/**
- * Resolves the path to the Claude Agent SDK's cli.js executable.
- * This is needed because the SDK's default path resolution (via import.meta.url)
- * can fail in symlinked environments like global npm installs or pnpm workspaces.
- *
- * @returns The resolved path to cli.js, or undefined if resolution fails
- */
-function resolveClaudeCodeExecutablePath(): string | undefined {
-	try {
-		// Resolve the SDK's main entry point using Node's module resolution
-		const sdkPath = require.resolve("@anthropic-ai/claude-agent-sdk");
-		// The SDK exports sdk.mjs, but cli.js is in the same directory
-		const sdkDir = dirname(sdkPath);
-		const cliPath = join(sdkDir, "cli.js");
-
-		// Verify the cli.js file exists
-		if (existsSync(cliPath)) {
-			return cliPath;
-		}
-
-		console.warn(
-			`[ClaudeRunner] Resolved SDK path but cli.js not found at: ${cliPath}`,
-		);
-		return undefined;
-	} catch (error) {
-		// This can happen if the SDK is not installed or path resolution fails
-		// In this case, let the SDK use its own default resolution logic
-		console.warn(
-			"[ClaudeRunner] Failed to resolve SDK executable path:",
-			error instanceof Error ? error.message : error,
-		);
-		return undefined;
-	}
-}
-
-import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
-import { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
-import {
-	checkLinuxSandboxRequirements,
-	logSandboxRequirementFailures,
-} from "./sandbox-requirements.js";
-import type {
-	ClaudeRunnerConfig,
-	ClaudeRunnerEvents,
-	ClaudeSessionInfo,
-} from "./types.js";
 
 export declare interface ClaudeRunner {
 	on<K extends keyof ClaudeRunnerEvents>(
@@ -471,11 +431,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
-			// Resolve pathToClaudeCodeExecutable: use config value if provided,
-			// otherwise auto-resolve to fix issues in symlinked environments (CYPACK-762)
-			const pathToClaudeCodeExecutable =
-				this.config.pathToClaudeCodeExecutable ||
-				resolveClaudeCodeExecutablePath();
+			const pathToClaudeCodeExecutable = this.config.pathToClaudeCodeExecutable;
 
 			// On Linux, setting CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 causes the SDK
 			// to run tool invocations under a bubblewrap-backed sandbox. If the
