@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Improved `ToolSearch` presentation in Linear activities** — When Claude searches for or loads tool schemas during a session, the Linear timeline now shows a clear, human-readable thought like "Loading tool schemas: `TaskCreate`, `TaskUpdate`" or "Searching tools for: `+linear get_issue`" instead of the bare query string. ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112))
+- **Improved `ToolSearch` presentation in Linear activities** — When Claude searches for or loads tool schemas during a session, the Linear timeline now shows a clear, human-readable thought like "Loading tool schemas: `TaskCreate`, `TaskUpdate`" or "Searching tools for: `+linear get_issue`" instead of the bare query string. ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112), [#1134](https://github.com/ceedaragents/cyrus/pull/1134))
 
 ### Security
 - **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
