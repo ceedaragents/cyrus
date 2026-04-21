@@ -4380,7 +4380,7 @@ ${taskSection}`;
 			}
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
-				`I've paused working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
+				`Interrupted by ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
 			);
 		}
 	}
