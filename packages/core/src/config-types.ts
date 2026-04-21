@@ -26,6 +26,8 @@ export {
 	requireLinearWorkspaceId,
 	type SandboxConfig,
 	SandboxConfigSchema,
+	type TelemetryConfig,
+	TelemetryConfigSchema,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,
 	type UserIdentifier,

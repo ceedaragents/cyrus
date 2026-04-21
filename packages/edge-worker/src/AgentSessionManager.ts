@@ -361,6 +361,12 @@ export class AgentSessionManager extends EventEmitter {
 
 		if (wasStopRequested) {
 			log.info(`Session was stopped by user`);
+			log.event({
+				name: "session.stopped",
+				sessionId,
+				reason: "user_requested",
+				durationMs: resultMessage.duration_ms,
+			});
 			return;
 		}
 
@@ -374,6 +380,15 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		log.info(`Session completed (subtype: ${resultMessage.subtype})`);
+		log.event({
+			name: "session.completed",
+			sessionId,
+			stopReason: resultMessage.subtype,
+			durationMs: resultMessage.duration_ms,
+			inputTokens: resultMessage.usage?.input_tokens,
+			outputTokens: resultMessage.usage?.output_tokens,
+			totalCostUsd: resultMessage.total_cost_usd,
+		});
 	}
 
 	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {

@@ -1,8 +1,10 @@
 import {
+	type CyrusEvent,
 	createLogger,
 	type ILogger,
 	type LogContext,
 	type LogLevel,
+	type LogPipeline,
 } from "cyrus-core";
 
 // Re-export LogLevel from cyrus-core so existing consumers don't break
@@ -18,6 +20,11 @@ export interface LoggerOptions {
 	prefix?: string;
 	/** Whether to include timestamps */
 	timestamps?: boolean;
+	/**
+	 * Root pipeline to write records into. Usually injected once at
+	 * application boot; child loggers inherit it automatically.
+	 */
+	pipeline?: LogPipeline;
 }
 
 /**
@@ -32,13 +39,16 @@ export class Logger implements ILogger {
 	private coreLogger: ILogger;
 	private prefix: string;
 	private timestamps: boolean;
+	private pipeline: LogPipeline | undefined;
 
 	constructor(options: LoggerOptions = {}) {
 		this.prefix = options.prefix ?? "";
 		this.timestamps = options.timestamps ?? false;
+		this.pipeline = options.pipeline;
 		this.coreLogger = createLogger({
 			component: this.prefix || "CLI",
 			level: options.level,
+			...(this.pipeline ? { pipeline: this.pipeline } : {}),
 		});
 	}
 
@@ -92,7 +102,23 @@ export class Logger implements ILogger {
 			level: this.coreLogger.getLevel(),
 			prefix: this.prefix ? `${this.prefix}:${prefix}` : prefix,
 			timestamps: this.timestamps,
+			...(this.pipeline ? { pipeline: this.pipeline } : {}),
 		});
+	}
+
+	/**
+	 * Emit a structured operational event.
+	 */
+	event(event: CyrusEvent): void {
+		this.coreLogger.event(event);
+	}
+
+	/**
+	 * Run `fn` with the given bindings attached to every record emitted
+	 * from within its async scope. Delegates to the core logger.
+	 */
+	runWithContext<T>(bindings: LogContext, fn: () => T): T {
+		return this.coreLogger.runWithContext(bindings, fn);
 	}
 
 	/**

@@ -5,6 +5,16 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Changed
+- **Redesigned the logging pipeline from first principles** (`packages/core/src/logging/`). Replaces the earlier OTel integration attempt with a SOLID-compliant, composable design. Highlights:
+  - `LogRecord` is a discriminated union (`kind: "log" | "event"`) flowing through a single-method `LogPipeline.write(record)` + `shutdown(AbortSignal)` interface — sinks are terminal pipelines, processors are decorators with `readonly next`.
+  - Level filtering is now a `LevelFilterProcessor` (not a sink capability), and events always pass through regardless of threshold — removing the `alwaysEmitEvents` flag.
+  - Redaction is a `RedactingProcessor` composed in front of the OTel sink with a `DefaultRedactionPolicy` (token/secret/authorization/cookie key match, depth-limited recursion, case-insensitive, separators tolerated).
+  - `TelemetryRegistry` replaces the previous module-level singleton — constructed via `fromConfig()` from a zod-inferred `TelemetryConfig`, owns its OTel `LoggerProvider`, and races `forceFlush` + `shutdown` under a single `AbortSignal`.
+  - `Logger` uses a shared `AsyncLocalStorage<LogBindings>` for context propagation: `runWithContext(bindings, fn)` scopes are additive, survive `await` boundaries, and are independent of instance identity.
+  - `LogLevel` is now a value object exposing `compare`, `toOtelSeverity`, `toOtelSeverityText`, and `parse` — no numeric comparisons at call sites.
+  - Event emitters ported: `ClaudeRunner` emits `session.started` / `session.resumed` on session-ID assignment and `session.failed` (with `classifyError`) on unrecoverable errors; `AgentSessionManager` emits `session.completed` (with duration, usage, cost, stop reason) and `session.stopped` (on user-initiated stop).
+  - `apps/cli` wires `Application.initTelemetry(config.telemetry)` once at startup, installs a `FanOutPipeline([ConsoleLogSink, Redact→Registry])` as the process-wide default pipeline, and flushes it in `shutdown()`.
+  - 62 new/updated tests in `packages/core/test/logging/` (LogLevel, Logger with scope propagation, per-processor unit tests, `TelemetryRegistry` with `InMemoryLogRecordExporter`, shutdown-under-abort-signal racing, and full composition tests). ([CYPACK-1113](https://linear.app/ceedar/issue/CYPACK-1113), [#1137](https://github.com/ceedaragents/cyrus/pull/1137))
 - Documented dependency security policy in `CLAUDE.md`: prefer direct-dep bumps in the owning package; only use root `pnpm.overrides` when a direct-dep bump cannot reach the vulnerable transitive; remove overrides when a future bump makes them redundant. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
 ## [0.2.48] - 2026-04-20

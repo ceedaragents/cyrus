@@ -10,6 +10,11 @@ export class StartCommand extends BaseCommand {
 		try {
 			// Load edge configuration
 			const edgeConfig = this.app.config.load();
+
+			// Wire up OpenTelemetry logs if configured. Runs before any
+			// services spin up so their child loggers inherit the pipeline.
+			this.app.initTelemetry(edgeConfig.telemetry);
+
 			const repositories = edgeConfig.repositories || [];
 
 			// Always start the EdgeWorker — it handles zero repos gracefully.
