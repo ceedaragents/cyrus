@@ -8,8 +8,180 @@ All notable changes to this project will be documented in this file.
 - **Base branch update notifications** - When your base branch receives new commits while Cyrus is working, the active session is automatically notified to rebase, helping avoid merge conflicts. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 - **Blocked-by dependency deferral** - Issues with unresolved `blocked_by` relationships are now automatically deferred instead of starting immediately. Cyrus posts an acknowledgment and starts work automatically when all blocking issues are resolved. User re-prompts also re-check blocking status. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 
+### Security
+- **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
+- **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
+
+### Changed
+- **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
+## [0.2.48] - 2026-04-20
+
+### Changed
+- **Claude Code subprocess env scrubbing is disabled** — `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is no longer set on Claude sessions while undesirable side effects from the Linux bubblewrap sandbox are investigated. The Linux sandbox requirements precheck (added in 0.2.46) still runs and logs guidance so it can be re-enabled quickly once the side effects are resolved. ([CYPACK-1108](https://linear.app/ceedar/issue/CYPACK-1108), [#1131](https://github.com/ceedaragents/cyrus/pull/1131))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.48
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.48
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.48
+
+#### cyrus-core
+- cyrus-core@0.2.48
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.48
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.48
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.48
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.48
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.48
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.48
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.48
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.48
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.48
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.48
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.48
+
+## [0.2.47] - 2026-04-20
+
 ### Fixed
+- **Runtime switches no longer require restarting Cyrus** — When `cyrus auth` rotates credentials (for example, after switching between cloud and self-host runtimes), incoming config updates from the Cyrus web app now succeed immediately instead of failing with `401 Unauthorized` until the next process restart. ([CYHOST-798](https://linear.app/ceedar/issue/CYHOST-798), [#1127](https://github.com/ceedaragents/cyrus/pull/1127))
+
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.114** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1096](https://linear.app/ceedar/issue/CYPACK-1096), [#1124](https://github.com/ceedaragents/cyrus/pull/1124))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.112** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1093](https://linear.app/ceedar/issue/CYPACK-1093), [#1121](https://github.com/ceedaragents/cyrus/pull/1121))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.47
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.47
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.47
+
+#### cyrus-core
+- cyrus-core@0.2.47
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.47
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.47
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.47
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.47
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.47
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.47
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.47
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.47
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.47
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.47
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.47
+
+## [0.2.46] - 2026-04-16
+
+### Added
+- **Linux sandbox requirements precheck** — On Linux hosts, Cyrus now verifies that `socat`, `bubblewrap`, and the kernel/AppArmor configuration needed to create an unprivileged user namespace are all in place before enabling Claude Code's subprocess credential scrubbing. When a requirement is missing, the session continues but sandbox mode (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`) is left unset and resolution guidance is printed to stdout. These requirements are documented by Anthropic [here](https://code.claude.com/docs/en/sandboxing#prerequisites). The source-code of Antrhopic's sandbox runtime can be found [here](https://github.com/anthropic-experimental/sandbox-runtime). ([CYPACK-1091](https://linear.app/ceedar/issue/CYPACK-1091), [#1115](https://github.com/ceedaragents/cyrus/pull/1115))
+
+### Changed
+- **Claude Opus 4.7 is now the default model** — The `opus` model alias now resolves to `claude-opus-4-7`. No configuration change needed — existing setups using `"opus"` (the default) automatically use Opus 4.7. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.111 and `@anthropic-ai/sdk` to v0.90.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP`, `ToolSearch`, and `PushNotification`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
+
+### Fixed
+- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089), [#1112](https://github.com/ceedaragents/cyrus/pull/1112))
 - **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.46
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.46
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.46
+
+#### cyrus-core
+- cyrus-core@0.2.46
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.46
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.46
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.46
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.46
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.46
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.46
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.46
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.46
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.46
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.46
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.46
 
 ## [0.2.45] - 2026-04-15
 

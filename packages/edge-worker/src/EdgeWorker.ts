@@ -1,11 +1,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type { SDKMessage } from "cyrus-claude-runner";
-import { ClaudeRunner } from "cyrus-claude-runner";
+import type {
+	McpServerConfig,
+	SDKMessage,
+	WarmQuery,
+} from "cyrus-claude-runner";
+import {
+	buildBaseSessionEnv,
+	ClaudeRunner,
+	normalizeMcpHttpTransport,
+} from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
@@ -185,8 +194,10 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
-	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
+	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps Linear workspace ID to activity sink (one per workspace, mirrors issueTrackers)
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
+	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
+	private warmInstances: Map<string, WarmQuery> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -435,17 +446,12 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Create activity sinks for each repository (uses workspace issue tracker)
-		for (const [repoId, repo] of this.repositories) {
-			if (!repo.linearWorkspaceId) continue;
-			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
-			if (issueTracker) {
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				this.activitySinks.set(repoId, activitySink);
-			}
+		// Create activity sinks per workspace (one per workspace, mirrors issueTrackers)
+		for (const [workspaceId, issueTracker] of this.issueTrackers) {
+			this.activitySinks.set(
+				workspaceId,
+				new LinearActivitySink(issueTracker, workspaceId),
+			);
 		}
 
 		// Initialize user access control with global and per-repository configs
@@ -534,15 +540,20 @@ export class EdgeWorker extends EventEmitter {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
+		// Pre-warm the 30 most recent Claude sessions in the background
+		// so their first query after restart has near-zero cold-start latency
+		this.warmupRecentSessions(30).catch((err) => {
+			this.logger.warn("Session warmup failed (non-fatal):", err);
+		});
+
 		// Start config file watcher via ConfigManager
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
+				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
-				// Detect and apply workspace token changes before overwriting config
-				this.updateLinearWorkspaceTokens(changes.newConfig);
 				// Live-update sandbox / egress proxy settings
 				await this.applySandboxConfigChanges(changes.newConfig);
 				this.config = changes.newConfig;
@@ -614,7 +625,20 @@ export class EdgeWorker extends EventEmitter {
 	private async initializeComponents(): Promise<void> {
 		// 1. Platform-specific initialization
 		if (this.config.platform === "cli") {
-			// CLI mode: find any available CLIIssueTrackerService
+			// CLI mode: ensure a CLIIssueTrackerService exists for each repo workspace.
+			// Repos from config.repositories don't go through linearWorkspaces init,
+			// so we create trackers here if missing.
+			for (const [repoId, repo] of this.repositories) {
+				const wsId = repo.linearWorkspaceId;
+				if (wsId && !this.issueTrackers.has(wsId)) {
+					const service = new CLIIssueTrackerService();
+					service.seedDefaultData();
+					this.issueTrackers.set(wsId, service);
+					const activitySink = new LinearActivitySink(service, wsId);
+					this.activitySinks.set(repoId, activitySink);
+				}
+			}
+
 			const firstCliTracker = Array.from(this.issueTrackers.values()).find(
 				(tracker): tracker is CLIIssueTrackerService =>
 					tracker instanceof CLIIssueTrackerService,
@@ -717,7 +741,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 
 		// Register config update routes
@@ -1258,7 +1282,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Register session-to-repo mapping and activity sink
 			this.sessionRepositories.set(githubSessionId, repository.id);
-			const activitySink = this.activitySinks.get(repository.id);
+			const activitySink = this.getActivitySinkForRepo(repository.id);
 			if (activitySink) {
 				agentSessionManager.setActivitySink(githubSessionId, activitySink);
 			}
@@ -1921,7 +1945,7 @@ ${taskSection}`;
 
 			// Register session-to-repo mapping and activity sink
 			this.sessionRepositories.set(gitlabSessionId, repository.id);
-			const activitySink = this.activitySinks.get(repository.id);
+			const activitySink = this.getActivitySinkForRepo(repository.id);
 			if (activitySink) {
 				agentSessionManager.setActivitySink(gitlabSessionId, activitySink);
 			}
@@ -2630,12 +2654,16 @@ ${taskSection}`;
 					`🔑 Updated Linear token for workspace ${workspaceId}`,
 				);
 			} else if (this.config.platform !== "cli") {
-				// Workspace is new — create a tracker for it
+				// Workspace is new — create a tracker and activity sink for it
 				const newIssueTracker = new LinearIssueTrackerService(
 					new LinearClient({ accessToken: newToken }),
 					this.buildOAuthConfig(workspaceId),
 				);
 				this.issueTrackers.set(workspaceId, newIssueTracker);
+				this.activitySinks.set(
+					workspaceId,
+					new LinearActivitySink(newIssueTracker, workspaceId),
+				);
 				this.logger.info(
 					`🔑 Created issue tracker for new workspace ${workspaceId}`,
 				);
@@ -2679,37 +2707,6 @@ ${taskSection}`;
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker for this workspace if not already present
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					const linearToken = this.getLinearTokenForWorkspace(
-						requireLinearWorkspaceId(repo),
-					);
-					const issueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: linearToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
-				}
-
-				// Create activity sink for this repository
-				const issueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(repo),
-				)!;
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					requireLinearWorkspaceId(repo),
-				);
-				this.activitySinks.set(repo.id, activitySink);
-
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
 				this.logger.error(`❌ Failed to add repository ${repo.name}:`, error);
@@ -2752,43 +2749,6 @@ ${taskSection}`;
 
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
-
-				// If workspace changed or token was updated, ensure issue tracker is current
-				const currentToken = this.getLinearTokenForWorkspace(
-					requireLinearWorkspaceId(repo),
-				);
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					this.logger.info(
-						`  🔑 Creating issue tracker for workspace ${requireLinearWorkspaceId(repo)}`,
-					);
-					const newIssueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: currentToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					this.issueTrackers.set(
-						requireLinearWorkspaceId(repo),
-						newIssueTracker,
-					);
-				} else {
-					// Update token on existing issue tracker if it changed
-					const issueTracker = this.issueTrackers.get(
-						requireLinearWorkspaceId(repo),
-					);
-					if (issueTracker && currentToken) {
-						(issueTracker as LinearIssueTrackerService).setAccessToken(
-							currentToken,
-						);
-					}
-				}
 
 				// If active status changed
 				if (oldRepo.isActive !== repo.isActive) {
@@ -2877,17 +2837,13 @@ ${taskSection}`;
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository from the repositories map.
+				// Note: we intentionally do NOT remove workspace-level issue trackers
+				// or activity sinks here. They are keyed by workspace ID and may be
+				// needed by other repositories in the same workspace, or by new
+				// repositories about to be added in the same configChanged cycle.
+				// They will be naturally replaced when workspace tokens are updated.
 				this.repositories.delete(repo.id);
-				this.activitySinks.delete(repo.id);
-
-				// Only remove workspace issue tracker if no other repos use this workspace
-				const workspaceStillInUse = Array.from(this.repositories.values()).some(
-					(r) => r.linearWorkspaceId === requireLinearWorkspaceId(repo),
-				);
-				if (!workspaceStillInUse) {
-					this.issueTrackers.delete(requireLinearWorkspaceId(repo));
-				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -3760,15 +3716,21 @@ ${taskSection}`;
 	}
 
 	/**
+	 * Get the activity sink for a repository by looking up its workspace.
+	 */
+	private getActivitySinkForRepo(repoId: string): IActivitySink | undefined {
+		const repo = this.repositories.get(repoId);
+		if (!repo?.linearWorkspaceId) return undefined;
+		return this.activitySinks.get(repo.linearWorkspaceId);
+	}
+
+	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
-	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
+	private getLinearTokenForWorkspace(linearWorkspaceId: string): string | null {
 		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig) {
-			throw new Error(
-				`No Linear workspace config found for workspace ${linearWorkspaceId}. ` +
-					`Ensure linearWorkspaces.${linearWorkspaceId} is configured.`,
-			);
+			return null; // CLI platform or unconfigured workspace
 		}
 		return workspaceConfig.linearToken;
 	}
@@ -3849,7 +3811,7 @@ ${taskSection}`;
 
 		// Register session-to-repo mapping and activity sink (use primary repo)
 		this.sessionRepositories.set(sessionId, primaryRepo.id);
-		const activitySink = this.activitySinks.get(primaryRepo.id);
+		const activitySink = this.getActivitySinkForRepo(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
@@ -4381,24 +4343,46 @@ ${taskSection}`;
 			return;
 		}
 
-		// Stop the existing runner if it's active
+		// Double-stop detection: two stop signals within 10s → full abort
+		const now = Date.now();
+		const lastStop = this.lastStopTimeBySession.get(agentSessionId);
+		const isDoubleStop = lastStop !== undefined && now - lastStop < 10_000;
+		this.lastStopTimeBySession.set(agentSessionId, now);
+
 		const existingRunner = foundSession.agentRunner;
-		this.agentSessionManager.requestSessionStop(agentSessionId);
-		if (existingRunner) {
-			existingRunner.stop();
-			log.info(
-				`Stopped agent session for agent activity session ${agentSessionId}`,
+		const issueTitle = issue?.title || "this issue";
+		const senderName = webhook.agentSession.creator?.name || "user";
+
+		if (isDoubleStop) {
+			// Second stop within window — full kill
+			this.agentSessionManager.requestSessionStop(agentSessionId);
+			if (existingRunner) {
+				existingRunner.stop();
+				log.info(`Double-stop: fully aborted session ${agentSessionId}`);
+			}
+			this.lastStopTimeBySession.delete(agentSessionId);
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				`I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`,
+			);
+		} else {
+			// First stop — interrupt current turn, keep session warm
+			if (existingRunner?.interrupt) {
+				await existingRunner.interrupt();
+				log.info(
+					`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
+				);
+			} else if (existingRunner) {
+				// Runner doesn't support interrupt — fall back to full stop
+				this.agentSessionManager.requestSessionStop(agentSessionId);
+				existingRunner.stop();
+				log.info(`Stopped session ${agentSessionId} (no interrupt support)`);
+			}
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				`I've paused working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
 			);
 		}
-
-		// Post confirmation
-		const issueTitle = issue?.title || "this issue";
-		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
-
-		await this.agentSessionManager.createResponseActivity(
-			agentSessionId,
-			stopConfirmation,
-		);
 	}
 
 	/**
@@ -5252,7 +5236,7 @@ ${taskSection}`;
 	private async downloadCommentAttachments(
 		commentBody: string,
 		attachmentsDir: string,
-		linearToken: string,
+		linearToken: string | null,
 		existingAttachmentCount: number,
 	): Promise<{
 		newAttachmentMap: Record<string, string>;
@@ -5919,17 +5903,14 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): Promise<{
-		config: AgentRunnerConfig;
-		runnerType: RunnerType;
-	}> {
+	): Promise<{ config: AgentRunnerConfig; runnerType: RunnerType }> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
-		return this.runnerConfigBuilder.buildIssueConfig({
+		const result = this.runnerConfigBuilder.buildIssueConfig({
 			session,
 			repository,
 			sessionId,
@@ -5956,6 +5937,20 @@ ${input.userComment}
 				this.createAskUserQuestionCallback(sid, wid)!,
 			requireLinearWorkspaceId,
 		});
+
+		// Attach pre-warmed session if available (only for Claude runner)
+		if (result.runnerType === "claude") {
+			const warmSession = this.warmInstances.get(sessionId);
+			if (warmSession) {
+				this.warmInstances.delete(sessionId);
+				(
+					result.config as AgentRunnerConfig & { warmSession?: WarmQuery }
+				).warmSession = warmSession;
+				log.debug("Attaching pre-warmed session to runner config");
+			}
+		}
+
+		return result;
 	}
 
 	/**
@@ -6128,6 +6123,122 @@ ${input.userComment}
 	}
 
 	/**
+	 * Pre-warm the N most recently updated Claude sessions so the first query
+	 * after a CLI restart has near-zero cold-start latency (~20x faster).
+	 *
+	 * Uses startup() from @anthropic-ai/claude-agent-sdk with MCP_CONNECTION_NONBLOCKING=true
+	 * so the warm instances are ready in ~500ms rather than ~4s.
+	 * Warm instances are stored in this.warmInstances keyed by agentSessionId and
+	 * consumed by buildAgentRunnerConfig() when the first message arrives.
+	 */
+	private async warmupRecentSessions(count = 30): Promise<void> {
+		const allSessions = this.agentSessionManager.getAllSessions();
+
+		// Only warm Claude sessions that have a persisted session ID and a workspace path
+		const candidates = allSessions
+			.filter((s) => s.claudeSessionId && s.workspace?.path)
+			.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+			.slice(0, count);
+
+		if (candidates.length === 0) {
+			this.logger.debug("No Claude sessions to pre-warm");
+			return;
+		}
+
+		this.logger.info(
+			`Pre-warming ${candidates.length} most recent Claude sessions...`,
+		);
+
+		const { startup } = await import("@anthropic-ai/claude-agent-sdk");
+
+		await Promise.all(
+			candidates.map(async (session) => {
+				try {
+					const repoId = this.sessionRepositories.get(session.id);
+					const repo = repoId ? this.repositories.get(repoId) : undefined;
+					if (!repo) {
+						this.logger.debug(
+							`No repo for session ${session.id}, skipping warmup`,
+						);
+						return;
+					}
+
+					// Build MCP config for this session (same as the live runner would use)
+					const linearWorkspaceId = requireLinearWorkspaceId(repo);
+					const mcpConfig = this.mcpConfigService.buildMcpConfig(
+						repo.id,
+						linearWorkspaceId,
+						session.id,
+					);
+
+					// Merge any file-based MCP configs (reuses shared normalization)
+					const mcpConfigPath =
+						this.mcpConfigService.buildMergedMcpConfigPath(repo);
+					let mcpServers: Record<string, McpServerConfig> = { ...mcpConfig };
+					if (mcpConfigPath) {
+						const paths = Array.isArray(mcpConfigPath)
+							? mcpConfigPath
+							: [mcpConfigPath];
+						for (const filePath of paths) {
+							try {
+								if (existsSync(filePath)) {
+									const fileContent = JSON.parse(
+										readFileSync(filePath, "utf8"),
+									);
+									const servers = fileContent.mcpServers || {};
+									normalizeMcpHttpTransport(servers);
+									mcpServers = { ...mcpServers, ...servers };
+								}
+							} catch {
+								// Ignore unreadable MCP config files
+							}
+						}
+					}
+
+					const repoConfig = repo as unknown as Record<string, unknown>;
+					const model =
+						(session.metadata?.model as string | undefined) ||
+						(repoConfig.claudeDefaultModel as string | undefined) ||
+						(repoConfig.model as string | undefined) ||
+						"claude-opus-4-6";
+
+					// Build allowed/disallowed tools — same as what buildAgentRunnerConfig() uses.
+					// Without these, startup() inherits the user's defaultMode ("default"),
+					// which causes macOS permission prompts for file writes.
+					const allowedTools = this.buildAllowedTools(repo);
+					const disallowedTools = this.buildDisallowedTools(repo);
+
+					const warm = await startup({
+						options: {
+							resume: session.claudeSessionId,
+							model,
+							cwd: session.workspace.path,
+							...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+							...(allowedTools.length > 0 && { allowedTools }),
+							...(disallowedTools.length > 0 && { disallowedTools }),
+							settingSources: ["user", "project", "local"],
+							// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not set here;
+							// see CYPACK-1108 and ClaudeRunner.start() for context.
+							env: buildBaseSessionEnv(),
+						},
+					});
+
+					this.warmInstances.set(session.id, warm);
+					this.logger.info(
+						`Pre-warmed session ${session.id} (${session.issueContext?.issueIdentifier ?? "unknown"})`,
+					);
+				} catch (err) {
+					this.logger.debug(`Failed to pre-warm session ${session.id}:`, err);
+				}
+			}),
+		);
+
+		this.logger.info(
+			`Session pre-warm complete: ${this.warmInstances.size} sessions ready`,
+		);
+	}
+
+	/**
 	 * Save current EdgeWorker state for all repositories
 	 */
 	private async savePersistedState(): Promise<void> {
@@ -6192,7 +6303,7 @@ ${input.userComment}
 						if (repoId) {
 							this.sessionRepositories.set(sessionId, repoId);
 							// Also register the activity sink for this restored session
-							const activitySink = this.activitySinks.get(repoId);
+							const activitySink = this.getActivitySinkForRepo(repoId);
 							if (activitySink) {
 								this.agentSessionManager.setActivitySink(
 									sessionId,

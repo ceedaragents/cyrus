@@ -16,9 +16,9 @@
  */
 export const availableTools = [
 	// File system tools
-	"Read",
-	"Edit",
-	"Write",
+	"Read(**)",
+	"Edit(**)",
+	"Write(**)",
 	"Glob",
 	"Grep",
 
@@ -46,6 +46,7 @@ export const availableTools = [
 	// User interaction tools
 	"AskUserQuestion",
 	"SendMessage",
+	"PushNotification",
 
 	// Plan and worktree management
 	"EnterPlanMode",
@@ -60,10 +61,6 @@ export const availableTools = [
 	"RemoteTrigger",
 	"ScheduleWakeup",
 
-	// MCP resource tools
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
-
 	// Monitoring and task lifecycle
 	"Monitor",
 	"TaskOutput",
@@ -72,6 +69,12 @@ export const availableTools = [
 	// Team management
 	"TeamCreate",
 	"TeamDelete",
+
+	// IDE/LSP integration
+	"LSP",
+
+	// Tool discovery
+	"ToolSearch",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -82,7 +85,7 @@ export type ToolName = (typeof availableTools)[number];
  * Note: Skill is included as it enables Claude to use Skills which are packaged capabilities
  */
 export const readOnlyTools: ToolName[] = [
-	"Read",
+	"Read(**)",
 	"Glob",
 	"Grep",
 	"WebFetch",
@@ -93,18 +96,22 @@ export const readOnlyTools: ToolName[] = [
 	"TaskList",
 	"Task",
 	"Skill",
-	"ListMcpResourcesTool",
-	"ReadMcpResourceTool",
 	"Monitor",
 	"TaskOutput",
 	"EnterPlanMode",
 	"ExitPlanMode",
+	"ToolSearch",
 ];
 
 /**
  * Tools that can modify the file system or state
  */
-export const writeTools: ToolName[] = ["Edit", "Write", "Bash", "NotebookEdit"];
+export const writeTools: ToolName[] = [
+	"Edit(**)",
+	"Write(**)",
+	"Bash",
+	"NotebookEdit",
+];
 
 /**
  * Get a safe set of tools for read-only operations
@@ -134,6 +141,6 @@ export function getSafeTools(): string[] {
  */
 export function getCoordinatorTools(): string[] {
 	return [...availableTools].filter(
-		(t) => t !== "Edit" && t !== "Write" && t !== "NotebookEdit",
+		(t) => t !== "Edit(**)" && t !== "Write(**)" && t !== "NotebookEdit",
 	);
 }

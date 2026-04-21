@@ -5,7 +5,9 @@ export type {
 	HookInput,
 	HookJSONOutput,
 	PostToolUseHookInput,
+	Query,
 	StopHookInput,
+	WarmQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 export { AbortError, ClaudeRunner } from "./ClaudeRunner.js";
 export {
@@ -22,6 +24,19 @@ export {
 	ClaudeMessageFormatter,
 	type IMessageFormatter,
 } from "./formatter.js";
+export { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
+export {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+	resetSandboxRequirementsCacheForTesting,
+	type SandboxRequirementFailure,
+	type SandboxRequirementsResult,
+} from "./sandbox-requirements.js";
+export {
+	buildBaseSessionEnv,
+	CYRUS_SESSION_ENV,
+	normalizeMcpHttpTransport,
+} from "./session-env.js";
 export type {
 	APIAssistantMessage,
 	APIUserMessage,

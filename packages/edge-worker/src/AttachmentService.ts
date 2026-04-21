@@ -35,12 +35,10 @@ export class AttachmentService {
 	/**
 	 * Get the Linear API token for a workspace
 	 */
-	private getLinearTokenForWorkspace(workspaceId: string): string {
+	private getLinearTokenForWorkspace(workspaceId: string): string | null {
 		const workspaceConfig = this.linearWorkspaces[workspaceId];
 		if (!workspaceConfig) {
-			throw new Error(
-				`No Linear workspace config found for workspace ${workspaceId}`,
-			);
+			return null; // CLI platform or unconfigured workspace — no token available
 		}
 		return workspaceConfig.linearToken;
 	}
@@ -71,6 +69,10 @@ export class AttachmentService {
 		issueTracker?: IIssueTrackerService,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
 		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
+		if (!linearToken) {
+			// CLI platform or unconfigured workspace — skip attachment download
+			return { manifest: "", attachmentsDir: null };
+		}
 		// Create attachments directory in home directory
 		const workspaceFolderName = basename(workspacePath);
 		const attachmentsDir = join(
@@ -287,7 +289,7 @@ export class AttachmentService {
 	async downloadCommentAttachments(
 		commentBody: string,
 		attachmentsDir: string,
-		linearToken: string,
+		linearToken: string | null,
 		existingAttachmentCount: number,
 	): Promise<{
 		newAttachmentMap: Record<string, string>;
@@ -295,6 +297,14 @@ export class AttachmentService {
 		totalNewAttachments: number;
 		failedCount: number;
 	}> {
+		if (!linearToken) {
+			return {
+				newAttachmentMap: {},
+				newImageMap: {},
+				totalNewAttachments: 0,
+				failedCount: 0,
+			};
+		}
 		const newAttachmentMap: Record<string, string> = {};
 		const newImageMap: Record<string, string> = {};
 		let newAttachmentCount = 0;

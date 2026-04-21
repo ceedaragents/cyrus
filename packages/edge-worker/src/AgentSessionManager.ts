@@ -67,6 +67,9 @@ export class AgentSessionManager extends EventEmitter {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private lastAssistantBodyBySession: Map<string, string> = new Map(); // Buffer: last assistant text per session for posting as response on result
+	private bufferedAssistantEntryBySession: Map<string, CyrusAgentSessionEntry> =
+		new Map(); // One-behind buffer: holds last assistant entry until next message or result
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
@@ -473,11 +476,31 @@ export class AgentSessionManager extends EventEmitter {
 						sessionId,
 						message as SDKAssistantMessage,
 					);
-					await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					// Buffer the text content so addResultEntry can post it as the response
+					if (assistantEntry.content) {
+						this.lastAssistantBodyBySession.set(
+							sessionId,
+							assistantEntry.content,
+						);
+					}
+					if (assistantEntry.metadata?.toolUseId) {
+						// Tool-use message: flush any buffered text first (preserves ordering),
+						// then post immediately for real-time "in progress" display
+						await this.flushBufferedAssistant(sessionId);
+						await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					} else {
+						// Text-only message: buffer it so the LAST one can be posted as "response"
+						// Flush any previous buffered text first (posts as thought)
+						await this.flushBufferedAssistant(sessionId);
+						this.bufferedAssistantEntryBySession.set(sessionId, assistantEntry);
+					}
 					break;
 				}
 
 				case "result":
+					// Result arrived: discard buffered entry (addResultEntry uses lastAssistantBodyBySession
+					// to post the content as a response activity)
+					this.bufferedAssistantEntryBySession.delete(sessionId);
 					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
@@ -493,6 +516,18 @@ export class AgentSessionManager extends EventEmitter {
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
+	}
+
+	/**
+	 * Flush the buffered assistant entry as thought/action (non-result flush).
+	 * Called when a new message arrives before result, to post the previous
+	 * assistant message as a thought/action activity.
+	 */
+	private async flushBufferedAssistant(sessionId: string): Promise<void> {
+		const buffered = this.bufferedAssistantEntryBySession.get(sessionId);
+		if (!buffered) return;
+		this.bufferedAssistantEntryBySession.delete(sessionId);
+		await this.syncEntryToActivitySink(buffered, sessionId);
 	}
 
 	/**
@@ -561,15 +596,26 @@ export class AgentSessionManager extends EventEmitter {
 						: "claude";
 
 		// For error results, content may be in errors[] rather than result
-		const content =
-			"result" in resultMessage && typeof resultMessage.result === "string"
-				? resultMessage.result
-				: resultMessage.is_error &&
-						"errors" in resultMessage &&
-						Array.isArray(resultMessage.errors) &&
-						resultMessage.errors.length > 0
+		// For success results from Claude, prefer the buffered last assistant message
+		// (structured content) over result.result (plain-text duplicate).
+		const bufferedAssistant = this.lastAssistantBodyBySession.get(sessionId);
+		this.lastAssistantBodyBySession.delete(sessionId);
+		const content = (
+			resultMessage.is_error
+				? resultMessage.is_error &&
+					"errors" in resultMessage &&
+					Array.isArray(resultMessage.errors) &&
+					resultMessage.errors.length > 0
 					? resultMessage.errors.join("\n")
-					: "";
+					: "result" in resultMessage &&
+							typeof resultMessage.result === "string"
+						? resultMessage.result
+						: ""
+				: (bufferedAssistant ??
+					("result" in resultMessage && typeof resultMessage.result === "string"
+						? resultMessage.result
+						: ""))
+		).trim();
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
@@ -1475,6 +1521,8 @@ export class AgentSessionManager extends EventEmitter {
 		this.activeTasksBySession.delete(sessionId);
 		this.activeStatusActivitiesBySession.delete(sessionId);
 		this.stopRequestedSessions.delete(sessionId);
+		this.lastAssistantBodyBySession.delete(sessionId);
+		this.bufferedAssistantEntryBySession.delete(sessionId);
 		log.debug("Removed session");
 	}
 
