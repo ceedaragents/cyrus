@@ -19,6 +19,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { AskUserQuestionInput } from "cyrus-core";
 import {
+	classifyError,
 	createLogger,
 	type IAgentRunner,
 	type ILogger,
@@ -569,6 +570,24 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						`Session ID assigned by Claude: ${message.session_id}`,
 					);
 
+					const runnerModel = this.config.model ?? "default";
+					if (this.config.resumeSessionId) {
+						this.logger.event({
+							name: "session.resumed",
+							sessionId: message.session_id,
+							runner: "claude",
+							model: runnerModel,
+							resumedFromSessionId: this.config.resumeSessionId,
+						});
+					} else {
+						this.logger.event({
+							name: "session.started",
+							sessionId: message.session_id,
+							runner: "claude",
+							model: runnerModel,
+						});
+					}
+
 					// Update streaming prompt with session ID if it exists
 					if (this.streamingPrompt) {
 						this.streamingPrompt.updateSessionId(message.session_id);
@@ -646,6 +665,12 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			} else {
 				// Actual error - log and emit
 				this.logger.error("Session error:", error);
+				this.logger.event({
+					name: "session.failed",
+					sessionId: this.sessionInfo?.sessionId ?? undefined,
+					errorClass: classifyError(error),
+					errorMessage: error instanceof Error ? error.message : String(error),
+				});
 				this.emit(
 					"error",
 					error instanceof Error ? error : new Error(String(error)),

@@ -1,6 +1,16 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEFAULT_PROXY_URL, type RepositoryConfig } from "cyrus-core";
+import {
+	ConsoleLogSink,
+	DEFAULT_PROXY_URL,
+	DefaultRedactionPolicy,
+	FanOutPipeline,
+	RedactingProcessor,
+	type RepositoryConfig,
+	setDefaultLogPipeline,
+	type TelemetryConfig,
+	TelemetryRegistry,
+} from "cyrus-core";
 import { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
@@ -24,6 +34,7 @@ export class Application {
 	private isInSetupWaitingMode = false;
 	private isInIdleMode = false;
 	private readonly envFilePath: string;
+	private telemetryRegistry: TelemetryRegistry | undefined;
 
 	constructor(
 		public readonly cyrusHome: string,
@@ -123,6 +134,30 @@ export class Application {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Initialize the telemetry pipeline from the loaded EdgeConfig.
+	 *
+	 * When telemetry is configured (or auto-enabled via OTEL_EXPORTER_OTLP_*
+	 * env vars) this installs a fan-out that mirrors every log record to
+	 * both the console and an OTLP exporter. Safe to call multiple times —
+	 * subsequent calls flush and replace the existing registry.
+	 */
+	initTelemetry(telemetry: TelemetryConfig | undefined): void {
+		const registry = TelemetryRegistry.fromConfig(telemetry ?? {}, {
+			serviceVersion: this.version,
+		});
+		if (!registry) {
+			return;
+		}
+		this.telemetryRegistry = registry;
+		const pipeline = new FanOutPipeline([
+			new ConsoleLogSink(),
+			new RedactingProcessor(registry, new DefaultRedactionPolicy()),
+		]);
+		setDefaultLogPipeline(pipeline);
+		this.logger.info("📡 Telemetry pipeline initialized (OTel logs enabled)");
 	}
 
 	/**
@@ -309,6 +344,16 @@ export class Application {
 	 * Handle graceful shutdown
 	 */
 	async shutdown(): Promise<void> {
+		if (this.telemetryRegistry) {
+			try {
+				await this.telemetryRegistry.shutdown();
+			} catch (error) {
+				this.logger.error(`Telemetry shutdown failed: ${error}`);
+			}
+			setDefaultLogPipeline(undefined);
+			this.telemetryRegistry = undefined;
+		}
+
 		// Close .env file watcher
 		if (this.envWatcher) {
 			this.envWatcher.close();

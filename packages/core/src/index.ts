@@ -1,7 +1,40 @@
 // Logging
 
-export type { ILogger, LogContext } from "./logging/index.js";
-export { createLogger, LogLevel } from "./logging/index.js";
+export type {
+	CyrusEvent,
+	ErrorClass,
+	EventEntryRecord,
+	ILogger,
+	LogBindings,
+	LogContext,
+	LogEntryRecord,
+	LoggerOptions,
+	LogPipeline,
+	LogProcessor,
+	LogRecord,
+	LogSink,
+	RedactionPolicy,
+	SessionCompletedEvent,
+	SessionFailedEvent,
+	SessionResumedEvent,
+	SessionStartedEvent,
+	SessionStoppedEvent,
+	TelemetryRegistryRuntimeOptions,
+} from "./logging/index.js";
+export {
+	ConsoleLogSink,
+	classifyError,
+	createLogger,
+	DefaultRedactionPolicy,
+	FanOutPipeline,
+	LevelFilterProcessor,
+	LogLevel,
+	OtelLogSink,
+	RedactingProcessor,
+	setDefaultLogPipeline,
+	TelemetryRegistry,
+	withLevelFilter,
+} from "./logging/index.js";
 
 // export { Session } from './Session.js'
 // export type { SessionOptions, , NarrativeItem } from './Session.js'
@@ -52,6 +85,7 @@ export type {
 	RepositoryConfigPayload,
 	RunnerType,
 	SandboxConfig,
+	TelemetryConfig,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
@@ -68,6 +102,7 @@ export {
 	requireLinearWorkspaceId,
 	resolvePath,
 	SandboxConfigSchema,
+	TelemetryConfigSchema,
 	TRUSTED_DOMAINS,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,

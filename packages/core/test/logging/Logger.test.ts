@@ -134,12 +134,12 @@ describe("Logger", () => {
 		});
 	});
 
-	describe("context formatting", () => {
-		it("includes context block when context is set", () => {
+	describe("binding formatting", () => {
+		it("includes bindings block when bindings are set", () => {
 			const logger = createLogger({
 				component: "EdgeWorker",
 				level: LogLevel.DEBUG,
-				context: {
+				bindings: {
 					sessionId: "abc12345-full-uuid-here",
 					platform: "linear",
 					issueIdentifier: "CYPACK-456",
@@ -159,7 +159,7 @@ describe("Logger", () => {
 		it("abbreviates session ID to first 8 characters", () => {
 			const logger = createLogger({
 				component: "Test",
-				context: { sessionId: "abcdefgh-ijkl-mnop" },
+				bindings: { sessionId: "abcdefgh-ijkl-mnop" },
 			});
 			logger.info("test");
 
@@ -170,7 +170,7 @@ describe("Logger", () => {
 			);
 		});
 
-		it("omits context block when no context values are set", () => {
+		it("omits bindings block when no bindings are set", () => {
 			const logger = createLogger({ component: "Test" });
 			logger.info("no context");
 
@@ -184,7 +184,7 @@ describe("Logger", () => {
 		it("includes repository when set", () => {
 			const logger = createLogger({
 				component: "Test",
-				context: { repository: "my-repo" },
+				bindings: { repository: "my-repo" },
 			});
 			logger.info("msg");
 
@@ -197,11 +197,11 @@ describe("Logger", () => {
 	});
 
 	describe("withContext()", () => {
-		it("returns a new logger with merged context", () => {
+		it("returns a new logger with merged bindings", () => {
 			const parent = createLogger({
 				component: "EdgeWorker",
 				level: LogLevel.DEBUG,
-				context: { platform: "linear" },
+				bindings: { platform: "linear" },
 			});
 
 			const child = parent.withContext({
@@ -223,7 +223,7 @@ describe("Logger", () => {
 		it("does not modify the parent logger", () => {
 			const parent = createLogger({
 				component: "Test",
-				context: { platform: "cli" },
+				bindings: { platform: "cli" },
 			});
 
 			parent.withContext({ sessionId: "abc12345" });
@@ -236,10 +236,10 @@ describe("Logger", () => {
 			);
 		});
 
-		it("overrides existing context values", () => {
+		it("overrides existing bindings values", () => {
 			const logger = createLogger({
 				component: "Test",
-				context: { platform: "linear", repository: "old" },
+				bindings: { platform: "linear", repository: "old" },
 			});
 
 			const updated = logger.withContext({ repository: "new" });
@@ -266,6 +266,140 @@ describe("Logger", () => {
 
 			expect(logSpy).not.toHaveBeenCalled();
 			expect(warnSpy).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("child()", () => {
+		it("returns a logger with a new component name", () => {
+			const parent = createLogger({
+				component: "EdgeWorker",
+				bindings: { platform: "linear" },
+			});
+			const child = parent.child("SubComp");
+			child.info("hello");
+
+			expect(logSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(
+						`^${TS}\\[INFO ] \\[SubComp] \\{platform=linear\\} hello$`,
+					),
+				),
+			);
+		});
+
+		it("inherits level and bindings from parent", () => {
+			const parent = createLogger({
+				component: "Root",
+				level: LogLevel.WARN,
+				bindings: { repository: "my-repo" },
+			});
+			const child = parent.child("Child");
+			child.info("filtered");
+			child.warn("visible");
+
+			expect(logSpy).not.toHaveBeenCalled();
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(`^${TS}\\[WARN ] \\[Child] \\{repo=my-repo\\} visible$`),
+				),
+			);
+		});
+	});
+
+	describe("runWithContext()", () => {
+		it("attaches bindings to records emitted from within the callback", () => {
+			const logger = createLogger({
+				component: "EdgeWorker",
+				level: LogLevel.DEBUG,
+			});
+
+			logger.runWithContext(
+				{ sessionId: "scope1234-abcd", issueIdentifier: "ABC-1" },
+				() => {
+					logger.info("scoped");
+				},
+			);
+
+			expect(logSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(
+						`^${TS}\\[INFO ] \\[EdgeWorker] \\{session=scope123, issue=ABC-1\\} scoped$`,
+					),
+				),
+			);
+		});
+
+		it("does not leak bindings outside the callback scope", () => {
+			const logger = createLogger({ component: "Test" });
+			logger.runWithContext({ sessionId: "scope1234" }, () => {
+				logger.info("inside");
+			});
+			logger.info("outside");
+
+			expect(logSpy).toHaveBeenNthCalledWith(
+				1,
+				expect.stringMatching(
+					new RegExp(`^${TS}\\[INFO ] \\[Test] \\{session=scope123\\} inside$`),
+				),
+			);
+			expect(logSpy).toHaveBeenNthCalledWith(
+				2,
+				expect.stringMatching(new RegExp(`^${TS}\\[INFO ] \\[Test] outside$`)),
+			);
+		});
+
+		it("merges with static bindings, scope wins on key collision", () => {
+			const logger = createLogger({
+				component: "Test",
+				bindings: { platform: "linear", repository: "outer" },
+			});
+
+			logger.runWithContext({ repository: "scoped" }, () => {
+				logger.info("merged");
+			});
+
+			expect(logSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(
+						`^${TS}\\[INFO ] \\[Test] \\{platform=linear, repo=scoped\\} merged$`,
+					),
+				),
+			);
+		});
+
+		it("nested scopes contribute their bindings additively", () => {
+			const logger = createLogger({ component: "Test" });
+
+			logger.runWithContext({ platform: "linear" }, () => {
+				logger.runWithContext({ sessionId: "n1234567" }, () => {
+					logger.info("nested");
+				});
+			});
+
+			expect(logSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(
+						`^${TS}\\[INFO ] \\[Test] \\{session=n1234567, platform=linear\\} nested$`,
+					),
+				),
+			);
+		});
+
+		it("propagates scope across awaits", async () => {
+			const logger = createLogger({ component: "Test" });
+
+			await logger.runWithContext({ sessionId: "await123" }, async () => {
+				await Promise.resolve();
+				logger.info("after await");
+			});
+
+			expect(logSpy).toHaveBeenCalledWith(
+				expect.stringMatching(
+					new RegExp(
+						`^${TS}\\[INFO ] \\[Test] \\{session=await123\\} after await$`,
+					),
+				),
+			);
 		});
 	});
 
