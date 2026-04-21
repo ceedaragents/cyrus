@@ -4,6 +4,13 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Documented dependency security policy in `CLAUDE.md`: prefer direct-dep bumps in the owning package; only use root `pnpm.overrides` when a direct-dep bump cannot reach the vulnerable transitive; remove overrides when a future bump makes them redundant. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
+
+## [0.2.48] - 2026-04-20
+
+_No internal-only changes._
+
 ## [0.2.47] - 2026-04-20
 
 ### Changed

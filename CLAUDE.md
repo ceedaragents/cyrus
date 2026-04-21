@@ -436,6 +436,40 @@ The agent automatically moves issues to the "started" state when assigned. Linea
    - `packages/edge-worker/src/SlackChatAdapter.ts` — Builds the Slack chat system prompt including orchestration notes with repo routing syntax
    - `packages/edge-worker/src/ActivityPoster.ts` — Posts routing activities to Linear timeline (method display names, formatting)
 
+## Dependency Security Policy (MANDATE)
+
+Our team's mandated approach for addressing Dependabot advisories and other
+transitive-dependency vulnerabilities:
+
+1. **Prefer direct-dep bumps in the owning `package.json`.** If the vulnerable
+   dep is transitively pulled in by one of *our* direct dependencies, bump that
+   direct dep (in the specific package that owns it — `packages/*` or `apps/*`,
+   not the root) to a version whose resolved dep graph includes the patched
+   transitive. Regenerate the lockfile and let pnpm's natural resolution do the
+   work.
+
+2. **Only use root `pnpm.overrides` when a direct-dep bump cannot reach the
+   vulnerable transitive.** This is the fallback for deep transitives (3+
+   levels deep) whose owning direct dep has no released version that resolves
+   to the patched transitive — typically because upstream hasn't released yet
+   or pins its transitive too loosely for us to reach. Document the reason
+   inline with a brief comment or commit message.
+
+3. **Always clean up overrides when a future dep bump makes them redundant.**
+   When you update a direct dependency (security or otherwise), check whether
+   any existing entry in `pnpm.overrides` is now satisfied naturally by the
+   new resolution. If so, **remove that override in the same change**. Verify
+   with `pnpm install && pnpm audit` that the removal is safe before committing.
+
+4. **Verify with `pnpm audit`.** After any dependency change, `pnpm audit`
+   must report zero advisories. Commit the regenerated `pnpm-lock.yaml`
+   alongside the `package.json` change.
+
+Why this matters: overrides are a blunt instrument that hide the real source
+of a dep. Bumping the owning direct dep is precise, gets picked up by
+Dependabot, keeps our graph honest, and prevents override rot where entries
+live on long after they stop doing anything.
+
 ## Development Workflow
 
 When working on this codebase, follow these practices:

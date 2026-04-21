@@ -7,6 +7,64 @@ All notable changes to this project will be documented in this file.
 ### Security
 - **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
 
+### Changed
+- **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
+### Security
+- **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
+
+## [0.2.48] - 2026-04-20
+
+### Changed
+- **Claude Code subprocess env scrubbing is disabled** — `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is no longer set on Claude sessions while undesirable side effects from the Linux bubblewrap sandbox are investigated. The Linux sandbox requirements precheck (added in 0.2.46) still runs and logs guidance so it can be re-enabled quickly once the side effects are resolved. ([CYPACK-1108](https://linear.app/ceedar/issue/CYPACK-1108), [#1131](https://github.com/ceedaragents/cyrus/pull/1131))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.48
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.48
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.48
+
+#### cyrus-core
+- cyrus-core@0.2.48
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.48
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.48
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.48
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.48
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.48
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.48
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.48
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.48
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.48
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.48
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.48
+
 ## [0.2.47] - 2026-04-20
 
 ### Fixed
