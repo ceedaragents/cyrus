@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
 ### Security
 - **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
