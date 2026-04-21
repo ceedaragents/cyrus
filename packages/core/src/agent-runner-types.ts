@@ -316,6 +316,13 @@ export interface IAgentRunner {
 	stop(): void;
 
 	/**
+	 * Interrupt the current turn without killing the session.
+	 * The session stays warm and can accept new messages.
+	 * Only supported on Claude runner (streaming mode).
+	 */
+	interrupt?(): Promise<void>;
+
+	/**
 	 * Check if the session is currently running
 	 *
 	 * @returns True if the session is active and processing, false otherwise

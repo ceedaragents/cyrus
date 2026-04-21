@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import {
 	type CanUseTool,
 	type PermissionResult,
+	type Query,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
@@ -24,6 +25,10 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
+import {
+	buildBaseSessionEnv,
+	normalizeMcpHttpTransport,
+} from "./session-env.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -110,6 +115,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private readableLogStream: WriteStream | null = null;
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
+	private activeQuery: Query | null = null;
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
@@ -424,17 +430,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					const mcpConfigContent = readFileSync(path, "utf8");
 					const mcpConfig = JSON.parse(mcpConfigContent);
 					const servers = mcpConfig.mcpServers || {};
-					// Normalize transport type for file-loaded configs.
-					// Config files (.mcp.json, mcp-*.json) often omit the `type` field,
-					// but the SDK requires an explicit discriminator for non-stdio transports.
-					for (const config of Object.values(servers) as Record<
-						string,
-						unknown
-					>[]) {
-						if (!config.type && typeof config.url === "string") {
-							config.type = "http";
-						}
-					}
+					normalizeMcpHttpTransport(servers);
 					mcpServers = { ...mcpServers, ...servers };
 					this.logger.debug(
 						`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
@@ -496,19 +492,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
 					env: {
-						...(process.env.PATH && { PATH: process.env.PATH }),
-						// Forward auth credentials from parent process — the SDK needs
-						// these for API calls.
-						// See: https://code.claude.com/docs/en/env-vars
-						...(process.env.ANTHROPIC_API_KEY && {
-							ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-						}),
-						...(process.env.CLAUDE_CODE_OAUTH_TOKEN && {
-							CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-						}),
-						...(process.env.ANTHROPIC_AUTH_TOKEN && {
-							ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
-						}),
+						...buildBaseSessionEnv(),
 						// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally NOT set while
 						// the Linux bubblewrap sandbox side effects it triggers are being
 						// investigated. The sandbox requirements precheck is still run
@@ -516,9 +500,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						// See: CYPACK-1108.
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
@@ -551,7 +532,16 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			};
 
 			// Process messages from the query
-			for await (const message of query(queryOptions)) {
+			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost).
+			// warmSession.query() accepts both string and AsyncIterable<SDKUserMessage>,
+			// so promptForQuery works correctly for both start() and startStreaming().
+			if (this.config.warmSession) {
+				this.logger.debug("Using pre-warmed session for first turn");
+				this.activeQuery = this.config.warmSession.query(promptForQuery);
+			} else {
+				this.activeQuery = query(queryOptions);
+			}
+			for await (const message of this.activeQuery) {
 				if (!this.sessionInfo?.isRunning) {
 					this.logger.info("Session was stopped, breaking from query loop");
 					break;
@@ -590,23 +580,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					this.writeReadableLogEntry(message);
 				}
 
-				// Emit appropriate events based on message type
-				// Defer result message emission until after loop completes to avoid race conditions
-				// where subroutine transitions start before the runner has fully cleaned up
-				if (message.type === "result") {
-					this.pendingResultMessage = message;
-					// Complete streaming prompt immediately so it stops accepting input
-					if (this.streamingPrompt) {
-						this.logger.debug(
-							"Got result message, completing streaming prompt",
-						);
-						this.streamingPrompt.complete();
-					}
-				} else {
-					this.emit("message", message);
-					this.processMessage(message);
-				}
+				// Emit all messages (including result) immediately in-loop.
+				// The streamingPrompt stays open for follow-up messages — we do NOT call
+				// streamingPrompt.complete() here, so the loop continues waiting.
+				this.emit("message", message);
+				this.processMessage(message);
 			}
+
+			this.activeQuery = null;
 
 			// Session completed successfully - mark as not running BEFORE emitting result
 			// This ensures any code checking isRunning() during result processing sees the correct state
@@ -658,6 +639,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.abortController = null;
+			this.activeQuery = null;
 			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
@@ -726,6 +708,19 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
+	 * Interrupt the current turn without killing the session.
+	 * The session stays warm and can accept new messages.
+	 */
+	async interrupt(): Promise<void> {
+		if (this.activeQuery) {
+			this.logger.info("Interrupting current turn");
+			await this.activeQuery.interrupt();
+		} else {
+			this.logger.debug("interrupt() called but no active query");
+		}
+	}
+
+	/**
 	 * Stop the current Claude session
 	 */
 	stop(): void {
@@ -740,6 +735,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 			this.streamingPrompt = null;
 		}
+
+		this.activeQuery = null;
 
 		if (this.sessionInfo) {
 			this.sessionInfo.isRunning = false;

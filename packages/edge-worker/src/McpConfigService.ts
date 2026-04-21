@@ -20,7 +20,7 @@ type CyrusToolsMcpContextEntry = {
  */
 export interface McpConfigServiceDeps {
 	/** Retrieve the stored Linear API token for a workspace */
-	getLinearTokenForWorkspace: (workspaceId: string) => string;
+	getLinearTokenForWorkspace: (workspaceId: string) => string | null;
 	/** Retrieve the issue tracker service for a workspace (must expose getClient()) */
 	getIssueTracker: (
 		workspaceId: string,
@@ -69,7 +69,7 @@ export class McpConfigService {
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		const linearToken = this.deps.getLinearTokenForWorkspace(linearWorkspaceId);
 		const issueTracker = this.deps.getIssueTracker(linearWorkspaceId);
-		if (!issueTracker?.getClient) {
+		if (!linearToken || !issueTracker?.getClient) {
 			// CLI platform mode — no Linear client available, return config without cyrus-tools
 			const mcpConfig: Record<string, McpServerConfig> = {
 				"cyrus-docs": {

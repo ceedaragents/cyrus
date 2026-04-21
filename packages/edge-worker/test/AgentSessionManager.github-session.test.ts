@@ -156,6 +156,14 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, assistantMessage);
 
+		// Assistant text is held in the one-behind buffer until the next message
+		// flushes it. Send a second assistant message to flush the first.
+		const secondMessage: SDKAssistantMessage = {
+			...assistantMessage,
+			uuid: "00000000-0000-0000-0000-000000000002" as `${string}-${string}-${string}-${string}-${string}`,
+		};
+		await manager.handleClaudeMessage(sessionId, secondMessage);
+
 		expect(postActivitySpy).toHaveBeenCalled();
 	});
 
