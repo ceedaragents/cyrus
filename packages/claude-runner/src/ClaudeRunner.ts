@@ -385,10 +385,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					)
 				: [];
 
-			const processedDisallowedTools =
-				[...(this.config.disallowedTools ?? []), ...homeDisallowedTools].filter(
-					(v, i, a) => a.indexOf(v) === i,
-				) || undefined;
+			// Merge config-level denials with home directory denials, deduplicating in case
+			// any paths appear in both (e.g. an allowedDirectory that is also explicitly denied).
+			const processedDisallowedTools = [
+				...new Set([
+					...(this.config.disallowedTools ?? []),
+					...homeDisallowedTools,
+				]),
+			];
 
 			// Log disallowed tools if configured
 			if (processedDisallowedTools.length > 0) {
