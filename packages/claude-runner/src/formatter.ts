@@ -290,12 +290,25 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 				case "ToolSearch":
 				case "↪ ToolSearch": {
-					// Show query directly, like how Bash shows command and Read shows file_path
-					const query = toolInput.query || "";
+					const query: string = toolInput.query || "";
 					if (query.startsWith("select:")) {
-						return query.replace("select:", "");
+						const toolNames = query
+							.slice("select:".length)
+							.split(",")
+							.map((name: string) => name.trim())
+							.filter((name: string) => name.length > 0);
+						if (toolNames.length === 0) {
+							return "Loading tool schemas";
+						}
+						const rendered = toolNames.map((n) => `\`${n}\``).join(", ");
+						const label =
+							toolNames.length === 1 ? "tool schema" : "tool schemas";
+						return `Loading ${label}: ${rendered}`;
 					}
-					return query;
+					if (!query.trim()) {
+						return "Searching tools";
+					}
+					return `Searching tools for: \`${query}\``;
 				}
 
 				case "TaskOutput":
@@ -604,12 +617,20 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					return "*No tasks*";
 
 				case "ToolSearch":
-				case "↪ ToolSearch":
-					// ToolSearch results show which tools were found
-					if (result?.trim()) {
-						return `*${result}*`;
+				case "↪ ToolSearch": {
+					const trimmed = result?.trim() ?? "";
+					if (!trimmed) {
+						return "*No tools found*";
 					}
-					return "*No tools found*";
+					const toolNames = this.extractToolSearchToolNames(trimmed);
+					if (toolNames.length > 0) {
+						const rendered = toolNames.map((n) => `\`${n}\``).join(", ");
+						const label =
+							toolNames.length === 1 ? "Loaded tool" : "Loaded tools";
+						return `${label}: ${rendered}`;
+					}
+					return `*${trimmed}*`;
+				}
 
 				case "TaskOutput":
 				case "↪ TaskOutput":
@@ -646,5 +667,21 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 			);
 			return result || "";
 		}
+	}
+
+	/**
+	 * Extract tool names from a ToolSearch result payload.
+	 *
+	 * ToolSearch returns <function>{...}</function> blocks with a JSON object
+	 * containing a "name" field for each matched tool. Parse those names so
+	 * the Linear activity can render them as a compact, readable list.
+	 */
+	private extractToolSearchToolNames(result: string): string[] {
+		const names: string[] = [];
+		const regex = /"name"\s*:\s*"([^"\\]+)"/g;
+		for (const match of result.matchAll(regex)) {
+			if (match[1]) names.push(match[1]);
+		}
+		return names;
 	}
 }

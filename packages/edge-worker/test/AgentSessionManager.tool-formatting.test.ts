@@ -461,13 +461,22 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	// ToolSearch formatting tests
-	test("formatToolParameter - ToolSearch with select query", () => {
+	test("formatToolParameter - ToolSearch with single select query", () => {
 		const result = formatter.formatToolParameter("ToolSearch", {
 			query: "select:mcp__linear__get_issue",
 			max_results: 1,
 		});
 
-		expect(result).toBe("mcp__linear__get_issue");
+		expect(result).toBe("Loading tool schema: `mcp__linear__get_issue`");
+	});
+
+	test("formatToolParameter - ToolSearch with multi select query", () => {
+		const result = formatter.formatToolParameter("ToolSearch", {
+			query: "select:TaskCreate,TaskUpdate",
+			max_results: 2,
+		});
+
+		expect(result).toBe("Loading tool schemas: `TaskCreate`, `TaskUpdate`");
 	});
 
 	test("formatToolParameter - ToolSearch with keyword search", () => {
@@ -476,7 +485,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			max_results: 3,
 		});
 
-		expect(result).toBe("+linear get_issue");
+		expect(result).toBe("Searching tools for: `+linear get_issue`");
 	});
 
 	test("formatToolParameter - ToolSearch with arrow prefix", () => {
@@ -485,18 +494,40 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			max_results: 1,
 		});
 
-		expect(result).toBe("mcp__slack__read_channel");
+		expect(result).toBe("Loading tool schema: `mcp__slack__read_channel`");
 	});
 
-	test("formatToolResult - ToolSearch with results", () => {
+	test("formatToolResult - ToolSearch with parsed tool names", () => {
 		const result = formatter.formatToolResult(
 			"ToolSearch",
-			{ query: "select:mcp__linear__get_issue" },
-			"Found tool: mcp__linear__get_issue",
+			{ query: "select:TaskCreate,TaskUpdate" },
+			'<functions>\n<function>{"description":"...","name":"TaskCreate","parameters":{}}</function>\n<function>{"description":"...","name":"TaskUpdate","parameters":{}}</function>\n</functions>',
 			false,
 		);
 
-		expect(result).toBe("*Found tool: mcp__linear__get_issue*");
+		expect(result).toBe("Loaded tools: `TaskCreate`, `TaskUpdate`");
+	});
+
+	test("formatToolResult - ToolSearch with single parsed tool name", () => {
+		const result = formatter.formatToolResult(
+			"ToolSearch",
+			{ query: "select:mcp__linear__get_issue" },
+			'<functions>\n<function>{"description":"...","name":"mcp__linear__get_issue","parameters":{}}</function>\n</functions>',
+			false,
+		);
+
+		expect(result).toBe("Loaded tool: `mcp__linear__get_issue`");
+	});
+
+	test("formatToolResult - ToolSearch falls back to italicized text when no names parsed", () => {
+		const result = formatter.formatToolResult(
+			"ToolSearch",
+			{ query: "anything" },
+			"Some freeform result",
+			false,
+		);
+
+		expect(result).toBe("*Some freeform result*");
 	});
 
 	test("formatToolResult - ToolSearch with no results", () => {
