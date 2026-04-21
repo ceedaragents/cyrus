@@ -243,6 +243,45 @@ export const SandboxConfigSchema = z.object({
 });
 
 /**
+ * Memory-pressure gate configuration.
+ *
+ * When enabled, Cyrus checks host memory before spawning a new agent
+ * runner and rejects the request with a user-facing message if any
+ * configured threshold is exceeded. This guards against OOM-kill by
+ * systemd-oomd or the kernel OOM killer on under-provisioned hosts.
+ *
+ * Uses only cross-platform Node APIs (os.totalmem, os.freemem,
+ * process.memoryUsage, v8.getHeapStatistics), so the same thresholds
+ * behave identically on Linux and macOS.
+ */
+export const MemoryGateConfigSchema = z.object({
+	/**
+	 * Enable the memory gate. When false or omitted, all new sessions
+	 * are allowed regardless of memory state.
+	 * @default false
+	 */
+	enabled: z.boolean().optional(),
+
+	/**
+	 * Reject new work when process RSS exceeds this fraction of total
+	 * system memory. Range: 0..1 (e.g., 0.75 = 75%).
+	 */
+	maxRssPercent: z.number().min(0).max(1).optional(),
+
+	/**
+	 * Reject new work when os.freemem() drops below this many MB.
+	 * Useful on hosts shared with other workloads.
+	 */
+	minAvailableMemoryMb: z.number().positive().optional(),
+
+	/**
+	 * Reject new work when V8 heap used exceeds this fraction of the
+	 * heap size limit. Range: 0..1 (e.g., 0.85 = 85%).
+	 */
+	maxHeapUsagePercent: z.number().min(0).max(1).optional(),
+});
+
+/**
  * Global defaults for prompt types
  */
 const PromptDefaultsSchema = z.object({
@@ -403,6 +442,21 @@ export const EdgeConfigSchema = z.object({
 	 * all agent network traffic through it for inspection and filtering.
 	 */
 	sandbox: SandboxConfigSchema.optional(),
+
+	/**
+	 * Memory-pressure gate. When enabled, checks host memory before
+	 * spawning a new agent runner and rejects with a user-facing
+	 * message when the host is under pressure.
+	 */
+	memoryGate: MemoryGateConfigSchema.optional(),
+
+	/**
+	 * Maximum number of concurrent agent runners allowed across the
+	 * edge worker. When the cap is reached, new webhook-triggered
+	 * sessions are rejected with a user-facing "retry later" message.
+	 * Omit or set to 0 to disable the cap.
+	 */
+	maxConcurrentRunners: z.number().int().nonnegative().optional(),
 });
 
 /**
@@ -510,6 +564,7 @@ export type LinearWorkspaceConfig = z.infer<typeof LinearWorkspaceConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type MemoryGateConfig = z.infer<typeof MemoryGateConfigSchema>;
 export type NetworkPolicy = z.infer<typeof NetworkPolicySchema>;
 export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema

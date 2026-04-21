@@ -46,6 +46,7 @@ export type {
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
 	LinearWorkspaceConfig,
+	MemoryGateConfig,
 	NetworkPolicy,
 	OAuthCallbackHandler,
 	RepositoryConfig,
@@ -60,6 +61,7 @@ export {
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
 	LinearWorkspaceConfigSchema,
+	MemoryGateConfigSchema,
 	migrateEdgeConfig,
 	NetworkPolicySchema,
 	RepositoryConfigPayloadSchema,
@@ -152,6 +154,17 @@ export {
 	isIssueUnassignedWebhook,
 	isNewCommentEvent,
 } from "./issue-tracker/index.js";
+// Memory-pressure gate (cross-platform: Linux + macOS)
+export type {
+	MemoryCheckResult,
+	MemoryMetrics,
+	MemorySources,
+} from "./memory-health.js";
+export {
+	checkMemoryHealth,
+	collectMemoryMetrics,
+	formatMemoryPressureMessage,
+} from "./memory-health.js";
 // Internal Message Bus
 export type {
 	ContentChanges,

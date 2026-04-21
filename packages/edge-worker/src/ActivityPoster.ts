@@ -67,6 +67,27 @@ export class ActivityPoster {
 		);
 	}
 
+	async postMemoryPressureRejection(
+		sessionId: string,
+		workspaceId: string,
+		message: string,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			return;
+		}
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body: message },
+			},
+			"memory pressure rejection",
+		);
+	}
+
 	async postParentResumeAcknowledgment(
 		sessionId: string,
 		workspaceId: string,

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Memory-pressure gate and concurrency cap for new sessions** — Cyrus can now refuse to spin up a new session when the host is running out of memory or already at a configured session ceiling, posting a short "temporarily out of capacity" message back to Linear, GitHub, GitLab, or Slack instead of silently getting OOM-killed by the kernel or systemd. Both thresholds are opt-in via the new `memoryGate` (with `maxRssPercent`, `minAvailableMemoryMb`, `maxHeapUsagePercent`) and `maxConcurrentRunners` config fields, and use cross-platform Node built-ins so they behave identically on Linux and macOS.
+
 ### Security
 - **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
 
