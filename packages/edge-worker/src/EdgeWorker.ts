@@ -6,7 +6,6 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
 import type {
-	ClaudeRunnerConfig,
 	McpServerConfig,
 	SDKMessage,
 	WarmQuery,
@@ -518,11 +517,6 @@ export class EdgeWorker extends EventEmitter {
 
 		// Load persisted state for each repository
 		await this.loadPersistedState();
-
-		// Each Claude SDK subprocess (startup/query) registers a process 'exit' listener for cleanup.
-		// With 30 pre-warmed sessions + live sessions, we can easily exceed the default limit of 10.
-		// Raise the limit to accommodate concurrent sessions without spurious memory-leak warnings.
-		process.setMaxListeners(100);
 
 		// Pre-warm the 30 most recent Claude sessions in the background
 		// so their first query after restart has near-zero cold-start latency
@@ -5472,17 +5466,14 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): Promise<
-		| { config: ClaudeRunnerConfig; runnerType: "claude" }
-		| { config: AgentRunnerConfig; runnerType: Exclude<RunnerType, "claude"> }
-	> {
+	): Promise<{ config: AgentRunnerConfig; runnerType: RunnerType }> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
-		const result = await this.runnerConfigBuilder.buildIssueConfig({
+		const result = this.runnerConfigBuilder.buildIssueConfig({
 			session,
 			repository,
 			sessionId,
@@ -5515,7 +5506,9 @@ ${input.userComment}
 			const warmSession = this.warmInstances.get(sessionId);
 			if (warmSession) {
 				this.warmInstances.delete(sessionId);
-				result.config.warmSession = warmSession;
+				(
+					result.config as AgentRunnerConfig & { warmSession?: WarmQuery }
+				).warmSession = warmSession;
 				log.debug("Attaching pre-warmed session to runner config");
 			}
 		}
