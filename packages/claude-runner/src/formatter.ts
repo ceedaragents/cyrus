@@ -622,11 +622,15 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					if (!trimmed) {
 						return "*No tools found*";
 					}
-					const toolNames = this.extractToolSearchToolNames(trimmed);
-					if (toolNames.length > 0) {
-						const rendered = toolNames.map((n) => `\`${n}\``).join(", ");
-						const label =
-							toolNames.length === 1 ? "Loaded tool" : "Loaded tools";
+					const lines = trimmed
+						.split("\n")
+						.map((line) => line.trim())
+						.filter((line) => line.length > 0);
+					const looksLikeToolNames =
+						lines.length > 0 && lines.every((line) => /^[\w.-]+$/.test(line));
+					if (looksLikeToolNames) {
+						const rendered = lines.map((n) => `\`${n}\``).join(", ");
+						const label = lines.length === 1 ? "Loaded tool" : "Loaded tools";
 						return `${label}: ${rendered}`;
 					}
 					return `*${trimmed}*`;
@@ -667,21 +671,5 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 			);
 			return result || "";
 		}
-	}
-
-	/**
-	 * Extract tool names from a ToolSearch result payload.
-	 *
-	 * ToolSearch returns <function>{...}</function> blocks with a JSON object
-	 * containing a "name" field for each matched tool. Parse those names so
-	 * the Linear activity can render them as a compact, readable list.
-	 */
-	private extractToolSearchToolNames(result: string): string[] {
-		const names: string[] = [];
-		const regex = /"name"\s*:\s*"([^"\\]+)"/g;
-		for (const match of result.matchAll(regex)) {
-			if (match[1]) names.push(match[1]);
-		}
-		return names;
 	}
 }

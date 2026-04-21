@@ -497,37 +497,37 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toBe("Loading tool schema: `mcp__slack__read_channel`");
 	});
 
-	test("formatToolResult - ToolSearch with parsed tool names", () => {
+	test("formatToolResult - ToolSearch with newline-separated tool names", () => {
 		const result = formatter.formatToolResult(
 			"ToolSearch",
 			{ query: "select:TaskCreate,TaskUpdate" },
-			'<functions>\n<function>{"description":"...","name":"TaskCreate","parameters":{}}</function>\n<function>{"description":"...","name":"TaskUpdate","parameters":{}}</function>\n</functions>',
+			"TaskCreate\nTaskUpdate",
 			false,
 		);
 
 		expect(result).toBe("Loaded tools: `TaskCreate`, `TaskUpdate`");
 	});
 
-	test("formatToolResult - ToolSearch with single parsed tool name", () => {
+	test("formatToolResult - ToolSearch with single tool name", () => {
 		const result = formatter.formatToolResult(
 			"ToolSearch",
 			{ query: "select:mcp__linear__get_issue" },
-			'<functions>\n<function>{"description":"...","name":"mcp__linear__get_issue","parameters":{}}</function>\n</functions>',
+			"mcp__linear__get_issue",
 			false,
 		);
 
 		expect(result).toBe("Loaded tool: `mcp__linear__get_issue`");
 	});
 
-	test("formatToolResult - ToolSearch falls back to italicized text when no names parsed", () => {
+	test("formatToolResult - ToolSearch falls back to italicized text for freeform result", () => {
 		const result = formatter.formatToolResult(
 			"ToolSearch",
 			{ query: "anything" },
-			"Some freeform result",
+			"Some freeform result with spaces",
 			false,
 		);
 
-		expect(result).toBe("*Some freeform result*");
+		expect(result).toBe("*Some freeform result with spaces*");
 	});
 
 	test("formatToolResult - ToolSearch with no results", () => {

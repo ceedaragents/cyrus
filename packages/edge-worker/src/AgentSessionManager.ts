@@ -674,8 +674,21 @@ export class AgentSessionManager extends EventEmitter {
 						}
 						if (Array.isArray(block.content)) {
 							return block.content
-								.filter((contentBlock: any) => contentBlock.type === "text")
-								.map((contentBlock: any) => contentBlock.text)
+								.map((contentBlock: any) => {
+									if (contentBlock.type === "text") {
+										return contentBlock.text;
+									}
+									// ToolSearch emits tool_reference blocks; preserve the tool name
+									// so the formatter can render "Loaded tools: `X`, `Y`".
+									if (
+										contentBlock.type === "tool_reference" &&
+										contentBlock.tool_name
+									) {
+										return contentBlock.tool_name;
+									}
+									return "";
+								})
+								.filter(Boolean)
 								.join("\n");
 						}
 						return "";
@@ -885,7 +898,6 @@ export class AgentSessionManager extends EventEmitter {
 
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
 							// Skip TaskCreate/TaskList results since they already created a non-ephemeral thought
-							// Skip ToolSearch results since they already created a non-ephemeral thought
 							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
 								toolName === "TodoWrite" ||
@@ -895,8 +907,6 @@ export class AgentSessionManager extends EventEmitter {
 								toolName === "↪ TaskCreate" ||
 								toolName === "TaskList" ||
 								toolName === "↪ TaskList" ||
-								toolName === "ToolSearch" ||
-								toolName === "↪ ToolSearch" ||
 								toolName === "AskUserQuestion" ||
 								toolName === "↪ AskUserQuestion"
 							) {
@@ -1024,26 +1034,6 @@ export class AgentSessionManager extends EventEmitter {
 							// Skip posting at tool_use time — defer to tool_result time
 							// so we can enrich with subject from result or cache
 							return;
-						} else if (toolName === "ToolSearch") {
-							// Get formatter from runner
-							const formatter = session.agentRunner?.getFormatter();
-							if (!formatter) {
-								log.warn(`No formatter available for session ${sessionId}`);
-								return;
-							}
-
-							// Special handling for ToolSearch - format as thought instead of action
-							const toolInput = entry.metadata.toolInput || entry.content;
-							const formattedParam = formatter.formatToolParameter(
-								toolName,
-								toolInput,
-							);
-							content = {
-								type: "thought",
-								body: formattedParam,
-							};
-							// ToolSearch is not ephemeral
-							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
