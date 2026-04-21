@@ -43,61 +43,13 @@ export class WorkerService {
 	 * Used after initial authentication while waiting for server configuration
 	 */
 	async startSetupWaitingMode(): Promise<void> {
-		const { SharedApplicationServer } = await import("cyrus-edge-worker");
-		const { ConfigUpdater } = await import("cyrus-config-updater");
-
-		// Determine server configuration
-		const isExternalHost =
-			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-		const serverPort = parsePort(
-			process.env.CYRUS_SERVER_PORT,
-			DEFAULT_SERVER_PORT,
-		);
-		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
-
-		// Create and start SharedApplicationServer
-		this.setupWaitingServer = new SharedApplicationServer(
-			serverPort,
-			serverHost,
-		);
-		this.setupWaitingServer.initializeFastify();
-
-		// Register ConfigUpdater routes
-		const configUpdater = new ConfigUpdater(
-			this.setupWaitingServer.getFastifyInstance(),
-			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
-		);
-		configUpdater.register();
-
-		this.logger.info("✅ Config updater registered");
-		this.logger.info(
-			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
-		);
-		this.logger.info(
-			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
-		);
-
-		// Register webhook transports that work without repositories
-		this.registerWebhookTransports(this.setupWaitingServer);
-
-		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
-		await this.setupWaitingServer.start();
-
-		this.logger.raw("");
-		this.logger.divider(70);
-		this.logger.info("⏳ Waiting for configuration from server...");
-		this.logger.info(`🔗 Server running on port ${serverPort}`);
-
-		if (process.env.CLOUDFLARE_TOKEN) {
-			this.logger.info("🌩️  Cloudflare tunnel: Active");
-		}
-
-		this.logger.info("📡 Config updater: Ready");
-		this.logger.raw("");
-		this.logger.info("Your Cyrus instance is ready to receive configuration.");
-		this.logger.info(`Complete setup at: ${getCyrusAppUrl()}/onboarding`);
-		this.logger.divider(70);
+		await this.startPreWorkerServer({
+			headerLine: "⏳ Waiting for configuration from server...",
+			footerLines: (appUrl) => [
+				"Your Cyrus instance is ready to receive configuration.",
+				`Complete setup at: ${appUrl}/onboarding`,
+			],
+		});
 	}
 
 	/**
@@ -105,10 +57,30 @@ export class WorkerService {
 	 * Used after onboarding when no repositories are configured
 	 */
 	async startIdleMode(): Promise<void> {
+		await this.startPreWorkerServer({
+			headerLine: "⏸️  No repositories configured",
+			footerLines: (appUrl) =>
+				process.env.LINEAR_CLIENT_ID
+					? ["Add a repository with: cyrus self-add-repo <git-url>"]
+					: [
+							`Waiting for repository configuration from ${appUrl}`,
+							`Add repositories at: ${appUrl}/repos`,
+						],
+		});
+	}
+
+	/**
+	 * Shared infrastructure for modes that run the config-update server without
+	 * an EdgeWorker (setup-waiting, idle). Only the banner text differs between
+	 * modes, so callers supply just the mode-specific lines.
+	 */
+	private async startPreWorkerServer(banner: {
+		headerLine: string;
+		footerLines: (appUrl: string) => string[];
+	}): Promise<void> {
 		const { SharedApplicationServer } = await import("cyrus-edge-worker");
 		const { ConfigUpdater } = await import("cyrus-config-updater");
 
-		// Determine server configuration
 		const isExternalHost =
 			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 		const serverPort = parsePort(
@@ -117,18 +89,16 @@ export class WorkerService {
 		);
 		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
 
-		// Create and start SharedApplicationServer
 		this.setupWaitingServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
 		);
 		this.setupWaitingServer.initializeFastify();
 
-		// Register ConfigUpdater routes
 		const configUpdater = new ConfigUpdater(
 			this.setupWaitingServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 		configUpdater.register();
 
@@ -140,15 +110,14 @@ export class WorkerService {
 			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
 
-		// Register webhook transports that work without repositories
 		this.registerWebhookTransports(this.setupWaitingServer);
 
-		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		// Starts Cloudflare tunnel too, if CLOUDFLARE_TOKEN is set.
 		await this.setupWaitingServer.start();
 
 		this.logger.raw("");
 		this.logger.divider(70);
-		this.logger.info("⏸️  No repositories configured");
+		this.logger.info(banner.headerLine);
 		this.logger.info(`🔗 Server running on port ${serverPort}`);
 
 		if (process.env.CLOUDFLARE_TOKEN) {
@@ -157,12 +126,8 @@ export class WorkerService {
 
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
-		if (process.env.LINEAR_CLIENT_ID) {
-			this.logger.info("Add a repository with: cyrus self-add-repo <git-url>");
-		} else {
-			const appUrl = getCyrusAppUrl();
-			this.logger.info(`Waiting for repository configuration from ${appUrl}`);
-			this.logger.info(`Add repositories at: ${appUrl}/repos`);
+		for (const line of banner.footerLines(getCyrusAppUrl())) {
+			this.logger.info(line);
 		}
 		this.logger.divider(70);
 	}

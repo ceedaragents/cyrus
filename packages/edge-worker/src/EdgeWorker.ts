@@ -725,7 +725,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 
 		// Register config update routes
@@ -2713,18 +2713,13 @@ ${taskSection}`;
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository from the repositories map.
+				// Note: we intentionally do NOT remove workspace-level issue trackers
+				// or activity sinks here. They are keyed by workspace ID and may be
+				// needed by other repositories in the same workspace, or by new
+				// repositories about to be added in the same configChanged cycle.
+				// They will be naturally replaced when workspace tokens are updated.
 				this.repositories.delete(repo.id);
-
-				// Only remove workspace issue tracker and activity sink if no other repos use this workspace
-				const wsId = requireLinearWorkspaceId(repo);
-				const workspaceStillInUse = Array.from(this.repositories.values()).some(
-					(r) => r.linearWorkspaceId === wsId,
-				);
-				if (!workspaceStillInUse) {
-					this.issueTrackers.delete(wsId);
-					this.activitySinks.delete(wsId);
-				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -5792,9 +5787,9 @@ ${input.userComment}
 							...(allowedTools.length > 0 && { allowedTools }),
 							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
-							env: buildBaseSessionEnv({
-								CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
-							}),
+							// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not set here;
+							// see CYPACK-1108 and ClaudeRunner.start() for context.
+							env: buildBaseSessionEnv(),
 						},
 					});
 

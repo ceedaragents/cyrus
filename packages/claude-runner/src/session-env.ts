@@ -20,12 +20,9 @@ const AUTH_ENV_KEYS = [
  * Both `ClaudeRunner.start()` and `EdgeWorker.warmupRecentSessions()`
  * must use the same set — keep this as the single source of truth.
  *
- * Note: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is NOT included here because it
- * must be set conditionally — on Linux, the bubblewrap sandbox it triggers
- * requires socat + bwrap + unprivileged user namespaces. ClaudeRunner checks
- * these requirements via checkLinuxSandboxRequirements() and only sets the
- * flag when they are met. On macOS (e.g. warmup path) callers can add it
- * unconditionally since the SDK uses platform-native sandboxing.
+ * Note: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not included
+ * while the Linux bubblewrap sandbox side effects it triggers are being
+ * investigated. See CYPACK-1108.
  *
  * - MCP_CONNECTION_NONBLOCKING lets MCP servers connect in the background so
  *   both cold-start and pre-warm sessions return faster.
@@ -55,9 +52,8 @@ export function buildBaseSessionEnv(
 		env.PATH = process.env.PATH;
 	}
 
-	// Forward auth credentials — callers are expected to also set
-	// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (conditionally, based on sandbox
-	// requirements) to prevent these from leaking into Bash subprocesses.
+	// Forward auth credentials from the parent process — the SDK needs these
+	// for API calls. See: https://code.claude.com/docs/en/env-vars
 	for (const key of AUTH_ENV_KEYS) {
 		if (process.env[key]) {
 			env[key] = process.env[key];

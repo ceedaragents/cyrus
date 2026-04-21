@@ -493,14 +493,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					settingSources: ["user", "project", "local"],
 					env: {
 						...buildBaseSessionEnv(),
-						// Only set the scrub flag when the host can support the sandbox
-						// runtime it triggers — otherwise tool invocations would fail
-						// at runtime on Linux hosts missing bwrap/socat/kernel config.
-						// When enabled, this also prevents forwarded auth tokens (API key,
-						// OAuth token) from leaking into Bash subprocesses.
-						...(sandboxRequirements.supported && {
-							CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
-						}),
+						// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally NOT set while
+						// the Linux bubblewrap sandbox side effects it triggers are being
+						// investigated. The sandbox requirements precheck is still run
+						// above so the diagnostics remain available when we re-enable.
+						// See: CYPACK-1108.
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
 					},
