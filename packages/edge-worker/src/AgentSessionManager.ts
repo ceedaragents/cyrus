@@ -74,6 +74,13 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	// Per-session serialization queue for handleClaudeMessage. The EdgeWorker's
+	// onMessage callback is fire-and-forget, so without serialization the async
+	// handlers can interleave — causing tool_result to be processed before its
+	// matching tool_use registers in toolCallsByToolUseId (seen with parallel
+	// deferred tools like ToolSearch, where a tool_use and its tool_result can
+	// arrive back-to-back in the same microtask batch).
+	private messageProcessingQueues: Map<string, Promise<void>> = new Map();
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -432,9 +439,37 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Handle streaming Claude messages and route to appropriate methods
+	 * Handle streaming Claude messages and route to appropriate methods.
+	 *
+	 * Serializes processing per session so concurrent onMessage callbacks from
+	 * the runner (which is fire-and-forget) do not interleave their async work.
+	 * Without this serialization, a tool_result message could run its handler
+	 * ahead of the matching tool_use registration in toolCallsByToolUseId,
+	 * producing a fallback action="Tool" activity in Linear (seen with parallel
+	 * deferred tools like ToolSearch).
 	 */
 	async handleClaudeMessage(
+		sessionId: string,
+		message: SDKMessage,
+	): Promise<void> {
+		const prev =
+			this.messageProcessingQueues.get(sessionId) ?? Promise.resolve();
+		const next = prev.then(() => this.processClaudeMessage(sessionId, message));
+		// Swallow errors in the chained promise so one failure does not block
+		// future messages for this session. The concrete handler already logs
+		// errors internally.
+		this.messageProcessingQueues.set(
+			sessionId,
+			next.catch(() => undefined),
+		);
+		return next;
+	}
+
+	/**
+	 * Actual message dispatch. Invoked only via the per-session queue in
+	 * handleClaudeMessage so at most one instance runs for a given session.
+	 */
+	private async processClaudeMessage(
 		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
@@ -1494,6 +1529,7 @@ export class AgentSessionManager extends EventEmitter {
 		this.stopRequestedSessions.delete(sessionId);
 		this.lastAssistantBodyBySession.delete(sessionId);
 		this.bufferedAssistantEntryBySession.delete(sessionId);
+		this.messageProcessingQueues.delete(sessionId);
 		log.debug("Removed session");
 	}
 
