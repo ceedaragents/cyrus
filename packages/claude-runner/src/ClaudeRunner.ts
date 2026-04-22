@@ -496,6 +496,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
 					env: {
+						// we continue, for now, to overlay the entirely of process.env since claude-agent-sdk stopped overlaying it again (reverted)
+						...process.env,
 						...(process.env.PATH && { PATH: process.env.PATH }),
 						// Forward auth credentials from parent process — the SDK needs
 						// these for API calls.
