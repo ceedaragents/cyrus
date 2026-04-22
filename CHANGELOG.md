@@ -14,7 +14,6 @@ All notable changes to this project will be documented in this file.
 - **Claude SDK subprocesses now exit at turn end unless warm mode is enabled** — When `CYRUS_ENABLE_WARM_SESSIONS` is unset, the streaming prompt is completed when the SDK emits a `result` message, which lets the underlying Claude Code subprocess actually exit and free its memory at the end of a turn (restores the pre-warm-sessions behavior). When `CYRUS_ENABLE_WARM_SESSIONS=1`, the streaming prompt stays open and the subprocess is kept alive so follow-up messages reuse the warm session.
 
 ### Fixed
-- **Claude sessions inherit the parent process environment again** — `@anthropic-ai/claude-agent-sdk` v0.2.113 reverted to no longer overlaying `process.env` onto the env passed to spawned sessions, which left Cyrus-launched Claude processes without `HOME` (and other inherited vars). That broke GPG-signed commits, `gh` CLI authentication, and any other tool that relies on a real home directory or the user's shell environment. Cyrus now spreads `process.env` explicitly when invoking the SDK so these tools work as expected. ([#1150](https://github.com/cyrusagents/cyrus/pull/1150))
 - **Chat-platform replies (Slack/GitHub) are now posted when warm sessions are enabled** — Previously, `ChatSessionHandler` waited for `runner.startStreaming()` to resolve before calling the adapter's `postReply`. With `CYRUS_ENABLE_WARM_SESSIONS=1` the streaming prompt stays open across turns, so `startStreaming` never resolved and no reply was ever posted. Reply posting is now driven by `result` messages on the runner's message stream, decoupled from session termination. A FIFO queue of pending events per session ensures each turn (initial prompt, resume, or injected follow-up) is paired with its corresponding reply.
 - **Improved `ToolSearch` presentation in Linear activities** — `ToolSearch` calls now post as a regular action entry (with an expandable result) instead of a bare thought. The parameter reads like "Loading tool schemas: `TaskCreate`, `TaskUpdate`" or "Searching tools for: `+linear get_issue`", and the expanded result shows the tools that were loaded (e.g. "Loaded tools: `TaskCreate`, `TaskUpdate`"). ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112), [#1134](https://github.com/ceedaragents/cyrus/pull/1134))
 
@@ -29,6 +28,60 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.117** — Bumps the bundled Claude Code binary from v2.1.116 to v2.1.117 (parity release with no tool-list changes). Also fixes `scripts/extract-claude-tools.sh` to work with the new native binary structure introduced in SDK v0.2.113 (now resolves the platform-specific optional dependency instead of the removed `cli.js`). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1120](https://linear.app/ceedar/issue/CYPACK-1120), [#1143](https://github.com/ceedaragents/cyrus/pull/1143))
 - **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
+## [0.2.49] - 2026-04-22
+
+Hotfix released from the `cypack-1123` branch and forward-ported to `main`.
+
+### Fixed
+- **Claude sessions inherit the parent process environment again** — `@anthropic-ai/claude-agent-sdk` v0.2.113 reverted to no longer overlaying `process.env` onto the env passed to spawned sessions, which left Cyrus-launched Claude processes without `HOME` (and other inherited vars). That broke GPG-signed commits, `gh` CLI authentication, and any other tool that relies on a real home directory or the user's shell environment. Cyrus now spreads `process.env` explicitly when invoking the SDK so these tools work as expected. ([#1150](https://github.com/cyrusagents/cyrus/pull/1150))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.49
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.49
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.49
+
+#### cyrus-core
+- cyrus-core@0.2.49
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.49
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.49
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.49
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.49
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.49
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.49
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.49
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.49
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.49
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.49
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.49
 
 ## [0.2.48] - 2026-04-20
 
