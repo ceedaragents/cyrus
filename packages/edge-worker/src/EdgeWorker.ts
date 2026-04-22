@@ -254,10 +254,10 @@ export class EdgeWorker extends EventEmitter {
 	private egressCaCertPath: string | null = null;
 	/**
 	 * Remote SessionStore that mirrors Claude SDK transcripts to the Cyrus
-	 * hosted control plane. Enabled when both `CYRUS_API_KEY` and
-	 * `CYRUS_APP_URL` are set — used by any Claude runner spawned from this
-	 * worker so transcripts survive ephemeral worktrees and are resumable
-	 * from any host.
+	 * hosted control plane. Enabled when all three of `CYRUS_APP_URL`,
+	 * `CYRUS_API_KEY`, and `CYRUS_TEAM_ID` are set — used by any Claude
+	 * runner spawned from this worker so transcripts survive ephemeral
+	 * worktrees and are resumable from any host.
 	 */
 	private claudeSessionStore: SessionStore | null = null;
 	/**
@@ -296,20 +296,22 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Mirror Claude SDK session transcripts to the hosted control plane
-		// when both CYRUS_API_KEY (team-scoped auth) and CYRUS_APP_URL are
-		// configured. Without CYRUS_APP_URL there is nowhere to POST to; without
-		// the API key we can't authenticate, so the store stays null and the
+		// when CYRUS_APP_URL (destination), CYRUS_API_KEY (proof of team
+		// ownership), and CYRUS_TEAM_ID (which team the transcripts belong to)
+		// are all configured. If any is missing the store stays null and the
 		// SDK falls back to local JSONL only.
 		const sessionStoreBaseUrl = process.env.CYRUS_APP_URL;
 		const sessionStoreApiKey = process.env.CYRUS_API_KEY;
-		if (sessionStoreBaseUrl && sessionStoreApiKey) {
+		const sessionStoreTeamId = process.env.CYRUS_TEAM_ID;
+		if (sessionStoreBaseUrl && sessionStoreApiKey && sessionStoreTeamId) {
 			this.claudeSessionStore = new HttpSessionStore({
 				baseUrl: sessionStoreBaseUrl,
 				apiKey: sessionStoreApiKey,
+				teamId: sessionStoreTeamId,
 				logger: this.logger,
 			});
 			this.logger.info(
-				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl}`,
+				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl} for team ${sessionStoreTeamId}`,
 			);
 		}
 

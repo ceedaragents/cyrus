@@ -10,8 +10,20 @@ import type { ILogger } from "cyrus-core";
  *
  * Mirrors session transcripts from an edge-worker / ClaudeRunner to the
  * Cyrus hosted control plane, which persists them in a per-team Supabase
- * table. Authenticates every request with a Cyrus team API key
- * (`CYRUS_API_KEY`) passed as `Authorization: Bearer <key>`.
+ * table.
+ *
+ * Every request carries two pieces of identity, provided by the edge's
+ * environment:
+ *
+ *   - `Authorization: Bearer <CYRUS_API_KEY>` — proves the caller holds the
+ *     team's API key.
+ *   - `X-Cyrus-Team-Id:  <CYRUS_TEAM_ID>`    — names the team the request
+ *     belongs to.
+ *
+ * The server looks up the team by id (O(1) primary-key lookup) and verifies
+ * that the bearer token matches the team's stored key. Unlike the previous
+ * hash-reverse-lookup design, no per-request index into `teams` is needed —
+ * the edge already knows its own team id.
  *
  * Wire protocol (all POST, JSON body):
  *
@@ -32,6 +44,11 @@ export interface HttpSessionStoreOptions {
 	/** Team-scoped API key. Sent as `Authorization: Bearer <apiKey>`. */
 	apiKey: string;
 	/**
+	 * Team id this edge belongs to. Sent as `X-Cyrus-Team-Id: <teamId>`.
+	 * The server verifies the bearer token actually belongs to this team.
+	 */
+	teamId: string;
+	/**
 	 * Optional fetch override — primarily for tests. Defaults to the global
 	 * `fetch`. Signature intentionally matches `globalThis.fetch`.
 	 */
@@ -44,9 +61,16 @@ export interface HttpSessionStoreOptions {
 
 type JsonBody = Record<string, unknown>;
 
+/**
+ * Header name used to identify the team. Extracted as a module-level
+ * constant so tests and any future alternate transport stay in sync.
+ */
+export const CYRUS_TEAM_ID_HEADER = "X-Cyrus-Team-Id";
+
 export class HttpSessionStore implements SessionStore {
 	private readonly baseUrl: string;
 	private readonly apiKey: string;
+	private readonly teamId: string;
 	private readonly fetchImpl: typeof fetch;
 	private readonly logger: ILogger | undefined;
 	private readonly timeoutMs: number;
@@ -54,9 +78,11 @@ export class HttpSessionStore implements SessionStore {
 	constructor(opts: HttpSessionStoreOptions) {
 		if (!opts.baseUrl) throw new Error("HttpSessionStore: baseUrl required");
 		if (!opts.apiKey) throw new Error("HttpSessionStore: apiKey required");
+		if (!opts.teamId) throw new Error("HttpSessionStore: teamId required");
 		// Strip trailing slash so path concat is predictable.
 		this.baseUrl = opts.baseUrl.replace(/\/$/, "");
 		this.apiKey = opts.apiKey;
+		this.teamId = opts.teamId;
 		this.fetchImpl = opts.fetch ?? fetch;
 		this.logger = opts.logger;
 		this.timeoutMs = opts.timeoutMs ?? 15_000;
@@ -118,16 +144,26 @@ export class HttpSessionStore implements SessionStore {
 		return res.subpaths ?? [];
 	}
 
+	/**
+	 * Builds the headers for every request. Kept as a separate method so the
+	 * auth scheme can be extended (extra headers, different schemes) by
+	 * subclassing without rewriting the transport.
+	 */
+	protected buildRequestHeaders(): Record<string, string> {
+		return {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${this.apiKey}`,
+			[CYRUS_TEAM_ID_HEADER]: this.teamId,
+		};
+	}
+
 	private async post<T = unknown>(path: string, body: JsonBody): Promise<T> {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 		try {
 			const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${this.apiKey}`,
-				},
+				headers: this.buildRequestHeaders(),
 				body: JSON.stringify(body),
 				signal: controller.signal,
 			});
