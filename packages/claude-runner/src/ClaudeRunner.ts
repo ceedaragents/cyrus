@@ -490,6 +490,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
+					...(this.config.sessionStore && {
+						sessionStore: this.config.sessionStore,
+					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
 					...(this.config.plugins?.length && { plugins: this.config.plugins }),

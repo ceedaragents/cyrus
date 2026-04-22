@@ -8,11 +8,13 @@ import { LinearClient } from "@linear/sdk";
 import type {
 	McpServerConfig,
 	SDKMessage,
+	SessionStore,
 	WarmQuery,
 } from "cyrus-claude-runner";
 import {
 	buildBaseSessionEnv,
 	ClaudeRunner,
+	HttpSessionStore,
 	normalizeMcpHttpTransport,
 } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
@@ -251,6 +253,14 @@ export class EdgeWorker extends EventEmitter {
 	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
 	private egressCaCertPath: string | null = null;
 	/**
+	 * Remote SessionStore that mirrors Claude SDK transcripts to the Cyrus
+	 * hosted control plane. Enabled when both `CYRUS_API_KEY` and
+	 * `CYRUS_APP_URL` are set — used by any Claude runner spawned from this
+	 * worker so transcripts survive ephemeral worktrees and are resumable
+	 * from any host.
+	 */
+	private claudeSessionStore: SessionStore | null = null;
+	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
 	 * Key format: `${createdAt}:${issueId}`
@@ -284,6 +294,24 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Mirror Claude SDK session transcripts to the hosted control plane
+		// when both CYRUS_API_KEY (team-scoped auth) and CYRUS_APP_URL are
+		// configured. Without CYRUS_APP_URL there is nowhere to POST to; without
+		// the API key we can't authenticate, so the store stays null and the
+		// SDK falls back to local JSONL only.
+		const sessionStoreBaseUrl = process.env.CYRUS_APP_URL;
+		const sessionStoreApiKey = process.env.CYRUS_API_KEY;
+		if (sessionStoreBaseUrl && sessionStoreApiKey) {
+			this.claudeSessionStore = new HttpSessionStore({
+				baseUrl: sessionStoreBaseUrl,
+				apiKey: sessionStoreApiKey,
+				logger: this.logger,
+			});
+			this.logger.info(
+				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl}`,
+			);
+		}
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
 		this.gitHubCommentService = new GitHubCommentService();
@@ -4962,8 +4990,14 @@ ${taskSection}`;
 		config: AgentRunnerConfig,
 	): IAgentRunner {
 		switch (runnerType) {
-			case "claude":
-				return new ClaudeRunner(config, this.isWarmSessionsEnabled());
+			case "claude": {
+				// Inject the hosted SessionStore at the last moment so it only
+				// attaches to Claude runners (the field is Claude-specific).
+				const claudeConfig = this.claudeSessionStore
+					? { ...config, sessionStore: this.claudeSessionStore }
+					: config;
+				return new ClaudeRunner(claudeConfig, this.isWarmSessionsEnabled());
+			}
 			case "gemini":
 				return new GeminiRunner(config);
 			case "codex":
