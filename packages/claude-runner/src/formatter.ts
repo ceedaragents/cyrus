@@ -290,12 +290,25 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 				case "ToolSearch":
 				case "↪ ToolSearch": {
-					// Show query directly, like how Bash shows command and Read shows file_path
-					const query = toolInput.query || "";
+					const query: string = toolInput.query || "";
 					if (query.startsWith("select:")) {
-						return query.replace("select:", "");
+						const toolNames = query
+							.slice("select:".length)
+							.split(",")
+							.map((name: string) => name.trim())
+							.filter((name: string) => name.length > 0);
+						if (toolNames.length === 0) {
+							return "Loading tool schemas";
+						}
+						const rendered = toolNames.map((n) => `\`${n}\``).join(", ");
+						const label =
+							toolNames.length === 1 ? "tool schema" : "tool schemas";
+						return `Loading ${label}: ${rendered}`;
 					}
-					return query;
+					if (!query.trim()) {
+						return "Searching tools";
+					}
+					return `Searching tools for: \`${query}\``;
 				}
 
 				case "TaskOutput":
@@ -604,12 +617,24 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					return "*No tasks*";
 
 				case "ToolSearch":
-				case "↪ ToolSearch":
-					// ToolSearch results show which tools were found
-					if (result?.trim()) {
-						return `*${result}*`;
+				case "↪ ToolSearch": {
+					const trimmed = result?.trim() ?? "";
+					if (!trimmed) {
+						return "*No tools found*";
 					}
-					return "*No tools found*";
+					const lines = trimmed
+						.split("\n")
+						.map((line) => line.trim())
+						.filter((line) => line.length > 0);
+					const looksLikeToolNames =
+						lines.length > 0 && lines.every((line) => /^[\w.-]+$/.test(line));
+					if (looksLikeToolNames) {
+						const rendered = lines.map((n) => `\`${n}\``).join(", ");
+						const label = lines.length === 1 ? "Loaded tool" : "Loaded tools";
+						return `${label}: ${rendered}`;
+					}
+					return `*${trimmed}*`;
+				}
 
 				case "TaskOutput":
 				case "↪ TaskOutput":

@@ -18,7 +18,7 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 		// Create test data for an agent session with comment metadata
 		const session = {
 			issueId: "test-issue-123",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -112,7 +112,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		const session = {
 			issueId: "test-issue-456",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -175,20 +175,33 @@ This is a new comment on the issue
   </content>
 </user_comment>`)
 			.expectSystemPrompt(`<task_management_instructions>
-CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
-- IMMEDIATELY create a comprehensive task list at the beginning of your work
+CRITICAL: You MUST use the Task tools (TaskCreate, TaskUpdate, TaskGet, TaskList) extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work using TaskCreate
 - Break down complex tasks into smaller, actionable items
-- Mark tasks as 'in_progress' when you start them
-- Mark tasks as 'completed' immediately after finishing them
+- Update tasks to 'in_progress' when you start them using TaskUpdate
+- Update tasks to 'completed' immediately after finishing them using TaskUpdate
 - Only have ONE task 'in_progress' at a time
-- Add new tasks as you discover them during your work
+- Add new tasks as you discover them during your work using TaskCreate
 - Your first response should focus on creating a thorough task breakdown
 
 Remember: Your first message is internal planning. Use this time to:
 1. Thoroughly analyze the issue and requirements
-2. Create detailed todos using TodoWrite
+2. Create detailed tasks using TaskCreate
 3. Plan your approach systematically
-</task_management_instructions>`)
+</task_management_instructions>
+
+## Skills
+
+You have skills available via the Skill tool: \`debug\`, \`implementation\`, \`investigate\`, \`summarize\`, \`verify-and-ship\`
+
+Choose the appropriate skill based on the context:
+
+- **Code changes requested** (feature, bug fix, refactor): Use \`implementation\` to write code, then \`verify-and-ship\` to run checks and create a PR, then \`summarize\` to narrate results.
+- **Bug report or error**: Use \`debug\` to reproduce, root-cause, and fix, then \`verify-and-ship\`, then \`summarize\`.
+- **Question or research request**: Use \`investigate\` to search the codebase and provide an answer, then \`summarize\`.
+- **PR review feedback** (changes requested): Use \`implementation\` to address review comments, then \`verify-and-ship\`.
+
+Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.`)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context", "user-comment")
 			.verify();

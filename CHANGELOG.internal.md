@@ -4,10 +4,135 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `push` event support to `GitHubEventTransport` (new `GitHubPushPayload`, `GitHubPushCommit` types, `GitHubCommentWebhookEvent` narrowing type). Push events are emitted without action filtering. Updated `extractComment*` utility functions and `GitHubMessageTranslator` to use `GitHubCommentWebhookEvent` instead of `GitHubWebhookEvent` for type safety. Added `getSessionsByBaseBranch(branchName, repositoryId)` query to `AgentSessionManager`. Added `handleGitHubPushWebhook` to `EdgeWorker` — extracts branch from `refs/heads/*`, finds repo config, looks up active sessions, streams XML rebase notification via `addStreamMessage`. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+- Added blocked-by dependency deferral to `EdgeWorker`: `checkBlockedByDependencies` fetches issue relations via `fetchBlockingIssues` and filters to unresolved blockers. Blocked sessions are parked in a `parkedSessions` Map (keyed by issue ID). Added `isIssueStateChangeWebhook` type guard to cyrus-core for detecting `stateId` changes in `updatedFrom`. Added `handleIssueStateChange` handler — when blocking issues complete, removes them from parked sessions and replays `initializeAgentRunner`. Added `handleParkedSessionReprompt` (Branch 1.5 in prompted handler) for re-checking blockers on user re-prompt. Added `postThoughtActivity` to `ActivityPoster`. 12 new tests (5 for `getSessionsByBaseBranch`, 7 for `isIssueStateChangeWebhook`). ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+
 ### Changed
 - Removed redundant `sessionRepositories` and `activitySinks` maps from EdgeWorker. All ~14 `sessionRepositories` usage sites now read directly from `session.repositories[0]?.repositoryId`; reverse-lookup uses `.some()` for correct multi-repo matching. `activitySinks` map deleted entirely — `LinearActivitySink` instances are now created on-the-fly from `issueTrackers` via `createActivitySink()` helper, since they're stateless wrappers. Added TODO comments for `issueTrackers` composite key for future multi-platform support. ([CYPACK-968](https://linear.app/ceedar/issue/CYPACK-968), [#992](https://github.com/ceedaragents/cyrus/pull/992))
+- Documented dependency security policy in `CLAUDE.md`: prefer direct-dep bumps in the owning package; only use root `pnpm.overrides` when a direct-dep bump cannot reach the vulnerable transitive; remove overrides when a future bump makes them redundant. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
+
+## [0.2.48] - 2026-04-20
+
+_No internal-only changes._
+
+## [0.2.47] - 2026-04-20
+
+### Changed
+- Stopped deleting workspace-level issue trackers and activity sinks when removing repositories — they are keyed by workspace ID and may be needed by other repos in the same workspace or by repos about to be added in the same `configChanged` cycle. They are naturally replaced when workspace tokens are updated. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089), [#1120](https://github.com/ceedaragents/cyrus/pull/1120))
+
+### Fixed
+- Fixed typos in `packages/CLAUDE.md` webhook-constraints documentation (`additonal`, `repsoitory`, `agentSesion`, `intitialized`). ([CYPACK-1098](https://linear.app/ceedar/issue/CYPACK-1098), [#1126](https://github.com/ceedaragents/cyrus/pull/1126))
+
+## [0.2.46] - 2026-04-16
+
+### Fixed
+- Fixed config reload ordering in `EdgeWorker.configChanged` handler — `updateLinearWorkspaceTokens()` now runs before `addNewRepositories()` so new repositories can look up their Linear workspace token during initialization. Previously, tokens were updated after repo addition, causing failures when both a new workspace and its first repository arrived in the same config change. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089), [#1112](https://github.com/ceedaragents/cyrus/pull/1112))
+
+### Changed
+- Removed `config: EdgeWorkerConfig` dependency from `PromptBuilder` — it was only used to check `handlers?.createWorkspace` for the working directory placeholder. Working directory is now passed explicitly via `workspaceRepoPaths` parameter through `buildIssueContextPrompt` → `buildIssueContextForPromptAssembly` → `buildNewSessionPrompt`. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
+
+## [0.2.45] - 2026-04-15
+
+### Added
+- Added `DEFAULT_REPOS_DIR` constant to `cyrus-core` and `getDefaultReposDir()` utility functions (in `apps/cli` and `packages/config-updater`) mirroring the existing `CYRUS_WORKTREES_DIR` / `getDefaultWorktreesDir()` pattern. Replaced all hardcoded `join(cyrusHome, "repos")` calls in `Application.ts`, `SelfAddRepoCommand.ts`, `repository.ts` handler, and `f1/server.ts`. ([CYPACK-1081](https://linear.app/ceedar/issue/CYPACK-1081), [#1104](https://github.com/ceedaragents/cyrus/pull/1104))
+- Added `resolveClaudeCodeExecutablePath()` to `ClaudeRunner` — uses `createRequire(import.meta.url)` + `require.resolve()` to locate the SDK's `cli.js` in pnpm's `.pnpm` symlinked layout, bypassing the SDK's broken `import.meta.url` resolution. Ported from unmerged `cypack-762` branch (`42abcf22`). ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `pathToClaudeCodeExecutable` option to `ClaudeRunnerConfig` in `types.ts`. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `TRUSTED_DOMAINS` constant (~200 domains) in `packages/core/src/trusted-domains.ts` matching Claude Code on the web's default allowlist. Added `preset: "trusted"` field to `NetworkPolicySchema`. `EgressProxy.parsePolicy()` expands the preset into `allow` rules, merging any explicit custom rules on top. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+- Added `WebhookIpValidator` utility to `cyrus-core` (`packages/core/src/security/`) with CIDR matching, known provider IP lists for Linear/GitHub/GitLab, and GitHub `/meta` API refresh support. Each event transport (`LinearEventTransport`, `GitHubEventTransport`, `GitLabEventTransport`) now accepts an optional `ipAllowlist` config and rejects requests from unauthorized IPs with HTTP 403 in signature/direct verification mode. Enabled `trustProxy` on Fastify server for correct `request.ip` behind reverse proxies. ([CYPACK-1056](https://linear.app/ceedar/issue/CYPACK-1056), [#1094](https://github.com/ceedaragents/cyrus/pull/1094))
+
+### Changed
+- PR/MR and changelog-update skills now diff changelog entries against the base branch (not the last commit) to detect existing entries added by the current branch. Prevents duplicate entries and ensures existing entries are updated in-place. ([CYPACK-1063](https://linear.app/ceedar/issue/CYPACK-1063), [#1091](https://github.com/ceedaragents/cyrus/pull/1091))
+- Replaced `TodoWrite` with granular Task tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`) across all tool allowance lists, prompt templates, and tests. Tool count updated from 30 to 33. Removed `TodoWrite` from `writeTools` (task management is now read-only). Updated system prompt extensions, builder/debugger/scoper prompts, and prompt-template.md to reference Task tools. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+- Removed GitLab-specific changes (IP allowlist for `GitLabEventTransport`, default bot username changes) from tool allowance PR scope. ([CYPACK-1067](https://linear.app/ceedar/issue/CYPACK-1067), [#1096](https://github.com/ceedaragents/cyrus/pull/1096))
+- Auth credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`) are forwarded from `process.env` to the SDK child process, with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` set to prevent leakage to Bash subprocesses. Only `PATH` + auth tokens are forwarded from `process.env`; repo `.env` vars and `additionalEnv` are merged separately. ([CYPACK-1066](https://linear.app/ceedar/issue/CYPACK-1066))
+
+## [0.2.44] - 2026-04-10
+
+### Fixed
+- `buildAgentContextBlock()` now always emits `<agent_context>` with default bot usernames (`cyrusagent`) instead of returning empty string when `GITHUB_BOT_USERNAME`/`GITLAB_BOT_USERNAME` env vars are unset. Updated `verify-and-ship` skill to also include an explicit fallback instruction. ([CYPACK-1054](https://linear.app/ceedar/issue/CYPACK-1054), [#1082](https://github.com/ceedaragents/cyrus/pull/1082))
+
+## [0.2.43] - 2026-04-08
+
+### Changed
+- Introduced `ChatRepositoryProvider` interface and `LiveChatRepositoryProvider` implementation to decouple `SlackChatAdapter` and `ChatSessionHandler` from frozen boot-time repository snapshots. Both now read live repository state on demand at session-build time via the provider abstraction. Removed `chatRepositoryPaths`, `repository`, and `linearWorkspaceId` from `ChatSessionHandlerDeps` in favor of a single `chatRepositoryProvider` field. ([CYPACK-1051](https://linear.app/ceedar/issue/CYPACK-1051), [#1078](https://github.com/ceedaragents/cyrus/pull/1078))
+
+## [0.2.42] - 2026-04-06
+
+### Fixed
+- Fixed bundled skills not being included in published npm package. ([CYPACK-1046](https://linear.app/ceedar/issue/CYPACK-1046), [#1073](https://github.com/ceedaragents/cyrus/pull/1073))
+
+## [0.2.41] - 2026-04-06
+
+### Changed
+- Replaced rigid procedure-based agent session architecture with skills-based approach. Procedures (ProcedureAnalyzer, subroutine sequencing, validation loop) removed in favor of SKILL.md files delivered via Claude Agent SDK plugin (`cyrus-skills-plugin`). Added `plugins` field to `AgentRunnerConfig`, `ClaudeRunnerConfig`, and `IssueRunnerConfigInput`; wired through `ClaudeRunner` to SDK `query()` options. Added Stop hook to `RunnerConfigBuilder` with `stop_hook_active` guard to ensure PRs/summaries are created before session ends. Simplified `AgentSessionManager` by removing procedure completion routing and validation loop logic. Re-exported `SdkPluginConfig` from `claude-runner`. Removed ~7000 lines of procedure/validation/subroutine code. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
+- Extracted `SkillsPluginResolver` from `EdgeWorker` (SRP refactor). Skills plugin resolution, user plugin manifest auto-scaffolding, and `buildSkillsGuidance()` now live in a dedicated module instead of being inline in the 5400-line EdgeWorker. Removed stale `postProcedureSelectionThought` mocks from 7 test files and updated procedure-referencing comments across source and docs. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
+
+## [0.2.40] - 2026-04-02
+
+### Changed
+- Removed `EdgeWorker.buildMcpConfig()` private wrapper — `RunnerConfigBuilder` and `McpConfigService` now handle all MCP config assembly. Chat sessions (`ChatSessionHandler`) pass `linearWorkspaceId` instead of a pre-built `mcpConfig` object, so `RunnerConfigBuilder.buildChatConfig()` calls `mcpConfigProvider.buildMcpConfig()` fresh per session (same pattern as `buildIssueConfig`). ([CYPACK-1029](https://linear.app/ceedar/issue/CYPACK-1029), [#1063](https://github.com/ceedaragents/cyrus/pull/1063))
+
+## [0.2.39] - 2026-03-31
+
+_No internal changes._
+
+## [0.2.38] - 2026-03-25
+
+### Added
+- Created `cyrus-gitlab-event-transport` package mirroring `cyrus-github-event-transport`: `GitLabEventTransport` (webhook endpoint with proxy/signature verification), `GitLabCommentService` (post MR notes, discussion replies, award emoji), `GitLabMessageTranslator` (translate GitLab events to `InternalMessage`), and `gitlab-webhook-utils` (payload extractors). ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `GitLabPlatformRef`, `GitLabSessionStartPlatformData`, `GitLabUserPromptPlatformData` types to `cyrus-core` messages. Updated `MessageSource` to include `"gitlab"`. Added type guards `isGitLabMessage`, `hasGitLabSessionStartPlatformData`, `hasGitLabUserPromptPlatformData`. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `gitlabUrl` optional field to `RepositoryConfigSchema` and all JSON schemas. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `glab-mr.md` and `changelog-update-gitlab.md` subroutines mirroring `gh-pr.md` and `changelog-update.md` with `glab` CLI commands. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `applyPlatformSubroutines()` to procedure registry for platform-aware subroutine substitution (swaps `gh-pr` → `glab-mr` and `changelog-update` → `changelog-update-gitlab` for GitLab repos). ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `handleCheckGlab` handler to config-updater for checking `glab` CLI installation and authentication. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `registerGitLabEventTransport()`, `handleGitLabWebhook()`, `buildGitLabSystemPrompt()`, `buildGitLabChangeRequestSystemPrompt()`, `postGitLabReply()`, `findRepositoryByGitLabUrl()`, `createGitLabWorkspace()` to EdgeWorker. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `PromptBuilder.generateRoutingContext()` to include `gitlabUrl` in repo identifiers and XML template. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `RepositoryRouter` to match `gitlabUrl` in description-tag routing and select signal options. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `SelfAddRepoCommand` to detect GitLab URLs and set `gitlabUrl` field. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Created `cyrus-setup-gitlab` skill and updated main setup orchestrator to include GitLab as a surface option. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Created `docs/GIT_GITLAB.md` documentation. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+
+## [0.2.37] - 2026-03-18
+
+### Added
+- Wired user-configured MCP support into Slack chat sessions. `RunnerConfigBuilder.buildChatConfig()` extracts `mcp__*` tool entries from the repository's `allowedTools` config and passes them to `buildChatAllowedTools()`, which merges them with read-only tools and built-in MCP prefixes. `mcpConfigPath` is derived from the repository reference following the `buildIssueConfig()` pattern. `EdgeWorker.registerSlackEventTransport()` passes the first repo to `ChatSessionHandler`, which forwards it to `RunnerConfigBuilder`. ([CYPACK-982](https://linear.app/ceedar/issue/CYPACK-982), [#1006](https://github.com/ceedaragents/cyrus/pull/1006))
+
+### Changed
+- Extracted `McpConfigService`, `ToolPermissionResolver`, and `RunnerConfigBuilder` from `EdgeWorker` and `ChatSessionHandler` in `packages/edge-worker`. `McpConfigService` owns MCP server config assembly and cyrus-tools context lifecycle. `ToolPermissionResolver` provides unified tool permission calculation for both issue and chat sessions (fully decoupled from `RunnerSelectionService`). `RunnerConfigBuilder` eliminates duplication between `EdgeWorker.buildAgentRunnerConfig()` and `ChatSessionHandler.buildRunnerConfig()` with `buildIssueConfig()` and `buildChatConfig()` factory methods, depending on focused interfaces (`IChatToolResolver`, `IMcpConfigProvider`, `IRunnerSelector`) instead of concrete classes. `RunnerSelectionService` trimmed to pure runner/model selection (SRP). `ChatSessionHandler` deps simplified to accept `RunnerConfigBuilder` injection. No behavioral changes. ([CYPACK-976](https://linear.app/ceedar/issue/CYPACK-976), [#1003](https://github.com/ceedaragents/cyrus/pull/1003))
+
+## [0.2.36] - 2026-03-17
+
+### Added
+- Added `IssueStateChangeMessage` type and `isIssueStateChangeWebhook()` type guard to core types for detecting Linear issue state transitions to `completed` or `canceled`. Added `translateIssueStateChange()` to `LinearMessageTranslator` (checked before title/description updates for priority). Added `GitService.deleteWorktree()` with `findWorktreesUnderPath()` and `isGitWorktree()` helpers supporting both single-repo and multi-repo worktree layouts. Added `handleIssueStateChangeMessage()` to `EdgeWorker` that stops active sessions and deletes worktrees. Added `isIssueStateChangeWebhook` to legacy webhook router (returns early, handled via message bus). 9 new unit tests (4 translator, 5 GitService). ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- Added `IssueDeletedWebhook` type and `isIssueDeletedWebhook()` type guard for `Issue/remove` webhooks. Added `translateIssueDeleted()` to `LinearMessageTranslator` that reuses `IssueStateChangeMessage` with `isTerminal: true`. Added early return in EdgeWorker legacy webhook handler for deleted issues. 2 new translator tests. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- `handleIssueStateChangeMessage` now posts a response activity to each stopped session's Linear thread before deleting worktrees, giving users visibility into why the session ended. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- Added `AgentSessionManager.removeSession()` to immediately clean up all session tracking state (sessions, entries, activity sinks, tasks, status activities, stop requests). Called in `handleIssueStateChangeMessage` after posting response activities to prevent stale sessions from being resumed with deleted worktrees. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+
+### Changed
+- Made `GitService.workspaceBaseDir` dynamic: replaced the cached string field with a getter that re-reads `CYRUS_WORKTREES_DIR` on every access. Stored `cyrusHome` instead of the resolved path. Updated `Application` to pass `{ cyrusHome }` options object instead of a pre-resolved string. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- Moved `workspaceBaseDir` from a per-call parameter on `GitService.deleteWorktree()` to a constructor-level dependency on `GitService`. Removed repo lookup shim from `handleIssueStateChangeMessage()` — worktree deletion is now keyed solely by the Linear issue identifier from the webhook message. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- Added "Cyrus interaction tip" section to `gh-pr.md` subroutine instructing Claude to include a blockquote tip in PR bodies about bot mentions and "changes requested" reviews. Bot username uses `{{github_bot_username}}` template variable resolved from `GITHUB_BOT_USERNAME` env var (fallback: `cyrusagent`) in `PromptBuilder.loadSubroutinePrompt()`. Added `includeCoAuthoredBy: false` to project `.claude/settings.json` and wrote `.claude/settings.local.json` with the same setting to workspace directories in `EdgeWorker.createCyrusAgentSession()` (loaded via SDK `settingSources: ["local"]`). Updated `docs/GIT_GITHUB.md` to remove co-authored-by references. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
+
+### Fixed
+- Added pnpm overrides to resolve all 36 Dependabot security alerts: bumped `@modelcontextprotocol/sdk` to `>=1.26.0`, `qs` to `>=6.14.2`, added new overrides for `hono>=4.12.7`, `@hono/node-server>=1.19.10`, `rollup>=4.59.0`, `flatted>=3.4.0`, `minimatch>=3.1.4` (with path-specific overrides for `test-exclude`, `nodemon`, `glob` to `>=10.2.3`), `simple-git>=3.32.3`, `undici>=7.24.0`, `ajv>=8.18.0`, `diff>=8.0.3`, `@tootallnate/once>=3.0.1`, `@isaacs/brace-expansion>=5.0.1`. ([CYPACK-973](https://linear.app/ceedar/issue/CYPACK-973), [#1000](https://github.com/ceedaragents/cyrus/pull/1000))
+- Fixed worktree not being recreated after terminal state cleanup. The `git worktree list` existence check used substring matching (`includes()`), causing `/path/CYSV-56` to falsely match stale entry `/path/CYSV-56/cyrus`. Changed to exact line-by-line path matching. Added stale worktree validation — if a path is listed in git but has no valid `.git` file on disk, prunes the stale entry and recreates the worktree. Fixed `git worktree remove` in `deleteWorktree()` failing with "not a git repository" by deriving the main repo path from the worktree's `.git` file and passing it as `cwd`. Added post-deletion `git worktree prune` for parent repositories. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- Rewrote `CONTRIBUTING.md` — fixed wrong project name (was "Linear Claude Agent"), wrong license (said MIT, is Apache 2.0), wrong test framework (said Jest, uses Vitest), wrong package manager commands (`npm` → `pnpm`), wrong issue tracker (said GitHub issues, uses Linear), reference to non-existent `.env.example`, and wrong code style guidance (said JSDoc, uses TypeScript). Added monorepo structure, prerequisites, changelog requirements, Biome/Husky tooling, and common commands. ([CYPACK-972](https://linear.app/ceedar/issue/CYPACK-972), [#999](https://github.com/ceedaragents/cyrus/pull/999))
+- Registered `-l`/`--label` option with Commander for `self-add-repo` command (was documented but never registered, causing `error: unknown option '-l'`). Fixed idle mode messaging to show `cyrus self-add-repo` guidance for self-hosted users (detected via `LINEAR_CLIENT_ID`) instead of cloud URL. Updated `self-auth` error messages to point to `~/.cyrus/.env` instead of `.zshrc`. Made `self-add-repo` URL argument optional so the interactive prompt ("Repository URL: ") is reachable — `cyrus self-add-repo` with no args now prompts for everything. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+
+## [0.2.35] - 2026-03-16
+
+### Changed
+- Renamed `createLinearAgentSession` to `createCyrusAgentSession` and `updateAgentSessionWithClaudeSessionId` to `updateAgentSessionWithRunnerSessionId` in `packages/edge-worker`. Both names were leaky abstractions — the methods are runner-agnostic and handle multiple platforms/runners. ([CYPACK-969](https://linear.app/ceedar/issue/CYPACK-969), [#994](https://github.com/ceedaragents/cyrus/pull/994))
 - Threaded `workspaceId` from `webhook.organizationId` (Linear-native source) through EdgeWorker webhook-driven paths, replacing `requireLinearWorkspaceId(repo)` calls. Reduced usage from 45 to 25 calls; remaining calls are only in config/setup paths where repo config is the rightful source. Added optional `workspaceId` to `PromptAssemblyInput`. ([CYPACK-966](https://linear.app/ceedar/issue/CYPACK-966), [#990](https://github.com/ceedaragents/cyrus/pull/990))
 - Moved `refreshPromise` from closure variable to instance property in `LinearIssueTrackerService` and clear it in `setAccessToken()` to fix stale token refresh bug. Added `getClient()` method to expose the underlying `LinearClient`. Changed `createCyrusToolsServer()` signature to accept `LinearClient` instead of raw token string, ensuring MCP tools reuse the same client with OAuth refresh interceptor. Updated `EdgeWorker` to pass `LinearClient` from `issueTracker.getClient()` to MCP tool server. Added `-l`/`--label` flag to `SelfAddRepoCommand` for custom routing labels with repo-name default. Based on [grandmore/Cyrus-selfhost#2](https://github.com/grandmore/Cyrus-selfhost/pull/2). ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+
+### Fixed
+- `LinearEventTransport.handleDirectWebhook()` now uses `request.rawBody` (the original request bytes stashed by `SharedApplicationServer`) for HMAC signature verification instead of `Buffer.from(JSON.stringify(request.body))`. `JSON.stringify` does not guarantee the same byte sequence as the original request, causing intermittent signature failures. Falls back to `JSON.stringify` when `rawBody` is unavailable.
+- Bumped `file-type` from 18.7.0 to 21.3.2 ([#983](https://github.com/ceedaragents/cyrus/pull/983))
+
+### Added
+- `SelfAuthCommand` now starts a Cloudflare tunnel after OAuth authentication completes, so webhooks can reach the local agent immediately. ([#952](https://github.com/ceedaragents/cyrus/pull/952))
 
 ## [0.2.34] - 2026-03-13
 

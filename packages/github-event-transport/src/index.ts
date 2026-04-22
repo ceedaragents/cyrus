@@ -1,3 +1,8 @@
+export type { GitHubAppTokenProviderConfig } from "./GitHubAppTokenProvider.js";
+export {
+	createAppJwt,
+	GitHubAppTokenProvider,
+} from "./GitHubAppTokenProvider.js";
 export type {
 	AddReactionParams,
 	GitHubCommentResponse,
@@ -30,6 +35,8 @@ export {
 } from "./github-webhook-utils.js";
 export type {
 	GitHubComment,
+	GitHubCommentEventType,
+	GitHubCommentWebhookEvent,
 	GitHubEventTransportConfig,
 	GitHubEventTransportEvents,
 	GitHubEventType,
@@ -41,6 +48,8 @@ export type {
 	GitHubPullRequestRef,
 	GitHubPullRequestReviewCommentPayload,
 	GitHubPullRequestReviewPayload,
+	GitHubPushCommit,
+	GitHubPushPayload,
 	GitHubRepository,
 	GitHubReview,
 	GitHubUser,

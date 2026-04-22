@@ -1,7 +1,8 @@
 import { getCyrusAppUrl } from "cyrus-cloudflare-tunnel-client";
 import type { EdgeWorkerConfig, Issue, RepositoryConfig } from "cyrus-core";
-import type { GitService } from "cyrus-edge-worker";
+import type { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import { EdgeWorker } from "cyrus-edge-worker";
+import { SlackEventTransport } from "cyrus-slack-event-transport";
 import { DEFAULT_SERVER_PORT, parsePort } from "../config/constants.js";
 import type { Workspace } from "../config/types.js";
 import type { ConfigService } from "./ConfigService.js";
@@ -42,58 +43,13 @@ export class WorkerService {
 	 * Used after initial authentication while waiting for server configuration
 	 */
 	async startSetupWaitingMode(): Promise<void> {
-		const { SharedApplicationServer } = await import("cyrus-edge-worker");
-		const { ConfigUpdater } = await import("cyrus-config-updater");
-
-		// Determine server configuration
-		const isExternalHost =
-			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-		const serverPort = parsePort(
-			process.env.CYRUS_SERVER_PORT,
-			DEFAULT_SERVER_PORT,
-		);
-		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
-
-		// Create and start SharedApplicationServer
-		this.setupWaitingServer = new SharedApplicationServer(
-			serverPort,
-			serverHost,
-		);
-		this.setupWaitingServer.initializeFastify();
-
-		// Register ConfigUpdater routes
-		const configUpdater = new ConfigUpdater(
-			this.setupWaitingServer.getFastifyInstance(),
-			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
-		);
-		configUpdater.register();
-
-		this.logger.info("✅ Config updater registered");
-		this.logger.info(
-			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
-		);
-		this.logger.info(
-			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
-		);
-
-		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
-		await this.setupWaitingServer.start();
-
-		this.logger.raw("");
-		this.logger.divider(70);
-		this.logger.info("⏳ Waiting for configuration from server...");
-		this.logger.info(`🔗 Server running on port ${serverPort}`);
-
-		if (process.env.CLOUDFLARE_TOKEN) {
-			this.logger.info("🌩️  Cloudflare tunnel: Active");
-		}
-
-		this.logger.info("📡 Config updater: Ready");
-		this.logger.raw("");
-		this.logger.info("Your Cyrus instance is ready to receive configuration.");
-		this.logger.info(`Complete setup at: ${getCyrusAppUrl()}/onboarding`);
-		this.logger.divider(70);
+		await this.startPreWorkerServer({
+			headerLine: "⏳ Waiting for configuration from server...",
+			footerLines: (appUrl) => [
+				"Your Cyrus instance is ready to receive configuration.",
+				`Complete setup at: ${appUrl}/onboarding`,
+			],
+		});
 	}
 
 	/**
@@ -101,10 +57,30 @@ export class WorkerService {
 	 * Used after onboarding when no repositories are configured
 	 */
 	async startIdleMode(): Promise<void> {
+		await this.startPreWorkerServer({
+			headerLine: "⏸️  No repositories configured",
+			footerLines: (appUrl) =>
+				process.env.LINEAR_CLIENT_ID
+					? ["Add a repository with: cyrus self-add-repo <git-url>"]
+					: [
+							`Waiting for repository configuration from ${appUrl}`,
+							`Add repositories at: ${appUrl}/repos`,
+						],
+		});
+	}
+
+	/**
+	 * Shared infrastructure for modes that run the config-update server without
+	 * an EdgeWorker (setup-waiting, idle). Only the banner text differs between
+	 * modes, so callers supply just the mode-specific lines.
+	 */
+	private async startPreWorkerServer(banner: {
+		headerLine: string;
+		footerLines: (appUrl: string) => string[];
+	}): Promise<void> {
 		const { SharedApplicationServer } = await import("cyrus-edge-worker");
 		const { ConfigUpdater } = await import("cyrus-config-updater");
 
-		// Determine server configuration
 		const isExternalHost =
 			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 		const serverPort = parsePort(
@@ -113,18 +89,16 @@ export class WorkerService {
 		);
 		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
 
-		// Create and start SharedApplicationServer
 		this.setupWaitingServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
 		);
 		this.setupWaitingServer.initializeFastify();
 
-		// Register ConfigUpdater routes
 		const configUpdater = new ConfigUpdater(
 			this.setupWaitingServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 		configUpdater.register();
 
@@ -136,12 +110,14 @@ export class WorkerService {
 			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
 
-		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		this.registerWebhookTransports(this.setupWaitingServer);
+
+		// Starts Cloudflare tunnel too, if CLOUDFLARE_TOKEN is set.
 		await this.setupWaitingServer.start();
 
 		this.logger.raw("");
 		this.logger.divider(70);
-		this.logger.info("⏸️  No repositories configured");
+		this.logger.info(banner.headerLine);
 		this.logger.info(`🔗 Server running on port ${serverPort}`);
 
 		if (process.env.CLOUDFLARE_TOKEN) {
@@ -150,10 +126,33 @@ export class WorkerService {
 
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
-		const appUrl = getCyrusAppUrl();
-		this.logger.info(`Waiting for repository configuration from ${appUrl}`);
-		this.logger.info(`Add repositories at: ${appUrl}/repos`);
+		for (const line of banner.footerLines(getCyrusAppUrl())) {
+			this.logger.info(line);
+		}
 		this.logger.divider(70);
+	}
+
+	/**
+	 * Register webhook endpoints that don't require repositories.
+	 * Called from both idle and setup-waiting modes so that external services
+	 * (e.g. Slack URL verification) can reach Cyrus during onboarding.
+	 */
+	private registerWebhookTransports(server: SharedApplicationServer): void {
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
+		const hasSlackSigningSecret =
+			slackSigningSecret != null && slackSigningSecret !== "";
+
+		if (isExternalHost && hasSlackSigningSecret) {
+			const slackTransport = new SlackEventTransport({
+				fastifyServer: server.getFastifyInstance(),
+				verificationMode: "direct",
+				secret: slackSigningSecret,
+			});
+			slackTransport.register();
+			this.logger.info("✅ Slack webhook registered");
+		}
 	}
 
 	/**
@@ -232,6 +231,7 @@ export class WorkerService {
 			ngrokAuthToken,
 			// User access control configuration
 			userAccessControl: edgeConfig.userAccessControl,
+			sandbox: edgeConfig.sandbox,
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
@@ -261,10 +261,6 @@ export class WorkerService {
 		await this.edgeWorker.start();
 
 		this.logger.success("Edge worker started successfully");
-		this.logger.info(`Managing ${repositories.length} repositories:`);
-		repositories.forEach((repo) => {
-			this.logger.info(`  - ${repo.name} (${repo.repositoryPath})`);
-		});
 	}
 
 	/**

@@ -10,6 +10,7 @@
 
 import type {
 	GitHubPlatformRef,
+	GitLabPlatformRef,
 	LinearPlatformRef,
 	SlackPlatformRef,
 } from "./platform-refs.js";
@@ -27,12 +28,13 @@ export type MessageAction =
 	| "user_prompt" // User message during active session
 	| "stop_signal" // Stop processing request
 	| "content_update" // Issue/PR content changed
-	| "unassign"; // Task unassigned from agent
+	| "unassign" // Task unassigned from agent
+	| "issue_state_change"; // Issue state changed (completed, canceled)
 
 /**
  * Platform source identifier.
  */
-export type MessageSource = "linear" | "github" | "slack";
+export type MessageSource = "linear" | "github" | "gitlab" | "slack";
 
 // ============================================================================
 // AUTHOR TYPES
@@ -137,6 +139,22 @@ export interface GitHubSessionStartPlatformData {
 }
 
 /**
+ * GitLab-specific platform data for session start.
+ */
+export interface GitLabSessionStartPlatformData {
+	/** The event type that triggered this session */
+	eventType: "note" | "merge_request";
+	/** Project information */
+	project: GitLabPlatformRef["project"];
+	/** Merge request information (if available) */
+	mergeRequest?: GitLabPlatformRef["mergeRequest"];
+	/** The note that triggered this session */
+	note: GitLabPlatformRef["note"];
+	/** GitLab access token for API access */
+	accessToken?: string;
+}
+
+/**
  * Slack-specific platform data for session start.
  */
 export interface SlackSessionStartPlatformData {
@@ -168,6 +186,7 @@ export interface SessionStartMessage extends InternalMessageBase {
 	platformData:
 		| LinearSessionStartPlatformData
 		| GitHubSessionStartPlatformData
+		| GitLabSessionStartPlatformData
 		| SlackSessionStartPlatformData;
 }
 
@@ -203,6 +222,20 @@ export interface GitHubUserPromptPlatformData {
 }
 
 /**
+ * GitLab-specific platform data for user prompt.
+ */
+export interface GitLabUserPromptPlatformData {
+	/** The event type */
+	eventType: "note" | "merge_request";
+	/** Project information */
+	project: GitLabPlatformRef["project"];
+	/** The note containing the prompt */
+	note: GitLabPlatformRef["note"];
+	/** GitLab access token for API access */
+	accessToken?: string;
+}
+
+/**
  * Slack-specific platform data for user prompt.
  */
 export interface SlackUserPromptPlatformData {
@@ -228,6 +261,7 @@ export interface UserPromptMessage extends InternalMessageBase {
 	platformData:
 		| LinearUserPromptPlatformData
 		| GitHubUserPromptPlatformData
+		| GitLabUserPromptPlatformData
 		| SlackUserPromptPlatformData;
 }
 
@@ -324,6 +358,33 @@ export interface UnassignMessage extends InternalMessageBase {
 }
 
 // ============================================================================
+// ISSUE STATE CHANGE MESSAGE
+// ============================================================================
+
+/**
+ * Linear-specific platform data for issue state change.
+ */
+export interface LinearIssueStateChangePlatformData {
+	/** Issue that changed state */
+	issue: LinearPlatformRef["issue"];
+}
+
+/**
+ * Issue state change message - issue transitioned to a terminal state.
+ * Triggered by: User moves issue to Done/Cancelled in Linear.
+ *
+ * Note: Linear's issueStatusChanged notification does not include the specific
+ * state type (completed vs canceled), only that the issue reached a terminal state.
+ */
+export interface IssueStateChangeMessage extends InternalMessageBase {
+	action: "issue_state_change";
+	/** Whether the issue reached a terminal state (always true for this message type) */
+	isTerminal: true;
+	/** Platform-specific data */
+	platformData: LinearIssueStateChangePlatformData;
+}
+
+// ============================================================================
 // INTERNAL MESSAGE UNION TYPE
 // ============================================================================
 
@@ -336,4 +397,5 @@ export type InternalMessage =
 	| UserPromptMessage
 	| StopSignalMessage
 	| ContentUpdateMessage
-	| UnassignMessage;
+	| UnassignMessage
+	| IssueStateChangeMessage;

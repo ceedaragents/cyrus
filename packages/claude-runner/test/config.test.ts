@@ -16,49 +16,77 @@ describe("config", () => {
 			expect(availableTools).toEqual([
 				"Read(**)",
 				"Edit(**)",
+				"Write(**)",
+				"Glob",
+				"Grep",
 				"Bash",
 				"Task",
 				"WebFetch",
 				"WebSearch",
-				"TodoRead",
-				"TodoWrite",
-				"NotebookRead",
+				"TaskCreate",
+				"TaskUpdate",
+				"TaskGet",
+				"TaskList",
 				"NotebookEdit",
-				"Batch",
 				"Skill",
 				"AskUserQuestion",
+				"SendMessage",
+				"PushNotification",
+				"EnterPlanMode",
+				"ExitPlanMode",
+				"EnterWorktree",
+				"ExitWorktree",
+				"CronCreate",
+				"CronDelete",
+				"CronList",
+				"RemoteTrigger",
+				"ScheduleWakeup",
+				"Monitor",
+				"TaskOutput",
+				"TaskStop",
+				"TeamCreate",
+				"TeamDelete",
+				"LSP",
+				"ToolSearch",
 			]);
-			expect(availableTools).toHaveLength(13);
+			expect(availableTools).toHaveLength(34);
 		});
 
 		it("should define read-only tools", () => {
 			expect(readOnlyTools).toEqual([
 				"Read(**)",
+				"Glob",
+				"Grep",
 				"WebFetch",
 				"WebSearch",
-				"TodoRead",
-				"TodoWrite",
-				"NotebookRead",
+				"TaskCreate",
+				"TaskUpdate",
+				"TaskGet",
+				"TaskList",
 				"Task",
-				"Batch",
 				"Skill",
+				"Monitor",
+				"TaskOutput",
+				"EnterPlanMode",
+				"ExitPlanMode",
+				"ToolSearch",
 			]);
-			expect(readOnlyTools).toHaveLength(9);
+			expect(readOnlyTools).toHaveLength(16);
 		});
 
 		it("should define write tools", () => {
 			expect(writeTools).toEqual([
 				"Edit(**)",
+				"Write(**)",
 				"Bash",
-				"TodoWrite",
 				"NotebookEdit",
 			]);
 			expect(writeTools).toHaveLength(4);
 		});
 
-		it("should have TodoWrite in both read-only and write tools (for task tracking)", () => {
+		it("should have no overlap between read-only and write tools (task tools are read-only)", () => {
 			const overlap = readOnlyTools.filter((tool) => writeTools.includes(tool));
-			expect(overlap).toEqual(["TodoWrite"]);
+			expect(overlap).toEqual([]);
 		});
 
 		it("should have all categorized tools in available tools", () => {
@@ -101,23 +129,22 @@ describe("config", () => {
 		it("getSafeTools should return all tools except Bash", () => {
 			const tools = getSafeTools();
 
-			// Should contain all tools except Bash
 			expect(tools).toContain("Read(**)");
 			expect(tools).toContain("Edit(**)");
+			expect(tools).toContain("Write(**)");
+			expect(tools).toContain("Glob");
+			expect(tools).toContain("Grep");
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
-			expect(tools).toContain("TodoRead");
-			expect(tools).toContain("TodoWrite");
-			expect(tools).toContain("NotebookRead");
+			expect(tools).toContain("TaskCreate");
 			expect(tools).toContain("NotebookEdit");
-			expect(tools).toContain("Batch");
 			expect(tools).toContain("Skill");
 			expect(tools).toContain("AskUserQuestion");
 			expect(tools).not.toContain("Bash");
 
-			// Should have 12 tools (all 13 minus Bash)
-			expect(tools).toHaveLength(12);
+			// Should have all tools minus Bash
+			expect(tools).toHaveLength(availableTools.length - 1);
 		});
 
 		it("getCoordinatorTools should return all tools except file editing tools", () => {
@@ -125,22 +152,22 @@ describe("config", () => {
 
 			// Should include read and execution tools
 			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Glob");
+			expect(tools).toContain("Grep");
 			expect(tools).toContain("Bash"); // For running tests/builds
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
-			expect(tools).toContain("TodoRead");
-			expect(tools).toContain("TodoWrite"); // For task tracking
-			expect(tools).toContain("NotebookRead");
-			expect(tools).toContain("Batch");
+			expect(tools).toContain("TaskCreate"); // For task tracking
 			expect(tools).toContain("Skill"); // For Skills functionality
 
 			// Should NOT include file editing tools
 			expect(tools).not.toContain("Edit(**)");
+			expect(tools).not.toContain("Write(**)");
 			expect(tools).not.toContain("NotebookEdit");
 
-			// Should have 10 tools
-			expect(tools).toHaveLength(10);
+			// Should have all tools minus Edit, Write, NotebookEdit
+			expect(tools).toHaveLength(availableTools.length - 3);
 		});
 
 		it("coordinator tools should allow reading and task tracking but not file editing", () => {
@@ -148,10 +175,12 @@ describe("config", () => {
 
 			// Can read files
 			expect(coordinatorTools).toContain("Read(**)");
-			expect(coordinatorTools).toContain("NotebookRead");
+			expect(coordinatorTools).toContain("Glob");
+			expect(coordinatorTools).toContain("Grep");
 
 			// Cannot edit files
 			expect(coordinatorTools).not.toContain("Edit(**)");
+			expect(coordinatorTools).not.toContain("Write");
 			expect(coordinatorTools).not.toContain("NotebookEdit");
 
 			// Can run commands (for tests, builds, git)
@@ -159,8 +188,7 @@ describe("config", () => {
 
 			// Can delegate and track tasks
 			expect(coordinatorTools).toContain("Task");
-			expect(coordinatorTools).toContain("TodoWrite");
-			expect(coordinatorTools).toContain("TodoRead");
+			expect(coordinatorTools).toContain("TaskCreate");
 
 			// Can use Skills
 			expect(coordinatorTools).toContain("Skill");
@@ -190,14 +218,19 @@ describe("config", () => {
 	});
 
 	describe("Tool Categorization Logic", () => {
-		it("Read(**) should be read-only", () => {
+		it("Read should be read-only", () => {
 			expect(readOnlyTools).toContain("Read(**)");
 			expect(writeTools).not.toContain("Read(**)");
 		});
 
-		it("Edit(**) should be a write tool", () => {
+		it("Edit should be a write tool", () => {
 			expect(writeTools).toContain("Edit(**)");
 			expect(readOnlyTools).not.toContain("Edit(**)");
+		});
+
+		it("Write should be a write tool", () => {
+			expect(writeTools).toContain("Write(**)");
+			expect(readOnlyTools).not.toContain("Write(**)");
 		});
 
 		it("Bash should be a write tool (can modify system)", () => {
@@ -220,19 +253,18 @@ describe("config", () => {
 			expect(writeTools).not.toContain("WebSearch");
 		});
 
-		it("Todo tools should be categorized correctly", () => {
-			expect(readOnlyTools).toContain("TodoRead");
-			expect(writeTools).toContain("TodoWrite");
+		it("Glob should be read-only", () => {
+			expect(readOnlyTools).toContain("Glob");
+			expect(writeTools).not.toContain("Glob");
+		});
+
+		it("Grep should be read-only", () => {
+			expect(readOnlyTools).toContain("Grep");
+			expect(writeTools).not.toContain("Grep");
 		});
 
 		it("Notebook tools should be categorized correctly", () => {
-			expect(readOnlyTools).toContain("NotebookRead");
 			expect(writeTools).toContain("NotebookEdit");
-		});
-
-		it("Batch should be read-only", () => {
-			expect(readOnlyTools).toContain("Batch");
-			expect(writeTools).not.toContain("Batch");
 		});
 
 		it("Skill should be read-only", () => {

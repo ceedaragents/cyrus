@@ -9,19 +9,39 @@
 
 [![Discord](https://img.shields.io/discord/1443747721910685792?label=Discord&logo=discord&logoColor=white)](https://discord.gg/prrtADHYTt)
 
-Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|Github|Slack) agent. Cyrus monitors (Linear|Github) issues assigned to it, creates isolated Git worktrees for each issue, runs (Claude Code|Codex|Cursor|Gemini) sessions to process them, and streams detailed agent activity updates back to (Linear|Github), along with rich interactions like dropdown selects and approvals.
+Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|GitHub|GitLab|Slack) agent. Cyrus monitors (Linear|GitHub|GitLab|Slack) issues assigned to it, creates isolated Git worktrees for each issue, runs (Claude Code|Codex|Cursor|Gemini) sessions to process them, and streams detailed agent activity updates back to (Linear|GitHub), along with rich interactions like dropdown selects and approvals.
 
-**Note:** Cyrus requires you to bring your own keys/billing for tokens.
+**Note:** Cyrus is a BYOK platform (bring your keys / subscriptions) for tokens.
 
 ---
 
 ## Getting Started
 
+### End-to-End Self-Hosted (Community)
+
+Zero cost option — host everything yourself with your own Linear OAuth app, GitHub App, and Slack App. An AI-guided setup skill handles the entire onboarding: installing dependencies, configuring auth, creating integration apps, and connecting repositories — so you don't have to follow a manual guide.
+
+```bash
+npx skills add ceedaragents/cyrus -g
+```
+
+Then in any AI coding agent (Claude Code, Codex, Cursor, etc.):
+
+```
+/cyrus-setup
+```
+
+Or follow the **[manual setup guide](./docs/SELF_HOSTING.md)** if you prefer.
+
+---
+
 ### Pro & Team Plans
 
 Configure Cyrus through the dashboard at [app.atcyrus.com](https://app.atcyrus.com).
 
-#### For self-hosted deployments
+#### For paid self-hosted deployments
+
+It is called 'self-hosted' because it uses a machine you control as the agent runtime. Networking layer and integrations are provided by the Cyrus cloud provider.
 
 ```bash
 # Install Cyrus
@@ -31,7 +51,7 @@ npm install -g cyrus-ai
 cyrus auth <your-token>
 ```
 
-For Cyrus to create pull requests, configure Git and GitHub CLI. See **[Git & GitHub Setup](./docs/GIT_GITHUB.md)**.
+For Cyrus to create pull requests or merge requests, configure Git and your hosting CLI. See **[Git & GitHub Setup](./docs/GIT_GITHUB.md)** or **[Git & GitLab Setup](./docs/GIT_GITLAB.md)**.
 
 Keep Cyrus running as a persistent process:
 
@@ -45,18 +65,11 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ---
 
-### End-to-End Self-Hosted (Community)
-
-Zero cost option. This requires hosting everything yourself, including your own Linear OAuth app.
-
-Follow the complete **[End-to-End Community Guide](./docs/SELF_HOSTING.md)**.
-
----
-
-## Documentation
+## More Documentation
 
 - **[End-to-End Community Guide](./docs/SELF_HOSTING.md)** - Complete community manual setup
 - **[Git & GitHub Setup](./docs/GIT_GITHUB.md)** - Git and GitHub CLI configuration for PRs
+- **[Git & GitLab Setup](./docs/GIT_GITLAB.md)** - Git and GitLab CLI configuration for MRs
 - **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options
 - **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance
 - **[Setup Scripts](./docs/SETUP_SCRIPTS.md)** - Repository and global initialization scripts

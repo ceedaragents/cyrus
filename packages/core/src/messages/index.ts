@@ -18,6 +18,7 @@ export type {
 // Platform reference types
 export type {
 	GitHubPlatformRef,
+	GitLabPlatformRef,
 	LinearPlatformRef,
 	SlackPlatformRef,
 } from "./platform-refs.js";
@@ -26,12 +27,16 @@ export type {
 export {
 	hasGitHubSessionStartPlatformData,
 	hasGitHubUserPromptPlatformData,
+	hasGitLabSessionStartPlatformData,
+	hasGitLabUserPromptPlatformData,
 	hasLinearSessionStartPlatformData,
 	hasLinearUserPromptPlatformData,
 	hasSlackSessionStartPlatformData,
 	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
 	isGitHubMessage,
+	isGitLabMessage,
+	isIssueStateChangeMessage,
 	isLinearMessage,
 	isSessionStartMessage,
 	isSlackMessage,
@@ -45,10 +50,15 @@ export type {
 	ContentUpdateMessage,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
+	// GitLab platform data types
+	GitLabSessionStartPlatformData,
+	GitLabUserPromptPlatformData,
 	GuidanceItem,
 	InternalMessage,
 	InternalMessageBase,
+	IssueStateChangeMessage,
 	LinearContentUpdatePlatformData,
+	LinearIssueStateChangePlatformData,
 	// Platform-specific data types
 	LinearSessionStartPlatformData,
 	LinearStopSignalPlatformData,

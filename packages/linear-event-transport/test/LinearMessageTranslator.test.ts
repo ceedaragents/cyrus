@@ -422,6 +422,141 @@ describe("LinearMessageTranslator", () => {
 		});
 	});
 
+	describe("translate - IssueStateChange", () => {
+		it("should translate issueStatusChanged notification as IssueStateChangeMessage", () => {
+			// Matches the real payload structure confirmed via production logging:
+			// Linear does NOT include state info in issueStatusChanged notifications
+			const webhook: LinearWebhookPayload = {
+				type: "AppUserNotification",
+				action: "issueStatusChanged",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-123",
+					type: "issueStatusChanged",
+					issue: {
+						id: "issue-123",
+						identifier: "DEF-123",
+						title: "Test Issue",
+						url: "https://linear.app/test/DEF-123",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+					},
+					issueId: "issue-123",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("issue_state_change");
+			expect(result.message.source).toBe("linear");
+			expect(result.message.workItemId).toBe("issue-123");
+			expect(result.message.workItemIdentifier).toBe("DEF-123");
+
+			const stateChange = result.message;
+			if (stateChange.action !== "issue_state_change") return;
+
+			expect(stateChange.isTerminal).toBe(true);
+		});
+
+		it("should not match other AppUserNotification actions as state changes", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "AppUserNotification",
+				action: "issueAssignedToYou",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-999",
+					type: "issueAssignedToYou",
+					issue: {
+						id: "issue-999",
+						identifier: "DEF-999",
+						title: "Assigned Issue",
+						url: "https://linear.app/test/DEF-999",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+					},
+					issueId: "issue-999",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			// issueAssignedToYou is not handled by the translator (handled via legacy path)
+			// so it should fall through to unsupported
+			expect(result.success).toBe(false);
+		});
+	});
+
+	describe("translate - IssueDeleted", () => {
+		it("should translate Issue/remove webhook as IssueStateChangeMessage", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "remove",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-456",
+					identifier: "DEF-456",
+					title: "Deleted Issue",
+					url: "https://linear.app/test/DEF-456",
+					team: { id: "team-123", key: "DEF", name: "Default" },
+					teamId: "team-123",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("issue_state_change");
+			expect(result.message.source).toBe("linear");
+			expect(result.message.workItemId).toBe("issue-456");
+			expect(result.message.workItemIdentifier).toBe("DEF-456");
+
+			const stateChange = result.message;
+			if (stateChange.action !== "issue_state_change") return;
+
+			expect(stateChange.isTerminal).toBe(true);
+		});
+
+		it("should not match Issue/update as issue deleted", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "update",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-789",
+					identifier: "DEF-789",
+					title: "Updated Issue",
+					url: "https://linear.app/test/DEF-789",
+					team: { id: "team-123", key: "DEF", name: "Default" },
+					teamId: "team-123",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			// Issue/update without title/description changes falls through to unsupported
+			expect(result.success).toBe(false);
+		});
+	});
+
 	describe("translate - unsupported webhooks", () => {
 		it("should return failure for unsupported webhook types", () => {
 			const webhook: LinearWebhookPayload = {

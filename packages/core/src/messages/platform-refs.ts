@@ -212,6 +212,81 @@ export interface GitHubPlatformRef {
 }
 
 // ============================================================================
+// GITLAB PLATFORM REFERENCES
+// ============================================================================
+
+/**
+ * GitLab platform reference types.
+ * These map to GitLab webhook payload structures.
+ */
+export interface GitLabPlatformRef {
+	/** Project data from webhook */
+	project: {
+		/** Project ID */
+		id: number;
+		/** Project name */
+		name: string;
+		/** Full path with namespace (e.g., "group/project") */
+		pathWithNamespace: string;
+		/** Project web URL */
+		webUrl: string;
+		/** Default branch */
+		defaultBranch: string;
+	};
+
+	/** Merge request data from webhook */
+	mergeRequest: {
+		/** MR global ID */
+		id: number;
+		/** MR project-scoped ID (what users see, e.g., !42) */
+		iid: number;
+		/** MR title */
+		title: string;
+		/** MR description */
+		description: string | null;
+		/** MR state */
+		state: string;
+		/** MR web URL */
+		webUrl: string;
+		/** Source branch */
+		sourceBranch: string;
+		/** Target branch */
+		targetBranch: string;
+		/** MR author */
+		author: {
+			username: string;
+			id: number;
+		};
+	};
+
+	/** Note (comment) data from webhook */
+	note: {
+		/** Note ID */
+		id: number;
+		/** Note body */
+		body: string;
+		/** Type of object the note is on (e.g., "MergeRequest") */
+		noteableType: string;
+		/** Note author */
+		author: {
+			username: string;
+			id: number;
+			avatarUrl: string;
+		};
+		/** Note creation timestamp */
+		createdAt: string;
+		/** For diff notes: file position */
+		position?: {
+			newPath?: string;
+			oldPath?: string;
+			newLine?: number;
+		};
+		/** Discussion ID for threaded replies */
+		discussionId?: string;
+	};
+}
+
+// ============================================================================
 // SLACK PLATFORM REFERENCES (Future)
 // ============================================================================
 

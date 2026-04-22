@@ -7,38 +7,122 @@ vi.mock("cyrus-claude-runner", () => ({
 	getSafeTools: vi.fn(() => [
 		"Read",
 		"Edit",
+		"Write",
+		"Glob",
+		"Grep",
 		"Task",
 		"WebFetch",
 		"WebSearch",
-		"TodoRead",
-		"TodoWrite",
-		"NotebookRead",
+		"TaskCreate",
+		"TaskUpdate",
+		"TaskGet",
+		"TaskList",
 		"NotebookEdit",
-		"Batch",
+		"Skill",
+		"AskUserQuestion",
+		"SendMessage",
+		"PushNotification",
+		"EnterPlanMode",
+		"ExitPlanMode",
+		"EnterWorktree",
+		"ExitWorktree",
+		"CronCreate",
+		"CronDelete",
+		"CronList",
+		"RemoteTrigger",
+		"ScheduleWakeup",
+		"Monitor",
+		"TaskOutput",
+		"TaskStop",
+		"TeamCreate",
+		"TeamDelete",
+		"LSP",
+		"ToolSearch",
 	]),
 	getReadOnlyTools: vi.fn(() => [
 		"Read",
+		"Glob",
+		"Grep",
 		"WebFetch",
 		"WebSearch",
-		"TodoRead",
-		"NotebookRead",
+		"TaskCreate",
+		"TaskUpdate",
+		"TaskGet",
+		"TaskList",
 		"Task",
-		"Batch",
+		"Skill",
+		"Monitor",
+		"TaskOutput",
+		"EnterPlanMode",
+		"ExitPlanMode",
+		"ToolSearch",
 	]),
 	getAllTools: vi.fn(() => [
 		"Read",
 		"Edit",
+		"Write",
+		"Glob",
+		"Grep",
+		"Bash",
 		"Task",
 		"WebFetch",
 		"WebSearch",
-		"TodoRead",
-		"TodoWrite",
-		"NotebookRead",
+		"TaskCreate",
+		"TaskUpdate",
+		"TaskGet",
+		"TaskList",
 		"NotebookEdit",
-		"Batch",
-		"Bash",
+		"Skill",
+		"AskUserQuestion",
+		"SendMessage",
+		"PushNotification",
+		"EnterPlanMode",
+		"ExitPlanMode",
+		"EnterWorktree",
+		"ExitWorktree",
+		"CronCreate",
+		"CronDelete",
+		"CronList",
+		"RemoteTrigger",
+		"ScheduleWakeup",
+		"Monitor",
+		"TaskOutput",
+		"TaskStop",
+		"TeamCreate",
+		"TeamDelete",
+		"LSP",
+		"ToolSearch",
 	]),
-	getCoordinatorTools: vi.fn(() => ["Read", "Task", "Batch"]),
+	getCoordinatorTools: vi.fn(() => [
+		"Read",
+		"Glob",
+		"Grep",
+		"Bash",
+		"Task",
+		"WebFetch",
+		"WebSearch",
+		"TaskCreate",
+		"Skill",
+		"AskUserQuestion",
+		"SendMessage",
+		"PushNotification",
+		"EnterPlanMode",
+		"ExitPlanMode",
+		"EnterWorktree",
+		"ExitWorktree",
+		"CronCreate",
+		"CronDelete",
+		"CronList",
+		"RemoteTrigger",
+		"ScheduleWakeup",
+		"Monitor",
+		"TaskOutput",
+		"TaskStop",
+		"TeamCreate",
+		"TeamDelete",
+		"LSP",
+		"ToolSearch",
+	]),
 }));
 vi.mock("@linear/sdk");
 vi.mock("cyrus-linear-event-transport");
@@ -194,6 +278,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Edit",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -224,6 +309,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				...expectedUnion,
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -243,6 +329,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 			// MCP tools appear exactly once
 			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
 			expect(tools.filter((t) => t === "mcp__cyrus-tools")).toHaveLength(1);
+			expect(tools.filter((t) => t === "mcp__cyrus-docs")).toHaveLength(1);
 		});
 
 		it("should include Slack MCP when SLACK_BOT_TOKEN is set for multi-repo", () => {
@@ -275,6 +362,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Edit",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -291,6 +379,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				...getSafeTools(),
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -308,6 +397,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Write",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -340,6 +430,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Bash",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 	});
@@ -504,7 +595,9 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 
 	describe("buildMergedMcpConfigPath - multi-repo MCP path merging", () => {
 		const getBuildMergedMcpConfigPath = (ew: EdgeWorker) =>
-			(ew as any).buildMergedMcpConfigPath.bind(ew);
+			(ew as any).mcpConfigService.buildMergedMcpConfigPath.bind(
+				(ew as any).mcpConfigService,
+			);
 
 		it("should return single repo mcpConfigPath unchanged", () => {
 			const repository: RepositoryConfig = {

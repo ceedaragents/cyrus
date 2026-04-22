@@ -125,7 +125,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
-			createLinearAgentSession: vi.fn(),
+			createCyrusAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
 				id: "agent-session-123",
 				externalSessionId: "agent-session-123",
@@ -150,7 +150,6 @@ describe("EdgeWorker - System Prompt Resume", () => {
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
-			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
 			setActivitySink: vi.fn(),
 			on: vi.fn(), // EventEmitter method

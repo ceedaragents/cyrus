@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-config-updater",
-	"version": "0.2.34",
+	"version": "0.2.48",
 	"description": "Configuration update handlers for Cyrus agent",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -24,7 +24,7 @@
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.25.2",
 		"cyrus-core": "workspace:*",
-		"fastify": "^5.8.1",
+		"fastify": "^5.8.5",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {

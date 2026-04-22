@@ -10,7 +10,7 @@ import type { IActivitySink } from "../src/sinks/IActivitySink";
 /**
  * Tests that GitHub (non-Linear) sessions skip all Linear activity posting.
  *
- * When `platform: "github"` is passed to createLinearAgentSession, the session
+ * When `platform: "github"` is passed to createCyrusAgentSession, the session
  * has no externalSessionId, so all postActivity calls should be skipped.
  */
 describe("AgentSessionManager - GitHub Session", () => {
@@ -33,7 +33,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 	});
 
 	function createGitHubSession() {
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			issueId,
 			{
@@ -50,7 +50,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 	}
 
 	function createLinearSession() {
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			issueId,
 			{
@@ -155,6 +155,14 @@ describe("AgentSessionManager - GitHub Session", () => {
 		};
 
 		await manager.handleClaudeMessage(sessionId, assistantMessage);
+
+		// Assistant text is held in the one-behind buffer until the next message
+		// flushes it. Send a second assistant message to flush the first.
+		const secondMessage: SDKAssistantMessage = {
+			...assistantMessage,
+			uuid: "00000000-0000-0000-0000-000000000002" as `${string}-${string}-${string}-${string}-${string}`,
+		};
+		await manager.handleClaudeMessage(sessionId, secondMessage);
 
 		expect(postActivitySpy).toHaveBeenCalled();
 	});

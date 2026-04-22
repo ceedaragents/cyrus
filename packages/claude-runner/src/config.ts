@@ -18,6 +18,9 @@ export const availableTools = [
 	// File system tools
 	"Read(**)",
 	"Edit(**)",
+	"Write(**)",
+	"Glob",
+	"Grep",
 
 	// Execution tools
 	"Bash",
@@ -28,15 +31,13 @@ export const availableTools = [
 	"WebSearch",
 
 	// Task management
-	"TodoRead",
-	"TodoWrite",
+	"TaskCreate",
+	"TaskUpdate",
+	"TaskGet",
+	"TaskList",
 
 	// Notebook tools
-	"NotebookRead",
 	"NotebookEdit",
-
-	// Utility tools
-	"Batch",
 
 	// Skills - enables Claude to use packaged capabilities (SKILL.md files)
 	// See: https://platform.claude.com/docs/en/agent-sdk/skills
@@ -44,35 +45,71 @@ export const availableTools = [
 
 	// User interaction tools
 	"AskUserQuestion",
+	"SendMessage",
+	"PushNotification",
+
+	// Plan and worktree management
+	"EnterPlanMode",
+	"ExitPlanMode",
+	"EnterWorktree",
+	"ExitWorktree",
+
+	// Scheduling and cron tools
+	"CronCreate",
+	"CronDelete",
+	"CronList",
+	"RemoteTrigger",
+	"ScheduleWakeup",
+
+	// Monitoring and task lifecycle
+	"Monitor",
+	"TaskOutput",
+	"TaskStop",
+
+	// Team management
+	"TeamCreate",
+	"TeamDelete",
+
+	// IDE/LSP integration
+	"LSP",
+
+	// Tool discovery
+	"ToolSearch",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
 
 /**
  * Default read-only tools that are safe to enable
- * Note: TodoWrite is included as it only modifies task tracking, not actual code files
+ * Note: Task tools are included as they only modify task tracking, not actual code files
  * Note: Skill is included as it enables Claude to use Skills which are packaged capabilities
  */
 export const readOnlyTools: ToolName[] = [
 	"Read(**)",
+	"Glob",
+	"Grep",
 	"WebFetch",
 	"WebSearch",
-	"TodoRead",
-	"TodoWrite",
-	"NotebookRead",
+	"TaskCreate",
+	"TaskUpdate",
+	"TaskGet",
+	"TaskList",
 	"Task",
-	"Batch",
 	"Skill",
+	"Monitor",
+	"TaskOutput",
+	"EnterPlanMode",
+	"ExitPlanMode",
+	"ToolSearch",
 ];
 
 /**
  * Tools that can modify the file system or state
- * Note: TodoWrite modifies task state but not actual files
  */
 export const writeTools: ToolName[] = [
 	"Edit(**)",
+	"Write(**)",
 	"Bash",
-	"TodoWrite",
 	"NotebookEdit",
 ];
 
@@ -94,41 +131,16 @@ export function getAllTools(): string[] {
  * Get all tools except Bash (safer default for repository configuration)
  */
 export function getSafeTools(): string[] {
-	return [
-		"Read(**)",
-		"Edit(**)",
-		"Task",
-		"WebFetch",
-		"WebSearch",
-		"TodoRead",
-		"TodoWrite",
-		"NotebookRead",
-		"NotebookEdit",
-		"Batch",
-		"Skill",
-		"AskUserQuestion",
-	];
+	return [...availableTools].filter((t) => t !== "Bash");
 }
 
 /**
  * Get coordinator tools - all tools except those that can edit files
- * Includes: Read, Bash (for running tests/builds), Task, WebFetch, WebSearch, TodoRead, TodoWrite, NotebookRead, Batch, Skill
- * Excludes: Edit, NotebookEdit (no file/content modification)
+ * Excludes: Edit, Write, NotebookEdit (no file/content modification)
  * Used by orchestrator role for coordination without direct file modification
- * Note: TodoWrite is included for task tracking during coordination
- * Note: Skill is included to enable Skills functionality
  */
 export function getCoordinatorTools(): string[] {
-	return [
-		"Read(**)",
-		"Bash", // Included for running tests, builds, git commands
-		"Task",
-		"WebFetch",
-		"WebSearch",
-		"TodoRead",
-		"TodoWrite", // For task tracking during coordination
-		"NotebookRead",
-		"Batch",
-		"Skill", // For Skills functionality
-	];
+	return [...availableTools].filter(
+		(t) => t !== "Edit(**)" && t !== "Write(**)" && t !== "NotebookEdit",
+	);
 }

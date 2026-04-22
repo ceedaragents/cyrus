@@ -11,7 +11,10 @@ import type {
 	ContentUpdateMessage,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
+	GitLabSessionStartPlatformData,
+	GitLabUserPromptPlatformData,
 	InternalMessage,
+	IssueStateChangeMessage,
 	LinearSessionStartPlatformData,
 	LinearUserPromptPlatformData,
 	SessionStartMessage,
@@ -71,6 +74,15 @@ export function isUnassignMessage(
 	return message.action === "unassign";
 }
 
+/**
+ * Type guard for IssueStateChangeMessage.
+ */
+export function isIssueStateChangeMessage(
+	message: InternalMessage,
+): message is IssueStateChangeMessage {
+	return message.action === "issue_state_change";
+}
+
 // ============================================================================
 // SOURCE-SPECIFIC TYPE GUARDS
 // ============================================================================
@@ -87,6 +99,13 @@ export function isLinearMessage(message: InternalMessage): boolean {
  */
 export function isGitHubMessage(message: InternalMessage): boolean {
 	return message.source === "github";
+}
+
+/**
+ * Type guard to check if message is from GitLab.
+ */
+export function isGitLabMessage(message: InternalMessage): boolean {
+	return message.source === "gitlab";
 }
 
 /**
@@ -142,6 +161,28 @@ export function hasGitHubUserPromptPlatformData(
 	platformData: GitHubUserPromptPlatformData;
 } {
 	return message.source === "github";
+}
+
+/**
+ * Type guard for GitLab platform data in SessionStartMessage.
+ */
+export function hasGitLabSessionStartPlatformData(
+	message: SessionStartMessage,
+): message is SessionStartMessage & {
+	platformData: GitLabSessionStartPlatformData;
+} {
+	return message.source === "gitlab";
+}
+
+/**
+ * Type guard for GitLab platform data in UserPromptMessage.
+ */
+export function hasGitLabUserPromptPlatformData(
+	message: UserPromptMessage,
+): message is UserPromptMessage & {
+	platformData: GitLabUserPromptPlatformData;
+} {
+	return message.source === "gitlab";
 }
 
 /**

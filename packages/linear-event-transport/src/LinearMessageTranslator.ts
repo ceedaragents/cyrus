@@ -14,7 +14,9 @@ import type {
 	ContentUpdateMessage,
 	GuidanceItem,
 	IMessageTranslator,
+	IssueStateChangeMessage,
 	LinearContentUpdatePlatformData,
+	LinearIssueStateChangePlatformData,
 	LinearPlatformRef,
 	LinearSessionStartPlatformData,
 	LinearStopSignalPlatformData,
@@ -30,13 +32,18 @@ import type {
 import {
 	type AgentSessionCreatedWebhook,
 	type AgentSessionPromptedWebhook,
+	type IssueDeletedWebhook,
+	type IssueStateChangeWebhook,
 	type IssueUnassignedWebhook,
 	type IssueUpdateWebhook,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isIssueDeletedWebhook,
+	isIssueStateChangeWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	type Webhook,
+	type WebhookIssue,
 } from "cyrus-core";
 
 // Helper type for safely accessing nested properties that may not exist in webhook types
@@ -88,6 +95,14 @@ export class LinearMessageTranslator
 
 		if (isIssueUnassignedWebhook(w)) {
 			return this.translateIssueUnassigned(w, context);
+		}
+
+		if (isIssueStateChangeWebhook(w)) {
+			return this.translateIssueStateChange(w, context);
+		}
+
+		if (isIssueDeletedWebhook(w)) {
+			return this.translateIssueDeleted(w, context);
 		}
 
 		if (isIssueTitleOrDescriptionUpdateWebhook(w)) {
@@ -344,6 +359,80 @@ export class LinearMessageTranslator
 			workItemId: issueData.id,
 			workItemIdentifier: issueData.identifier,
 			changes,
+			platformData,
+		};
+
+		return { success: true, message };
+	}
+
+	/**
+	 * Translate IssueStateChangeWebhook (AppUserNotification/issueStatusChanged) to IssueStateChangeMessage.
+	 *
+	 * Linear sends these notifications for terminal state changes (completed/canceled).
+	 * The notification payload does not include state info — only the issue reference.
+	 */
+	private translateIssueStateChange(
+		webhook: IssueStateChangeWebhook,
+		_context?: TranslationContext,
+	): TranslationResult {
+		const { notification, organizationId, createdAt } = webhook;
+		const issue = notification.issue;
+
+		if (!issue) {
+			return {
+				success: false,
+				reason: "IssueStateChange webhook missing issue data",
+			};
+		}
+
+		return this.buildTerminalStateMessage(issue, organizationId, createdAt);
+	}
+
+	/**
+	 * Translate IssueDeletedWebhook (Issue/remove) to IssueStateChangeMessage.
+	 *
+	 * A deleted issue is effectively terminal — the same cleanup
+	 * (stop sessions, delete worktrees) should occur.
+	 */
+	private translateIssueDeleted(
+		webhook: IssueDeletedWebhook,
+		_context?: TranslationContext,
+	): TranslationResult {
+		const { data: issueData, organizationId, createdAt } = webhook;
+
+		if (!issueData) {
+			return {
+				success: false,
+				reason: "IssueDeleted webhook missing issue data",
+			};
+		}
+
+		return this.buildTerminalStateMessage(issueData, organizationId, createdAt);
+	}
+
+	/**
+	 * Build an IssueStateChangeMessage for an issue that has reached a terminal state.
+	 * Shared by state change (completed/canceled) and deletion translations.
+	 */
+	private buildTerminalStateMessage(
+		issueData: WebhookIssue,
+		organizationId: string,
+		createdAt: Date | string | undefined,
+	): TranslationResult {
+		const platformData: LinearIssueStateChangePlatformData = {
+			issue: this.buildIssueRef(issueData as SafeRecord),
+		};
+
+		const message: IssueStateChangeMessage = {
+			id: randomUUID(),
+			source: "linear",
+			action: "issue_state_change",
+			receivedAt: this.toISOString(createdAt),
+			organizationId,
+			sessionKey: issueData.id,
+			workItemId: issueData.id,
+			workItemIdentifier: issueData.identifier,
+			isTerminal: true,
 			platformData,
 		};
 

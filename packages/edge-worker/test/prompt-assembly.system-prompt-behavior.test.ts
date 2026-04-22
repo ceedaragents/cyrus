@@ -13,7 +13,7 @@ describe("Prompt Assembly - System Prompt Behavior", () => {
 
 		const session = {
 			issueId: "d4e5f6a7-b8c9-0123-def1-234567890123",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -73,7 +73,7 @@ No comments yet.
 		expect(result.systemPrompt).toBeDefined();
 		expect(result.systemPrompt).toContain("<task_management_instructions>");
 		expect(result.systemPrompt).toContain(
-			"CRITICAL: You MUST use the TodoWrite",
+			"CRITICAL: You MUST use the Task tools",
 		);
 		expect(result.systemPrompt).not.toContain("builder");
 		expect(result.systemPrompt).not.toContain("debugger");
@@ -96,7 +96,7 @@ No comments yet.
 
 		const session = {
 			issueId: "e5f6a7b8-c9d0-1234-ef12-345678901234",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -165,7 +165,7 @@ Build the payment integration
 		// Verify todolist-system-prompt-extension instructions are NOT included in label-based prompts
 		// Check for unique content from todolist-system-prompt-extension that won't be in builder prompt
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 		expect(result.systemPrompt).not.toContain("YOU ARE IN 1 OF 2 SITUATIONS");
 		expect(result.systemPrompt).not.toContain("**Situation 1 - Execute**");
@@ -187,7 +187,7 @@ Build the payment integration
 
 		const session = {
 			issueId: "f6a7b8c9-d0e1-2345-f012-345678901234",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -255,7 +255,7 @@ Orchestrate this task
 
 		// Verify shared instructions are NOT included in label-based prompts
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 	});
 
@@ -279,7 +279,7 @@ Orchestrate this task
 
 		const session = {
 			issueId: "a7b8c9d0-e1f2-3456-0123-456789abcdef",
-			workspace: { path: "/test" },
+			workspace: { path: "/test/repo" },
 			metadata: {},
 		};
 
@@ -347,7 +347,7 @@ Orchestrate this task
 
 		// Verify shared instructions are NOT included in label-based prompts
 		expect(result.systemPrompt).not.toContain(
-			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
+			"CRITICAL: You MUST use the Task tools tool extensively",
 		);
 	});
 });

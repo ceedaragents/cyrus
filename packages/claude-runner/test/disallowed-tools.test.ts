@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 
 // Mock file system with all required methods
 vi.mock("fs", () => ({
-	readFileSync: vi.fn(),
+	readFileSync: vi.fn(() => "{}"),
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
 	createWriteStream: vi.fn(() => ({
@@ -19,6 +19,7 @@ vi.mock("fs", () => ({
 		end: vi.fn(),
 		on: vi.fn(),
 	})),
+	writeFileSync: vi.fn(),
 	statSync: vi.fn(() => ({
 		isDirectory: vi.fn(() => true),
 	})),
@@ -43,7 +44,7 @@ describe("ClaudeRunner - disallowedTools", () => {
 	it("should pass disallowedTools to Claude Code when configured", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			disallowedTools: ["Bash", "WebFetch"],
 			cyrusHome: "/test/cyrus",
 		};
@@ -74,14 +75,14 @@ describe("ClaudeRunner - disallowedTools", () => {
 
 		expect(callArgs.options).toBeDefined();
 		expect(callArgs.options.disallowedTools).toEqual(["Bash", "WebFetch"]);
-		expect(callArgs.options.allowedTools).toContain("Read(**)");
-		expect(callArgs.options.allowedTools).toContain("Edit(**)");
+		expect(callArgs.options.allowedTools).toContain("Read");
+		expect(callArgs.options.allowedTools).toContain("Edit");
 	});
 
 	it("should not pass disallowedTools when not configured", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			// No disallowedTools
 			cyrusHome: "/test/cyrus",
 		};
@@ -106,14 +107,14 @@ describe("ClaudeRunner - disallowedTools", () => {
 
 		expect(callArgs.options).toBeDefined();
 		expect(callArgs.options.disallowedTools).toBeUndefined();
-		expect(callArgs.options.allowedTools).toContain("Read(**)");
-		expect(callArgs.options.allowedTools).toContain("Edit(**)");
+		expect(callArgs.options.allowedTools).toContain("Read");
+		expect(callArgs.options.allowedTools).toContain("Edit");
 	});
 
 	it("should handle empty disallowedTools array", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			disallowedTools: [], // Empty array
 			cyrusHome: "/test/cyrus",
 		};
@@ -169,7 +170,9 @@ describe("ClaudeRunner - disallowedTools", () => {
 
 		// Check that disallowedTools were logged (now at DEBUG level via logger)
 		expect(consoleSpy).toHaveBeenCalledWith(
-			"[DEBUG] [ClaudeRunner] Disallowed tools configured:",
+			expect.stringMatching(
+				/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[DEBUG] \[ClaudeRunner] Disallowed tools configured:$/,
+			),
 			["Bash", "SystemAccess", "DangerousTool"],
 		);
 

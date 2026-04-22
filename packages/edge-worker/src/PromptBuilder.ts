@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import {
 	type BaseBranchResolution,
 	type Comment,
-	type EdgeWorkerConfig,
 	type GuidanceRule,
 	type IIssueTrackerService,
 	type ILogger,
@@ -16,7 +15,6 @@ import {
 	type WebhookComment,
 } from "cyrus-core";
 import type { GitService } from "./GitService.js";
-import type { SubroutineDefinition } from "./procedures/index.js";
 
 /**
  * Dependencies required by the PromptBuilder
@@ -26,7 +24,6 @@ export interface PromptBuilderDeps {
 	repositories: Map<string, RepositoryConfig>;
 	issueTrackers: Map<string, IIssueTrackerService>;
 	gitService: GitService;
-	config: EdgeWorkerConfig;
 }
 
 /**
@@ -56,21 +53,19 @@ export interface PromptResult {
  *
  * Extracted from EdgeWorker to improve separation of concerns.
  * Handles label-based prompts, mention prompts, issue context prompts,
- * issue update prompts, subroutine prompt loading, and related utilities.
+ * issue update prompts, and related utilities.
  */
 export class PromptBuilder {
 	private readonly logger: ILogger;
 	private readonly repositories: Map<string, RepositoryConfig>;
 	private readonly issueTrackers: Map<string, IIssueTrackerService>;
 	private readonly gitService: GitService;
-	private readonly config: EdgeWorkerConfig;
 
 	constructor(deps: PromptBuilderDeps) {
 		this.logger = deps.logger;
 		this.repositories = deps.repositories;
 		this.issueTrackers = deps.issueTrackers;
 		this.gitService = deps.gitService;
-		this.config = deps.config;
 	}
 
 	// ========================================================================
@@ -615,7 +610,9 @@ export class PromptBuilder {
 			// Description tag routing (always available)
 			const repoIdentifier = repo.githubUrl
 				? repo.githubUrl.replace("https://github.com/", "")
-				: repo.name;
+				: repo.gitlabUrl
+					? repo.gitlabUrl.replace(/https?:\/\/[^/]+\//, "")
+					: repo.name;
 			routingMethods.push(
 				`    - Description tag: \`[repo=${repoIdentifier}]\` or \`[repo=${repoIdentifier}#branch]\` for base branch override`,
 			);
@@ -646,6 +643,7 @@ export class PromptBuilder {
 
 			return `  <repository name="${repo.name}"${currentMarker}>
     <github_url>${repo.githubUrl || "N/A"}</github_url>
+    <gitlab_url>${repo.gitlabUrl || "N/A"}</gitlab_url>
     <routing_methods>
 ${routingMethods.join("\n")}
     </routing_methods>
@@ -756,6 +754,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
+		workspaceRepoPaths?: Record<string, string>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -869,9 +868,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				.replace(/{{comment_threads}}/g, commentThreads)
 				.replace(
 					/{{working_directory}}/g,
-					this.config.handlers?.createWorkspace
-						? "Will be created based on issue"
-						: repository.repositoryPath,
+					workspaceRepoPaths?.[repository.id] ?? repository.repositoryPath,
 				)
 				.replace(/{{base_branch}}/g, baseBranch)
 				.replace(
@@ -892,9 +889,8 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				const repoSections = repositories
 					.map((repo) => {
 						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
-						const workingDir = this.config.handlers?.createWorkspace
-							? "Will be created based on issue"
-							: repo.repositoryPath;
+						const workingDir =
+							workspaceRepoPaths?.[repo.id] ?? repo.repositoryPath;
 						return `  <repository name="${repo.name}">\n    <working_directory>${workingDir}</working_directory>\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
 					})
 					.join("\n");
@@ -1275,53 +1271,8 @@ ${reply.body}
 	}
 
 	// ========================================================================
-	// SUBROUTINE / SHARED INSTRUCTION LOADING
+	// SHARED INSTRUCTION LOADING
 	// ========================================================================
-
-	/**
-	 * Load a subroutine prompt file
-	 * Extracted helper to make prompt assembly more readable
-	 */
-	async loadSubroutinePrompt(
-		subroutine: SubroutineDefinition,
-		workspaceSlug?: string,
-	): Promise<string | null> {
-		// Skip loading for "primary" - it's a placeholder that doesn't have a file
-		if (subroutine.promptPath === "primary") {
-			return null;
-		}
-
-		const __filename = fileURLToPath(import.meta.url);
-		const __dirname = dirname(__filename);
-		const subroutinePromptPath = join(
-			__dirname,
-			"prompts",
-			subroutine.promptPath,
-		);
-
-		try {
-			let prompt = await readFile(subroutinePromptPath, "utf-8");
-			this.logger.debug(
-				`Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
-			);
-
-			// Perform template substitution if workspace slug is provided
-			if (workspaceSlug) {
-				prompt = prompt.replace(
-					/https:\/\/linear\.app\/linear\/profiles\//g,
-					`https://linear.app/${workspaceSlug}/profiles/`,
-				);
-			}
-
-			return prompt;
-		} catch (error) {
-			this.logger.warn(
-				`Failed to load subroutine prompt from ${subroutinePromptPath}:`,
-				error,
-			);
-			return null;
-		}
-	}
 
 	/**
 	 * Load shared instructions that get appended to all system prompts

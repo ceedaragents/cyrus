@@ -92,9 +92,9 @@ program
 		await new RefreshTokenCommand(app).execute([]);
 	});
 
-// Self-auth command - Linear OAuth directly from CLI
+// Self-auth-linear command - Linear OAuth directly from CLI
 program
-	.command("self-auth")
+	.command("self-auth-linear")
 	.description("Authenticate with Linear OAuth directly")
 	.action(async () => {
 		const opts = program.opts();
@@ -108,21 +108,40 @@ program
 
 // Self-add-repo command - Clone and add repository
 program
-	.command("self-add-repo <url> [workspace]")
+	.command("self-add-repo [url] [workspace]")
 	.description(
-		'Clone a repo and add it to config. URL accepts any valid git clone address (e.g., "https://github.com/org/repo.git"). Workspace is the display name of the Linear workspace (e.g., "My Workspace"). Use -l for comma-separated routing labels (defaults to repo name).',
+		'Clone a repo and add it to config. URL accepts any valid git clone address (e.g., "https://github.com/org/repo.git"). Workspace is the display name of the Linear workspace (e.g., "My Workspace"). If URL is omitted, prompts interactively.',
 	)
-	.action(async (url?: string, workspace?: string) => {
-		const opts = program.opts();
-		const app = new Application(
-			opts.cyrusHome,
-			opts.envFile,
-			packageJson.version,
-		);
-		await new SelfAddRepoCommand(app).execute(
-			[url, workspace].filter(Boolean) as string[],
-		);
-	});
+	.option(
+		"-l, --label <labels>",
+		"Comma-separated routing labels (defaults to repo name)",
+	)
+	.option(
+		"-b, --base-branch <branch>",
+		"Base branch name (auto-detected from remote if not specified)",
+	)
+	.action(
+		async (
+			url: string | undefined,
+			workspace: string | undefined,
+			cmdOpts: { label?: string; baseBranch?: string },
+		) => {
+			const opts = program.opts();
+			const app = new Application(
+				opts.cyrusHome,
+				opts.envFile,
+				packageJson.version,
+			);
+			const args = [url, workspace].filter(Boolean) as string[];
+			if (cmdOpts.label) {
+				args.push("-l", cmdOpts.label);
+			}
+			if (cmdOpts.baseBranch) {
+				args.push("-b", cmdOpts.baseBranch);
+			}
+			await new SelfAddRepoCommand(app).execute(args);
+		},
+	);
 
 // Parse and execute
 (async () => {

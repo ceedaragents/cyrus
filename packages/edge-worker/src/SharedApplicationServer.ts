@@ -76,6 +76,7 @@ export class SharedApplicationServer {
 
 		this.app = Fastify({
 			logger: false,
+			trustProxy: true,
 		});
 
 		// Preserve raw request body for webhook signature verification (GitHub HMAC-SHA256).
@@ -334,7 +335,7 @@ export class SharedApplicationServer {
 	 * Get the webhook URL
 	 */
 	getWebhookUrl(): string {
-		return `http://${this.host}:${this.port}/webhook`;
+		return `http://${this.host}:${this.port}/linear-webhook`;
 	}
 
 	/**

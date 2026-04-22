@@ -813,6 +813,17 @@ export type IssueUpdateWebhook =
 	};
 
 /**
+ * Platform-agnostic issue state change webhook payload.
+ * Maps to Linear SDK's AppUserNotificationWebhookPayload with action "issueStatusChanged".
+ *
+ * Linear sends this as an AppUserNotification when an issue transitions to a
+ * terminal state (completed or canceled). The notification contains the issue
+ * data via `notification.issue`.
+ */
+export type IssueStateChangeWebhook =
+	LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
+
+/**
  * Platform-agnostic union of all webhook types.
  * Maps to Linear SDK's webhook payload union types.
  */
@@ -927,6 +938,73 @@ export function isIssueTitleOrDescriptionUpdateWebhook(
 		"description" in updatedFrom ||
 		"attachments" in updatedFrom
 	);
+}
+
+/**
+ * Type guard to check if webhook is an issue state ID update (e.g., moved to completed/canceled).
+ *
+ * This identifies Issue entity webhooks where the `updatedFrom` field contains
+ * a previous `stateId`, indicating the issue's workflow state was changed.
+ * Used to detect when blocking issues are resolved so parked sessions can be woken up.
+ */
+export function isIssueStateIdUpdateWebhook(
+	webhook: Webhook,
+): webhook is IssueUpdateWebhook {
+	if (webhook.type !== "Issue" || webhook.action !== "update") {
+		return false;
+	}
+
+	const entityWebhook =
+		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
+	const updatedFrom = entityWebhook.updatedFrom as
+		| { stateId?: string }
+		| undefined;
+
+	if (!updatedFrom) {
+		return false;
+	}
+
+	return "stateId" in updatedFrom;
+}
+
+/**
+ * Type guard to check if webhook is an issue status change notification.
+ *
+ * Linear sends AppUserNotification webhooks with action "issueStatusChanged"
+ * when an issue transitions to a terminal state (completed or canceled).
+ */
+export function isIssueStateChangeWebhook(
+	webhook: Webhook,
+): webhook is IssueStateChangeWebhook {
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueStatusChanged"
+	);
+}
+
+/**
+ * Platform-agnostic issue deleted webhook payload.
+ * Maps to Linear SDK's EntityWebhookPayload with type "Issue" and action "remove".
+ *
+ * Linear sends this when an issue is deleted. The `data` field contains
+ * the deleted issue's data (id, identifier, title, etc.).
+ */
+export type IssueDeletedWebhook =
+	LinearSDK.LinearDocument.EntityWebhookPayload & {
+		type: "Issue";
+		action: "remove";
+		data: LinearSDK.LinearDocument.IssueWebhookPayload;
+	};
+
+/**
+ * Type guard to check if webhook is an issue deleted event.
+ *
+ * Linear sends Issue entity webhooks with action "remove" when an issue is deleted.
+ */
+export function isIssueDeletedWebhook(
+	webhook: Webhook,
+): webhook is IssueDeletedWebhook {
+	return webhook.type === "Issue" && webhook.action === "remove";
 }
 
 /**

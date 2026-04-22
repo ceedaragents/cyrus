@@ -403,10 +403,74 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 4. **Testing**: Uses Vitest for all packages. Run tests before committing changes.
 
-5. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
+5. **Sandbox Egress Proxy & CA Certificates**: When sandbox is enabled, the egress proxy generates a CA cert at `~/.cyrus/certs/cyrus-egress-ca.pem` for TLS interception. Per-session env vars are set in `RunnerConfigBuilder.buildSandboxConfig()` to cover most tools:
+   - `NODE_EXTRA_CA_CERTS` (Node.js), `GIT_SSL_CAINFO` (Git), `SSL_CERT_FILE` (OpenSSL/Ruby), `REQUESTS_CA_BUNDLE` / `PIP_CERT` (Python), `CURL_CA_BUNDLE` (curl/OpenSSL), `CARGO_HTTP_CAINFO` (Rust), `AWS_CA_BUNDLE` (AWS CLI), `DENO_CERT` (Deno)
+   - **`systemWideCert` config flag**: When `sandbox.systemWideCert: true` is set in `config.json`, all per-session CA cert env vars above are skipped — the OS cert store handles trust for all tools. Set this after trusting the CA cert system-wide via `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.cyrus/certs/cyrus-egress-ca.pem` (macOS) or `sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem /usr/local/share/ca-certificates/cyrus-egress-ca.crt && sudo update-ca-certificates` (Linux).
+   - **Gotchas — tools that ignore env vars and require system keychain trust**: Bun, .NET/nuget, curl on macOS (compiled against SecureTransport, the default). For these, users must trust the cert system-wide (see above) regardless of the `systemWideCert` setting.
+   - **Gotcha — parent process env vars**: If `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, or `CURL_CA_BUNDLE` are set in the Cyrus parent process env (e.g., from a previous test or `.env`), they can break git push/fetch from the Cyrus process itself (not child sessions). The parent process does not route through the egress proxy, so these vars should not be set in `~/.cyrus/.env`.
+   - Pre-existing `NODE_EXTRA_CA_CERTS` from the host environment are merged into a combined bundle via `EgressProxy.buildCACertBundle()`.
+
+6. **Two Separate Permission Systems — Tool vs. Sandbox**:
+   Claude Code enforces security through two independent mechanisms that must both be configured correctly:
+
+   **A. Tool permissions** (`allowedTools` / `disallowedTools` → `--allowedTools` / `--disallowedTools` CLI flags)
+   - Checked by Claude Code's permission layer — NOT enforced at the OS level.
+   - `Read(~/**)` does **not work** as a `disallowedTools` pattern — `~` is not expanded to the home directory path by Claude Code, so the pattern never matches. Other `**` glob patterns work fine; the problem is specific to the `~` prefix.
+   - `disallowedTools` IS an instant deny that takes precedence over `allowedTools` — if a parent path is denied, all its descendants are blocked. The problem is purely that `~` is never expanded, so `Read(~/**)` silently matches nothing.
+   - **Absolute paths in tool patterns require a double leading slash** — Claude Code's parser requires `//absolute/path` (e.g. `Read(//Users/alice/.ssh/**)`) for absolute paths. This is also the key to working with home directory paths: instead of `Read(~/**)` (which doesn't expand), you use `Read(///Users/alice/.ssh/**)` with the resolved absolute path. The double-slash is added in code as `/${fullPath}` where `fullPath` is already absolute.
+   - Solution: `buildHomeDirectoryDisallowedTools(cwd, allowedDirectories)` in `packages/claude-runner/src/home-directory-restrictions.ts` enumerates the home directory explicitly using these double-slash absolute paths — bypassing the tilde expansion issue by naming each sibling concretely. `allowedDirectories` paths are excluded so the attachments dir and repo paths remain readable. This is wired into `ClaudeRunner.ts` automatically.
+
+   **B. Sandbox filesystem permissions** (`sandbox.filesystem.allowRead` / `denyRead` / `allowWrite`)
+   - Enforced at the **OS level** via bubblewrap (Linux) or macOS sandbox — no shell or Claude Code involvement.
+   - A **true deny+whitelist model works here**: `denyRead: ["~/"]` + `allowRead: ["."]` is sufficient to deny the entire home directory while allowing the worktree. `"."` resolves to the cwd of the primary folder Claude is working in.
+   - Configured in `buildSandboxConfig()` in `packages/edge-worker/src/RunnerConfigBuilder.ts`.
+
+   **Key invariant**: If sandbox is enabled, both systems should restrict home directory reads. If sandbox is disabled (e.g. in local dev), only tool permissions apply — and those require explicit enumeration via `buildHomeDirectoryDisallowedTools`.
+
+7. **Updating `@anthropic-ai/claude-agent-sdk`**: Whenever you update the `claude-agent-sdk` dependency (which bundles a specific Claude Code version), you **must refresh the tool allowance lists** in `packages/claude-runner/src/config.ts`. Run:
+   ```bash
+   ./scripts/extract-claude-tools.sh
+   ```
+   This executes `claude -p "say hi" --output-format stream-json --verbose` and extracts the tool names from the `init` block. Compare the output against the `availableTools` array in `config.ts` and update it to match. Also review `readOnlyTools`, `writeTools`, and the helper functions to ensure new tools are categorized correctly. Failing to do this can cause sessions to silently miss new tools or reference removed ones.
+
+8. **Routing Behavior & Self-Describing Prompts**: When changing repository routing behavior (e.g., description-tag syntax, label routing, base branch overrides, multi-repo support), you **must also update the system prompts that describe these capabilities to Cyrus itself**. The product relies on self-describing prompts so that Cyrus can correctly instruct users and create properly-routed sub-issues. Known locations (not exhaustive):
    - `packages/edge-worker/src/PromptBuilder.ts` — Generates the `<repository_routing_context>` XML block included in session system prompts, documenting routing methods and priority order
    - `packages/edge-worker/src/SlackChatAdapter.ts` — Builds the Slack chat system prompt including orchestration notes with repo routing syntax
    - `packages/edge-worker/src/ActivityPoster.ts` — Posts routing activities to Linear timeline (method display names, formatting)
+
+## Dependency Security Policy (MANDATE)
+
+Our team's mandated approach for addressing Dependabot advisories and other
+transitive-dependency vulnerabilities:
+
+1. **Prefer direct-dep bumps in the owning `package.json`.** If the vulnerable
+   dep is transitively pulled in by one of *our* direct dependencies, bump that
+   direct dep (in the specific package that owns it — `packages/*` or `apps/*`,
+   not the root) to a version whose resolved dep graph includes the patched
+   transitive. Regenerate the lockfile and let pnpm's natural resolution do the
+   work.
+
+2. **Only use root `pnpm.overrides` when a direct-dep bump cannot reach the
+   vulnerable transitive.** This is the fallback for deep transitives (3+
+   levels deep) whose owning direct dep has no released version that resolves
+   to the patched transitive — typically because upstream hasn't released yet
+   or pins its transitive too loosely for us to reach. Document the reason
+   inline with a brief comment or commit message.
+
+3. **Always clean up overrides when a future dep bump makes them redundant.**
+   When you update a direct dependency (security or otherwise), check whether
+   any existing entry in `pnpm.overrides` is now satisfied naturally by the
+   new resolution. If so, **remove that override in the same change**. Verify
+   with `pnpm install && pnpm audit` that the removal is safe before committing.
+
+4. **Verify with `pnpm audit`.** After any dependency change, `pnpm audit`
+   must report zero advisories. Commit the regenerated `pnpm-lock.yaml`
+   alongside the `package.json` change.
+
+Why this matters: overrides are a blunt instrument that hide the real source
+of a dep. Bumping the owning direct dep is precise, gets picked up by
+Dependabot, keeps our graph honest, and prevents override rot where entries
+live on long after they stop doing anything.
 
 ## Development Workflow
 
@@ -440,6 +504,8 @@ When working on this codebase, follow these practices:
 - **Claude Execution**: `packages/claude-runner/src/ClaudeRunner.ts`
 - **Session Management**: `packages/core/src/session/`
 - **Edge Worker**: `packages/edge-worker/src/EdgeWorker.ts`
+- **GitHub Token Resolution**: `EdgeWorker.resolveGitHubToken()` — three-tier fallback: proxy-forwarded installation token → self-minted GitHub App token (via `GitHubAppTokenProvider`) → `GITHUB_TOKEN` PAT. Self-hosted users with a GitHub App use the middle tier; cloud/proxy users get tokens forwarded; legacy users fall back to a PAT.
+- **GitHub App Token Minting**: `packages/github-event-transport/src/GitHubAppTokenProvider.ts` — signs JWTs with the App's private key and exchanges them for short-lived installation tokens. Caches tokens and refreshes 5 minutes before expiry.
 - **OAuth Flow**: `apps/proxy/src/services/OAuthService.mjs`
 
 ## Testing MCP Linear Integration
