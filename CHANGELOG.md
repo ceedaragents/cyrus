@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **New `/linear-webhook` endpoint for Linear webhooks** — The Linear webhook URL in your OAuth application can now be set to `<CYRUS_BASE_URL>/linear-webhook`. The legacy `/webhook` path continues to work for backward compatibility but is deprecated and will log a warning on first use. ([CYPACK-1119](https://linear.app/ceedar/issue/CYPACK-1119))
+- **New `/linear-webhook` endpoint for Linear webhooks** — The Linear webhook URL in your OAuth application can now be set to `<CYRUS_BASE_URL>/linear-webhook`. The legacy `/webhook` path continues to work for backward compatibility but is deprecated and will log a warning on first use. ([CYPACK-1119](https://linear.app/ceedar/issue/CYPACK-1119), [#1142](https://github.com/ceedaragents/cyrus/pull/1142))
 - **Base branch update notifications** - When your base branch receives new commits while Cyrus is working, the active session is automatically notified to rebase, helping avoid merge conflicts. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 - **Blocked-by dependency deferral** - Issues with unresolved `blocked_by` relationships are now automatically deferred instead of starting immediately. Cyrus posts an acknowledgment and starts work automatically when all blocking issues are resolved. User re-prompts also re-check blocking status. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
 
