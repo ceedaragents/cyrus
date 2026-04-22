@@ -13,19 +13,9 @@ import { createLogger, type ILogger } from "./logging/index.js";
 /** Current persistence format version */
 export const PERSISTENCE_VERSION = "4.0";
 
-// Serialized versions with Date fields as strings
 export type SerializedCyrusAgentSession = CyrusAgentSession;
-// extends Omit<CyrusAgentSession, 'createdAt' | 'updatedAt'> {
-//   createdAt: string
-//   updatedAt: string
-// }
 
 export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
-// extends Omit<CyrusAgentSessionEntry, 'metadata'> {
-//   metadata?: Omit<CyrusAgentSessionEntry['metadata'], 'timestamp'> & {
-//     timestamp?: string
-//   }
-// }
 
 /**
  * v2.0 session format (for migration purposes)
