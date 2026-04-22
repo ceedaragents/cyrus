@@ -281,6 +281,10 @@ export class ChatSessionHandler<TEvent> {
 						`${this.adapter.platformName} session error for event ${eventId}`,
 						error instanceof Error ? error : new Error(String(error)),
 					);
+					// Runner died before emitting a final `result`. Drop any
+					// still-queued reply events for this session so a later
+					// resumeSession() doesn't pair them with a future turn.
+					this.clearPendingReplies(sessionId);
 				})
 				.finally(() => {
 					this.deps.onStateChange().catch((error: unknown) => {
@@ -358,6 +362,7 @@ export class ChatSessionHandler<TEvent> {
 					`${this.adapter.platformName} resume session error for ${sessionId}`,
 					error instanceof Error ? error : new Error(String(error)),
 				);
+				this.clearPendingReplies(sessionId);
 			});
 	}
 
@@ -406,6 +411,22 @@ export class ChatSessionHandler<TEvent> {
 			this.pendingReplyEvents.delete(sessionId);
 		}
 		return event;
+	}
+
+	/**
+	 * Discard all queued reply events for a session. Called when the runner
+	 * rejects before emitting a final `result` — without this, a later
+	 * resumeSession() on the same sessionId would pair the stale event with
+	 * the first `result` of the new runner and shift all subsequent replies
+	 * by one turn.
+	 */
+	private clearPendingReplies(sessionId: string): void {
+		const queue = this.pendingReplyEvents.get(sessionId);
+		if (!queue || queue.length === 0) return;
+		this.logger.warn(
+			`Discarding ${queue.length} pending ${this.adapter.platformName} reply event(s) for session ${sessionId} after runner error`,
+		);
+		this.pendingReplyEvents.delete(sessionId);
 	}
 
 	/**
