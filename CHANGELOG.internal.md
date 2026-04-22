@@ -4,6 +4,10 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `push` event support to `GitHubEventTransport` (new `GitHubPushPayload`, `GitHubPushCommit` types, `GitHubCommentWebhookEvent` narrowing type). Push events are emitted without action filtering. Updated `extractComment*` utility functions and `GitHubMessageTranslator` to use `GitHubCommentWebhookEvent` instead of `GitHubWebhookEvent` for type safety. Added `getSessionsByBaseBranch(branchName, repositoryId)` query to `AgentSessionManager`. Added `handleGitHubPushWebhook` to `EdgeWorker` — extracts branch from `refs/heads/*`, finds repo config, looks up active sessions, streams XML rebase notification via `addStreamMessage`. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+- Added blocked-by dependency deferral to `EdgeWorker`: `checkBlockedByDependencies` fetches issue relations via `fetchBlockingIssues` and filters to unresolved blockers. Blocked sessions are parked in a `parkedSessions` Map (keyed by issue ID). Added `isIssueStateChangeWebhook` type guard to cyrus-core for detecting `stateId` changes in `updatedFrom`. Added `handleIssueStateChange` handler — when blocking issues complete, removes them from parked sessions and replays `initializeAgentRunner`. Added `handleParkedSessionReprompt` (Branch 1.5 in prompted handler) for re-checking blockers on user re-prompt. Added `postThoughtActivity` to `ActivityPoster`. 12 new tests (5 for `getSessionsByBaseBranch`, 7 for `isIssueStateChangeWebhook`). ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+
 ### Changed
 - Documented dependency security policy in `CLAUDE.md`: prefer direct-dep bumps in the owning package; only use root `pnpm.overrides` when a direct-dep bump cannot reach the vulnerable transitive; remove overrides when a future bump makes them redundant. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 

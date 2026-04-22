@@ -147,6 +147,7 @@ export {
 	isIssueDeletedWebhook,
 	isIssueNewCommentWebhook,
 	isIssueStateChangeWebhook,
+	isIssueStateIdUpdateWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedEvent,
 	isIssueUnassignedWebhook,

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Base branch update notifications** - When your base branch receives new commits while Cyrus is working, the active session is automatically notified to rebase, helping avoid merge conflicts. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+- **Blocked-by dependency deferral** - Issues with unresolved `blocked_by` relationships are now automatically deferred instead of starting immediately. Cyrus posts an acknowledgment and starts work automatically when all blocking issues are resolved. User re-prompts also re-check blocking status. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+
 ### Changed
 - **Warm Claude sessions are now opt-in** — On startup, Cyrus no longer pre-spawns Claude Code subprocesses for the 30 most recent sessions by default. To restore the previous near-zero cold-start latency on the first message after a restart, set `CYRUS_ENABLE_WARM_SESSIONS=1` in the environment. ([CYPACK-1116](https://linear.app/ceedar/issue/CYPACK-1116))
 - **Claude SDK subprocesses now exit at turn end unless warm mode is enabled** — When `CYRUS_ENABLE_WARM_SESSIONS` is unset, the streaming prompt is completed when the SDK emits a `result` message, which lets the underlying Claude Code subprocess actually exit and free its memory at the end of a turn (restores the pre-warm-sessions behavior). When `CYRUS_ENABLE_WARM_SESSIONS=1`, the streaming prompt stays open and the subprocess is kept alive so follow-up messages reuse the warm session.
@@ -15,12 +19,10 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 - **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
+- **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
 ### Changed
 - **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
-
-### Security
-- **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
 ## [0.2.48] - 2026-04-20
 
