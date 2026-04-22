@@ -722,7 +722,7 @@ export class EdgeWorker extends EventEmitter {
 				this.handleError(error);
 			});
 
-			// Register the /webhook endpoint
+			// Register the /linear-webhook endpoint (with /webhook retained as a deprecated alias)
 			this.linearEventTransport.register();
 
 			this.logger.info(
