@@ -527,7 +527,16 @@ export class AgentSessionManager extends EventEmitter {
 						// Text-only message: buffer it so the LAST one can be posted as "response"
 						// Flush any previous buffered text first (posts as thought)
 						await this.flushBufferedAssistant(sessionId);
-						this.bufferedAssistantEntryBySession.set(sessionId, assistantEntry);
+						// Skip empty/whitespace-only text turns — otherwise they post as
+						// blank thoughts in Linear, showing up as an extra blank line
+						// between activities (e.g. between "Using model: ..." and the
+						// first real assistant turn).
+						if (assistantEntry.content?.trim()) {
+							this.bufferedAssistantEntryBySession.set(
+								sessionId,
+								assistantEntry,
+							);
+						}
 					}
 					break;
 				}
@@ -562,6 +571,9 @@ export class AgentSessionManager extends EventEmitter {
 		const buffered = this.bufferedAssistantEntryBySession.get(sessionId);
 		if (!buffered) return;
 		this.bufferedAssistantEntryBySession.delete(sessionId);
+		// Defensive guard: never post a blank thought — it would appear as an
+		// empty line between real activities in Linear.
+		if (!buffered.content?.trim()) return;
 		await this.syncEntryToActivitySink(buffered, sessionId);
 	}
 
