@@ -1,11 +1,15 @@
 /**
  * SessionStore behavioral conformance suite.
  *
- * Vendored and ported to vitest from the upstream Claude Agent SDK examples:
- * https://github.com/anthropics/claude-agent-sdk-typescript/tree/main/examples/session-stores
- *
+ * Vendored and ported to vitest from the upstream Claude Agent SDK examples.
  * Any adapter that passes these 13 checks satisfies the contract the SDK
  * relies on for transcript mirroring and resume.
+ *
+ * References (CYPACK-1121):
+ *   - SDK session-storage contract & lifecycle:
+ *     https://code.claude.com/docs/en/agent-sdk/session-storage
+ *   - Reference adapters + behavioral conformance suite:
+ *     https://github.com/anthropics/claude-agent-sdk-typescript/tree/main/examples/session-stores
  *
  * Usage:
  *

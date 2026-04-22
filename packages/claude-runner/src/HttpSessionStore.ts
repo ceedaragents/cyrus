@@ -12,6 +12,12 @@ import type { ILogger } from "cyrus-core";
  * Cyrus hosted control plane, which persists them in a per-team Supabase
  * table.
  *
+ * References (CYPACK-1121):
+ *   - SDK session-storage contract & lifecycle:
+ *     https://code.claude.com/docs/en/agent-sdk/session-storage
+ *   - Reference adapters + behavioral conformance suite:
+ *     https://github.com/anthropics/claude-agent-sdk-typescript/tree/main/examples/session-stores
+ *
  * Every request carries two pieces of identity, provided by the edge's
  * environment:
  *
@@ -33,10 +39,10 @@ import type { ILogger } from "cyrus-core";
  *   POST {baseUrl}/api/sessions/delete        { projectKey, sessionId, subpath? }
  *   POST {baseUrl}/api/sessions/list-subkeys  { projectKey, sessionId }                     -> { subpaths: string[] }
  *
- * The adapter passes the 13-contract conformance suite from
- * anthropics/claude-agent-sdk-typescript/examples/session-stores/shared/conformance.ts
- * when pointed at a conforming backend. The cyrus-hosted implementation of
- * these routes is the canonical conforming backend.
+ * The adapter passes the 13-contract conformance suite from the upstream
+ * examples (`examples/session-stores/shared/conformance.ts`) when pointed
+ * at a conforming backend. The cyrus-hosted implementation of these routes
+ * is the canonical conforming backend.
  */
 export interface HttpSessionStoreOptions {
 	/** Base URL of the control-plane, e.g. "https://app.atcyrus.com". */
