@@ -4,8 +4,57 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.49] - 2026-04-22
+
 ### Fixed
-- **Claude sessions inherit the parent process environment again** — `@anthropic-ai/claude-agent-sdk` v0.2.113 reverted to no longer overlaying `process.env` onto the env passed to spawned sessions, which left Cyrus-launched Claude processes without `HOME` (and other inherited vars). That broke GPG-signed commits, `gh` CLI authentication, and any other tool that relies on a real home directory or the user's shell environment. Cyrus now spreads `process.env` explicitly when invoking the SDK so these tools work as expected. ([#1150](https://github.com/cyrusagents/cyrus/pull/1150))
+- **Claude sessions inherit the parent process environment again** — `@anthropic-ai/claude-agent-sdk` v0.2.113 reverted to no longer overlaying `process.env` onto the env passed to spawned sessions, which left Cyrus-launched Claude processes without `HOME` (and other inherited vars). That broke GPG-signed commits, `gh` CLI authentication, and any other tool that relies on a real home directory or the user's shell environment. Cyrus now spreads `process.env` explicitly when invoking the SDK so these tools work as expected. ([#1150](https://github.com/ceedaragents/cyrus/pull/1150))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.49
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.49
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.49
+
+#### cyrus-core
+- cyrus-core@0.2.49
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.49
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.49
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.49
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.49
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.49
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.49
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.49
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.49
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.49
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.49
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.49
 
 ## [0.2.48] - 2026-04-20
 
