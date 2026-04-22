@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Memory-pressure gate and concurrency cap for new sessions** — Cyrus can now refuse to spin up a new session when the host is running out of memory or already at a configured session ceiling, posting a short "temporarily out of capacity" message back to Linear, GitHub, GitLab, or Slack instead of silently getting OOM-killed by the kernel or systemd. Both thresholds are opt-in via the new `memoryGate` (with `maxRssPercent`, `minAvailableMemoryMb`, `maxHeapUsagePercent`) and `maxConcurrentRunners` config fields, and use cross-platform Node built-ins so they behave identically on Linux and macOS.
+
 ### Changed
 - **Warm Claude sessions are now opt-in** — On startup, Cyrus no longer pre-spawns Claude Code subprocesses for the 30 most recent sessions by default. To restore the previous near-zero cold-start latency on the first message after a restart, set `CYRUS_ENABLE_WARM_SESSIONS=1` in the environment. ([CYPACK-1116](https://linear.app/ceedar/issue/CYPACK-1116))
 - **Claude SDK subprocesses now exit at turn end unless warm mode is enabled** — When `CYRUS_ENABLE_WARM_SESSIONS` is unset, the streaming prompt is completed when the SDK emits a `result` message, which lets the underlying Claude Code subprocess actually exit and free its memory at the end of a turn (restores the pre-warm-sessions behavior). When `CYRUS_ENABLE_WARM_SESSIONS=1`, the streaming prompt stays open and the subprocess is kept alive so follow-up messages reuse the warm session.
