@@ -519,10 +519,13 @@ export class EdgeWorker extends EventEmitter {
 		await this.loadPersistedState();
 
 		// Pre-warm the 30 most recent Claude sessions in the background
-		// so their first query after restart has near-zero cold-start latency
-		this.warmupRecentSessions(30).catch((err) => {
-			this.logger.warn("Session warmup failed (non-fatal):", err);
-		});
+		// so their first query after restart has near-zero cold-start latency.
+		// Disabled by default; opt in with CYRUS_ENABLE_WARM_SESSIONS=1.
+		if (this.isWarmSessionsEnabled()) {
+			this.warmupRecentSessions(30).catch((err) => {
+				this.logger.warn("Session warmup failed (non-fatal):", err);
+			});
+		}
 
 		// Start config file watcher via ConfigManager
 		this.configManager.on(
@@ -5501,8 +5504,9 @@ ${input.userComment}
 			requireLinearWorkspaceId,
 		});
 
-		// Attach pre-warmed session if available (only for Claude runner)
-		if (result.runnerType === "claude") {
+		// Attach pre-warmed session if available (only for Claude runner).
+		// Skipped entirely when warm sessions are not enabled.
+		if (result.runnerType === "claude" && this.isWarmSessionsEnabled()) {
 			const warmSession = this.warmInstances.get(sessionId);
 			if (warmSession) {
 				this.warmInstances.delete(sessionId);
@@ -5686,6 +5690,21 @@ ${input.userComment}
 	}
 
 	/**
+	 * Whether the warm-session feature is enabled.
+	 *
+	 * Warm sessions are an opt-in optimization that pre-spawns Claude Code
+	 * subprocesses on startup so the first query after a restart skips the
+	 * cold-start cost. Disabled by default; opt in by setting
+	 * `CYRUS_ENABLE_WARM_SESSIONS=1` (or `=true`).
+	 */
+	private isWarmSessionsEnabled(): boolean {
+		const raw = process.env.CYRUS_ENABLE_WARM_SESSIONS;
+		if (!raw) return false;
+		const v = raw.toLowerCase().trim();
+		return v === "1" || v === "true";
+	}
+
+	/**
 	 * Pre-warm the N most recently updated Claude sessions so the first query
 	 * after a CLI restart has near-zero cold-start latency (~20x faster).
 	 *
@@ -5693,6 +5712,8 @@ ${input.userComment}
 	 * so the warm instances are ready in ~500ms rather than ~4s.
 	 * Warm instances are stored in this.warmInstances keyed by agentSessionId and
 	 * consumed by buildAgentRunnerConfig() when the first message arrives.
+	 *
+	 * Gated by `isWarmSessionsEnabled()` — callers should check before invoking.
 	 */
 	private async warmupRecentSessions(count = 30): Promise<void> {
 		const allSessions = this.agentSessionManager.getAllSessions();
