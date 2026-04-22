@@ -82,10 +82,12 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private pendingResultMessage: SDKMessage | null = null;
 	private canUseToolCallback: CanUseTool | undefined;
 	private repositoryEnv: Record<string, string> = {};
+	private keepSessionWarm: boolean;
 
-	constructor(config: ClaudeRunnerConfig) {
+	constructor(config: ClaudeRunnerConfig, keepSessionWarm = false) {
 		super();
 		this.config = config;
+		this.keepSessionWarm = keepSessionWarm;
 		this.logger = config.logger ?? createLogger({ component: "ClaudeRunner" });
 		this.cyrusHome = config.cyrusHome;
 		this.formatter = new ClaudeMessageFormatter();
@@ -552,10 +554,19 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				}
 
 				// Emit all messages (including result) immediately in-loop.
-				// The streamingPrompt stays open for follow-up messages — we do NOT call
-				// streamingPrompt.complete() here, so the loop continues waiting.
+				// When keepSessionWarm is true, the streamingPrompt stays open for
+				// follow-up messages so the SDK session can be reused. Otherwise we
+				// complete the streaming prompt on result so the for-await loop exits
+				// and the subprocess can shut down (pre-warm-sessions behavior).
 				this.emit("message", message);
 				this.processMessage(message);
+				if (
+					message.type === "result" &&
+					!this.keepSessionWarm &&
+					this.streamingPrompt
+				) {
+					this.streamingPrompt.complete();
+				}
 			}
 
 			this.activeQuery = null;

@@ -4526,7 +4526,7 @@ ${taskSection}`;
 	): IAgentRunner {
 		switch (runnerType) {
 			case "claude":
-				return new ClaudeRunner(config);
+				return new ClaudeRunner(config, this.isWarmSessionsEnabled());
 			case "gemini":
 				return new GeminiRunner(config);
 			case "codex":
