@@ -170,9 +170,9 @@ describe("collectMemoryMetrics", () => {
 });
 
 describe("formatMemoryPressureMessage", () => {
-	it("produces a user-facing message including the reason", () => {
-		const msg = formatMemoryPressureMessage("example reason");
+	it("produces a user-facing message without leaking the technical reason", () => {
+		const msg = formatMemoryPressureMessage();
 		expect(msg).toContain("Cyrus is temporarily out of capacity");
-		expect(msg).toContain("example reason");
+		expect(msg).not.toMatch(/rss|heap|memory|%/i);
 	});
 });

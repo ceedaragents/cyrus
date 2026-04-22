@@ -120,7 +120,7 @@ export function collectMemoryMetrics(
  * on Linux and macOS.
  */
 export function checkMemoryHealth(
-	config: MemoryGateConfig | undefined,
+	config?: MemoryGateConfig,
 	sources: MemorySources = defaultSources,
 ): MemoryCheckResult {
 	const metrics = collectMemoryMetrics(sources);
@@ -168,7 +168,11 @@ export function checkMemoryHealth(
  * Format a user-facing rejection message explaining that the host is
  * temporarily out of capacity. Suitable for posting to Linear/GitHub/
  * GitLab/Slack when the memory gate trips.
+ *
+ * The technical reason (e.g. "Process RSS at 78.3% of system memory") is
+ * intentionally omitted from the user-facing text — it remains in
+ * `MemoryCheckResult.reason` for operator logs.
  */
-export function formatMemoryPressureMessage(reason: string): string {
-	return `Cyrus is temporarily out of capacity and can't start this session right now. Please retry shortly.\n\n_Reason: ${reason}_`;
+export function formatMemoryPressureMessage(): string {
+	return "Cyrus is temporarily out of capacity and can't start this session right now. Please retry shortly.";
 }

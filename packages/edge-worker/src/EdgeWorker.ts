@@ -1288,24 +1288,27 @@ export class EdgeWorker extends EventEmitter {
 			const disallowedTools = this.buildDisallowedTools(repository);
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
-			// Pre-flight memory/concurrency gate — reject before spawning a runner
-			const gate = this.checkRunnerGate();
-			if (!gate.ok) {
-				if (reactionToken && prNumber) {
-					this.gitHubCommentService
-						.postIssueComment({
-							token: reactionToken,
-							owner: extractRepoOwner(event),
-							repo: extractRepoName(event),
-							issueNumber: prNumber,
-							body: gate.userMessage,
-						})
-						.catch((err: unknown) => {
-							this.logger.warn(
-								`Failed to post memory-pressure rejection comment: ${err instanceof Error ? err.message : err}`,
-							);
-						});
+			// Pre-flight memory/concurrency gate — reject before spawning a runner.
+			// GitHub posts are fire-and-forget so the webhook handler can return promptly.
+			const gateOk = await this.enforceRunnerGate((userMessage) => {
+				if (!reactionToken || !prNumber) {
+					return;
 				}
+				this.gitHubCommentService
+					.postIssueComment({
+						token: reactionToken,
+						owner: extractRepoOwner(event),
+						repo: extractRepoName(event),
+						issueNumber: prNumber,
+						body: userMessage,
+					})
+					.catch((err: unknown) => {
+						this.logger.warn(
+							`Failed to post memory-pressure rejection comment: ${err instanceof Error ? err.message : err}`,
+						);
+					});
+			});
+			if (!gateOk) {
 				return;
 			}
 
@@ -1883,23 +1886,26 @@ ${taskSection}`;
 			const disallowedTools = this.buildDisallowedTools(repository);
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
-			// Pre-flight memory/concurrency gate — reject before spawning a runner
-			const gate = this.checkRunnerGate();
-			if (!gate.ok) {
-				if (reactionToken && projectId && mrIid) {
-					this.gitLabCommentService
-						.postMRNote({
-							token: reactionToken,
-							projectId,
-							mrIid,
-							body: gate.userMessage,
-						})
-						.catch((err: unknown) => {
-							this.logger.warn(
-								`Failed to post memory-pressure rejection note: ${err instanceof Error ? err.message : err}`,
-							);
-						});
+			// Pre-flight memory/concurrency gate — reject before spawning a runner.
+			// GitLab posts are fire-and-forget so the webhook handler can return promptly.
+			const gateOk = await this.enforceRunnerGate((userMessage) => {
+				if (!reactionToken || !projectId || !mrIid) {
+					return;
 				}
+				this.gitLabCommentService
+					.postMRNote({
+						token: reactionToken,
+						projectId,
+						mrIid,
+						body: userMessage,
+					})
+					.catch((err: unknown) => {
+						this.logger.warn(
+							`Failed to post memory-pressure rejection note: ${err instanceof Error ? err.message : err}`,
+						);
+					});
+			});
+			if (!gateOk) {
 				return;
 			}
 
@@ -3754,13 +3760,14 @@ ${taskSection}`;
 		const agentSessionManager = this.agentSessionManager;
 
 		// Pre-flight memory/concurrency gate — reject before any heavy setup
-		const gate = this.checkRunnerGate();
-		if (!gate.ok) {
-			await this.activityPoster.postMemoryPressureRejection(
+		const gateOk = await this.enforceRunnerGate((userMessage) =>
+			this.activityPoster.postMemoryPressureRejection(
 				sessionId,
 				linearWorkspaceId,
-				gate.userMessage,
-			);
+				userMessage,
+			),
+		);
+		if (!gateOk) {
 			return;
 		}
 
@@ -4592,11 +4599,35 @@ ${taskSection}`;
 				if (runner.isRunning()) {
 					active++;
 				}
-			} catch {
-				// Defensive: treat introspection errors as inactive
+			} catch (err) {
+				// Defensive: treat introspection errors as inactive, but log so
+				// a broken runner silently slipping under the cap is diagnosable.
+				this.logger.debug(
+					`[EdgeWorker] runner.isRunning() threw during gate check; treating as inactive: ${err instanceof Error ? err.message : err}`,
+				);
 			}
 		}
 		return active;
+	}
+
+	/**
+	 * Evaluate the runner gate and invoke `onReject` with the user-facing
+	 * message when it fails. Returns `true` if the caller may proceed to
+	 * spawn a runner, `false` if the caller must bail out.
+	 *
+	 * Centralises the "check → reject via platform-specific channel →
+	 * return early" pattern used by every runner-spawning entry point
+	 * (Linear, GitHub, GitLab, Slack, resume).
+	 */
+	private async enforceRunnerGate(
+		onReject: (userMessage: string) => Promise<void> | void,
+	): Promise<boolean> {
+		const gate = this.checkRunnerGate();
+		if (gate.ok) {
+			return true;
+		}
+		await onReject(gate.userMessage);
+		return false;
 	}
 
 	/**
@@ -4618,7 +4649,7 @@ ${taskSection}`;
 
 		const memoryResult = checkMemoryHealth(memoryGate);
 		if (!memoryResult.ok) {
-			const userMessage = formatMemoryPressureMessage(memoryResult.reason);
+			const userMessage = formatMemoryPressureMessage();
 			this.logger.warn(
 				`[EdgeWorker] Memory gate rejected new runner: ${memoryResult.reason}`,
 			);
@@ -6250,17 +6281,18 @@ ${input.userComment}
 
 		// Pre-flight memory/concurrency gate — applies whenever we'd spawn
 		// a fresh runner (existing runner is dead / session was paused)
-		const gate = this.checkRunnerGate();
-		if (!gate.ok) {
+		const gateOk = await this.enforceRunnerGate(async (userMessage) => {
 			const linearWorkspaceIdForRejection =
 				linearWorkspaceId ?? repository.linearWorkspaceId;
 			if (linearWorkspaceIdForRejection) {
 				await this.activityPoster.postMemoryPressureRejection(
 					sessionId,
 					linearWorkspaceIdForRejection,
-					gate.userMessage,
+					userMessage,
 				);
 			}
+		});
+		if (!gateOk) {
 			return;
 		}
 
