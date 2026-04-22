@@ -11,6 +11,9 @@ This changelog documents internal development changes, refactors, tooling update
 ### Changed
 - Documented dependency security policy in `CLAUDE.md`: prefer direct-dep bumps in the owning package; only use root `pnpm.overrides` when a direct-dep bump cannot reach the vulnerable transitive; remove overrides when a future bump makes them redundant. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
+### Fixed
+- De-flaked `packages/edge-worker/test/EgressProxy.test.ts`. The `Math.random()`-based port allocation in `beforeEach` collided on CI (EADDRINUSE on `127.0.0.1:19281`); tests now bind to port `0` and read the OS-assigned port via `proxy.getHttpProxyPort()` / `proxy.getSocksProxyPort()`. In `EgressProxy.startHttpProxy` / `startSocksProxy`, the stored port is updated to the bound `server.address().port`. Also fixed a `socket.write(reply); socket.destroy()` race in the SOCKS5 handler where the async write could be truncated before the denial reply reached the client — replaced with `socket.end(reply)` so the reply is flushed before FIN. ([CYPACK-1122](https://linear.app/ceedar/issue/CYPACK-1122))
+
 ## [0.2.48] - 2026-04-20
 
 _No internal-only changes._
