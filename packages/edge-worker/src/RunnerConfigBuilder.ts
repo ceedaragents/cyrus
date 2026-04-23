@@ -91,6 +91,15 @@ export interface IssueRunnerConfigInput {
 	systemPrompt: string | undefined;
 	allowedTools: string[];
 	allowedDirectories: string[];
+	/**
+	 * Sandbox-only paths (read+write) that aren't semantically "working
+	 * directories" for the agent CLI. Typically collected via
+	 * GitService.getGitMetadataDirectories for every worktree so git can
+	 * read/write `.git/worktrees/<name>` metadata. Passed separately from
+	 * allowedDirectories on purpose: the CLI shouldn't see these as dirs
+	 * it can cd into, but the sandbox must let git touch them.
+	 */
+	sandboxGitMetadataDirectories?: string[];
 	disallowedTools: string[];
 	resumeSessionId?: string;
 	labels?: string[];
@@ -506,14 +515,20 @@ export class RunnerConfigBuilder {
 					allowRead: [
 						input.session.workspace.path,
 						...input.allowedDirectories,
+						...(input.sandboxGitMetadataDirectories ?? []),
+						...Object.values(input.session.workspace.repoPaths ?? {}),
 						...homeAllowances.read,
 						tmpDir,
 					],
 					denyRead: ["~/"],
-					// Restrict subprocess writes to the session worktree plus package
-					// manager caches/stores and the shared tmp dir.
+					// Writes are allowed in every worktree (primary + sub-worktrees
+					// for multi-repo), each worktree's `.git`/`.git/worktrees/<name>`
+					// metadata (git needs to write index.lock, HEAD, refs/...),
+					// plus package manager caches/stores and the shared tmp dir.
 					allowWrite: [
 						input.session.workspace.path,
+						...Object.values(input.session.workspace.repoPaths ?? {}),
+						...(input.sandboxGitMetadataDirectories ?? []),
 						...homeAllowances.write,
 						tmpDir,
 					],

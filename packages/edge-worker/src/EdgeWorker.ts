@@ -3886,25 +3886,21 @@ ${taskSection}`;
 		// Build allowed directories list - always include attachments directory
 		// Include repository paths from all repositories
 		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
-		// For multi-repo sessions, each secondary repo has its own sub-worktree
-		// with its own `.git/worktrees/<name>` metadata. Fan getGitMetadataDirectories
-		// over every worktree path so every repo's linked-worktree metadata lands
-		// in the sandbox allowlist.
-		const subWorktreePaths = Object.values(workspace.repoPaths ?? {});
-		const allWorktreePaths = Array.from(
-			new Set([workspace.path, ...subWorktreePaths]),
+		const allowedDirectories: string[] = [
+			...new Set([attachmentsDir, ...allRepoPaths]),
+		];
+
+		// For the sandbox only, collect every worktree (primary + sub-worktrees
+		// for multi-repo) so we can later fan getGitMetadataDirectories over
+		// each of them. Kept separate from allowedDirectories because those are
+		// semantically "dirs the agent operates in" and shouldn't include
+		// sandbox-only plumbing like linked-worktree metadata paths.
+		const sandboxWorktreePaths = Array.from(
+			new Set([workspace.path, ...Object.values(workspace.repoPaths ?? {})]),
 		);
-		const gitMetadataDirs = allWorktreePaths.flatMap((p) =>
+		const sandboxGitMetadataDirectories = sandboxWorktreePaths.flatMap((p) =>
 			this.gitService.getGitMetadataDirectories(p),
 		);
-		const allowedDirectories: string[] = [
-			...new Set([
-				attachmentsDir,
-				...allRepoPaths,
-				...subWorktreePaths,
-				...gitMetadataDirs,
-			]),
-		];
 
 		this.logger.debug(
 			`Configured allowed directories for ${fullIssue.identifier}:`,
@@ -3922,6 +3918,7 @@ ${taskSection}`;
 			attachmentResult,
 			attachmentsDir,
 			allowedDirectories,
+			sandboxGitMetadataDirectories,
 			allowedTools,
 			disallowedTools,
 		};
@@ -4168,6 +4165,7 @@ ${taskSection}`;
 			attachmentResult,
 			attachmentsDir: _attachmentsDir,
 			allowedDirectories,
+			sandboxGitMetadataDirectories,
 		} = sessionData;
 
 		// Fetch labels early (needed for system prompt and runner selection)
@@ -4264,6 +4262,7 @@ ${taskSection}`;
 					undefined, // maxTurns
 					undefined, // mcpOptions
 					linearWorkspaceId,
+					sandboxGitMetadataDirectories,
 				);
 
 			log.debug(
@@ -5918,6 +5917,7 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
+		sandboxGitMetadataDirectories?: string[],
 	): Promise<{ config: AgentRunnerConfig; runnerType: RunnerType }> {
 		const log = this.logger.withContext({
 			sessionId,
@@ -5932,6 +5932,7 @@ ${input.userComment}
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
+			sandboxGitMetadataDirectories,
 			disallowedTools,
 			resumeSessionId,
 			labels,
@@ -6637,25 +6638,28 @@ ${input.userComment}
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
-		// Fan getGitMetadataDirectories over every worktree path — for multi-repo
-		// sessions, each secondary repo has its own sub-worktree whose
-		// `.git/worktrees/<name>` metadata also needs to be in the sandbox allowlist.
-		const subWorktreePaths = Object.values(session.workspace.repoPaths ?? {});
-		const allWorktreePaths = Array.from(
-			new Set([session.workspace.path, ...subWorktreePaths]),
-		);
-		const gitMetadataDirs = allWorktreePaths.flatMap((p) =>
-			this.gitService.getGitMetadataDirectories(p),
-		);
 		const allowedDirectories = [
 			...new Set([
 				attachmentsDir,
 				repository.repositoryPath,
 				...additionalAllowedDirectories,
-				...subWorktreePaths,
-				...gitMetadataDirs,
 			]),
 		];
+
+		// For the sandbox only, collect every worktree (primary + sub-worktrees
+		// for multi-repo) and their `.git` / `.git/worktrees/<name>` metadata.
+		// Kept separate from allowedDirectories because those are semantically
+		// "dirs the agent operates in" and shouldn't include sandbox-only
+		// plumbing like linked-worktree metadata paths.
+		const sandboxWorktreePaths = Array.from(
+			new Set([
+				session.workspace.path,
+				...Object.values(session.workspace.repoPaths ?? {}),
+			]),
+		);
+		const sandboxGitMetadataDirectories = sandboxWorktreePaths.flatMap((p) =>
+			this.gitService.getGitMetadataDirectories(p),
+		);
 
 		const resumeSessionId = needsNewSession
 			? undefined
@@ -6689,6 +6693,7 @@ ${input.userComment}
 				maxTurns, // Pass maxTurns if specified
 				undefined, // mcpOptions
 				resolvedWorkspaceId,
+				sandboxGitMetadataDirectories,
 			);
 
 		// Create the appropriate runner based on session state
