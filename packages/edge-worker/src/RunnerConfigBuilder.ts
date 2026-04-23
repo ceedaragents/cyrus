@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -11,11 +12,13 @@ import type {
 import type {
 	AgentRunnerConfig,
 	CyrusAgentSession,
+	EnvironmentConfig,
 	ILogger,
 	OnAskUserQuestion,
 	RepositoryConfig,
 	RunnerType,
 } from "cyrus-core";
+import { resolvePath } from "cyrus-core";
 
 /**
  * Subset of McpConfigService consumed by RunnerConfigBuilder.
@@ -113,6 +116,13 @@ export interface IssueRunnerConfigInput {
 	sandboxSettings?: SandboxSettings;
 	/** CA cert path for MITM TLS termination — passed via child process env */
 	egressCaCertPath?: string;
+	/**
+	 * Optional environment config bound to this session. When present, its
+	 * fields override repository-level defaults for systemPrompt, allowed
+	 * and disallowed tools, mcpConfigPath, sandbox filesystem permissions,
+	 * and plugins/skills.
+	 */
+	environment?: EnvironmentConfig;
 }
 
 /**
@@ -266,20 +276,57 @@ export class RunnerConfigBuilder {
 			input.sessionId,
 			input.mcpOptions,
 		);
-		const mcpConfigPath = this.mcpConfigProvider.buildMergedMcpConfigPath(
-			input.repository,
-		);
+
+		// Resolve environment overrides (if the session has one bound).
+		// Env values take precedence over repository-level defaults.
+		const env = input.environment;
+		const envSystemPrompt = env
+			? resolveEnvironmentSystemPrompt(env, log)
+			: undefined;
+		const effectiveSystemPrompt = envSystemPrompt ?? input.systemPrompt;
+		const effectiveAllowedTools = env?.allowedTools ?? input.allowedTools;
+		const effectiveDisallowedTools =
+			env?.disallowedTools ?? input.disallowedTools;
+		const mcpConfigPath =
+			env?.mcpConfigPath ??
+			this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository);
+
+		// Environment can supply its own plugins (replacing auto-discovered
+		// skill plugins) and/or additional skill directory paths.
+		let effectivePlugins = input.plugins;
+		if (env?.plugins || env?.skills?.length) {
+			const envPlugins = (env?.plugins ?? []).map((p) => ({
+				type: "local" as const,
+				path: resolvePath(p.path),
+			}));
+			const skillPlugins = (env?.skills ?? []).map((path) => ({
+				type: "local" as const,
+				path: resolvePath(path),
+			}));
+			effectivePlugins = [...envPlugins, ...skillPlugins];
+		}
+
+		// Environment can override sandbox filesystem permissions.
+		const effectiveSandboxSettings = env?.sandbox
+			? mergeSandboxFilesystem(input.sandboxSettings, env.sandbox)
+			: input.sandboxSettings;
+
+		// Build a shadow input that buildSandboxConfig can consume.
+		const sandboxInput: IssueRunnerConfigInput = {
+			...input,
+			sandboxSettings: effectiveSandboxSettings,
+		};
 
 		const config: AgentRunnerConfig & Record<string, unknown> = {
 			workingDirectory: input.session.workspace.path,
-			allowedTools: input.allowedTools,
-			disallowedTools: input.disallowedTools,
+			allowedTools: effectiveAllowedTools,
+			disallowedTools: effectiveDisallowedTools,
 			allowedDirectories: input.allowedDirectories,
 			workspaceName: input.session.issue?.identifier || input.session.issueId,
 			cyrusHome: input.cyrusHome,
 			mcpConfigPath,
 			mcpConfig,
-			appendSystemPrompt: input.systemPrompt || "",
+			appendSystemPrompt: effectiveSystemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:
@@ -290,13 +337,13 @@ export class RunnerConfigBuilder {
 			hooks,
 			// Plugins providing skills (Claude runner only)
 			...(runnerType === "claude" &&
-				input.plugins?.length && { plugins: input.plugins }),
+				effectivePlugins?.length && { plugins: effectivePlugins }),
 			// SDK sandbox settings (Claude runner only):
 			// - Merge base settings with per-session filesystem.allowWrite (worktree path)
 			// - Pass CA cert path via env for MITM TLS termination
 			...(runnerType === "claude" &&
-				input.sandboxSettings &&
-				this.buildSandboxConfig(input)),
+				effectiveSandboxSettings &&
+				this.buildSandboxConfig(sandboxInput)),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
@@ -528,4 +575,62 @@ export class RunnerConfigBuilder {
 			],
 		};
 	}
+}
+
+/**
+ * Resolve an environment's system prompt text, preferring inline
+ * `systemPrompt` over a file at `systemPromptPath`. Returns undefined when
+ * neither is set. File read errors are logged and swallowed — a missing
+ * prompt file shouldn't break session creation.
+ */
+function resolveEnvironmentSystemPrompt(
+	env: EnvironmentConfig,
+	log: ILogger,
+): string | undefined {
+	if (env.systemPrompt) return env.systemPrompt;
+	if (!env.systemPromptPath) return undefined;
+	try {
+		return readFileSync(resolvePath(env.systemPromptPath), "utf8");
+	} catch (err) {
+		log.warn(
+			`Failed to read environment systemPromptPath ${env.systemPromptPath}: ${(err as Error).message}`,
+		);
+		return undefined;
+	}
+}
+
+/**
+ * Merge an environment's sandbox filesystem overrides into the global
+ * sandbox settings. Environment-specified arrays replace the corresponding
+ * global arrays; omitted arrays pass through unchanged.
+ */
+function mergeSandboxFilesystem(
+	base: SandboxSettings | undefined,
+	envSandbox: NonNullable<EnvironmentConfig["sandbox"]>,
+): SandboxSettings | undefined {
+	const baseSettings = (base ?? {}) as SandboxSettings & {
+		filesystem?: Record<string, string[] | undefined>;
+	};
+	const baseFilesystem = baseSettings.filesystem ?? {};
+	const envFilesystem = envSandbox.filesystem ?? {};
+	const mergedFilesystem = {
+		...baseFilesystem,
+		...(envFilesystem.allowRead !== undefined && {
+			allowRead: envFilesystem.allowRead,
+		}),
+		...(envFilesystem.denyRead !== undefined && {
+			denyRead: envFilesystem.denyRead,
+		}),
+		...(envFilesystem.allowWrite !== undefined && {
+			allowWrite: envFilesystem.allowWrite,
+		}),
+		...(envFilesystem.denyWrite !== undefined && {
+			denyWrite: envFilesystem.denyWrite,
+		}),
+	};
+	return {
+		...baseSettings,
+		...(envSandbox.enabled !== undefined && { enabled: envSandbox.enabled }),
+		filesystem: mergedFilesystem,
+	} as SandboxSettings;
 }

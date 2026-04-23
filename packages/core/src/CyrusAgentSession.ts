@@ -95,6 +95,13 @@ export interface CyrusAgentSession {
 	codexSessionId?: string; // Codex-specific session ID (assigned once it initializes)
 	cursorSessionId?: string; // Cursor-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
+	/**
+	 * Name of the environment bound to this session (see `loadEnvironment`).
+	 * Parsed from the issue description via `env=<name>` when the session is
+	 * created. Persists across restarts so the environment is reapplied on
+	 * every resume.
+	 */
+	environmentName?: string;
 	metadata?: {
 		model?: string;
 		tools?: string[];

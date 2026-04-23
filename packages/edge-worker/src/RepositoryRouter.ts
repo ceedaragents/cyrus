@@ -517,6 +517,32 @@ export class RepositoryRouter {
 	}
 
 	/**
+	 * Parse an `env=<name>` (or `[env=<name>]`) tag out of an issue description.
+	 *
+	 * Returns the first environment name found, or `null` if none.
+	 * Mirrors the escaped-bracket handling used for `repo=`; Linear may emit
+	 * `\[env=name\]` when users paste brackets.
+	 *
+	 * Only the first match is returned: a session can only bind to one
+	 * environment.
+	 */
+	parseEnvironmentTagFromDescription(description: string): string | null {
+		if (!description) return null;
+
+		// Bracketed: [env=name] or \[env=name\]
+		const bracketed = description.match(/\\?\[env=([a-zA-Z0-9_\-.]+)\\?\]/);
+		if (bracketed?.[1]) return bracketed[1];
+
+		// Unbracketed: env=name at start of line / after whitespace
+		const unbracketed = description.match(
+			/(?:^|[\s\n])env=([a-zA-Z0-9_\-.]+)/m,
+		);
+		if (unbracketed?.[1]) return unbracketed[1];
+
+		return null;
+	}
+
+	/**
 	 * Parse a repo value that may contain commas (multiple repos) and #branch.
 	 * The #branch suffix applies to all repos in a comma-separated list.
 	 */

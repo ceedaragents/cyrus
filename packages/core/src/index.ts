@@ -83,6 +83,20 @@ export {
 	getDefaultReposDir,
 	getDefaultWorktreesDir,
 } from "./constants.js";
+// Environment abstraction (scoped tools/permissions/prompt bundles)
+export {
+	assertSafeEnvironmentName,
+	ENVIRONMENTS_DIRNAME,
+	EnvironmentLoadError,
+	getEnvironmentPath,
+	getEnvironmentsDir,
+	listEnvironmentNames,
+	loadEnvironment,
+} from "./Environment.js";
+export {
+	type EnvironmentConfig,
+	EnvironmentConfigSchema,
+} from "./environment-schema.js";
 // Issue Tracker Abstraction
 export type {
 	AgentActivity,

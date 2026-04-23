@@ -69,6 +69,7 @@ import {
 	isStopSignalMessage,
 	isUnassignMessage,
 	isUserPromptMessage,
+	loadEnvironment,
 	PersistenceManager,
 	requireLinearWorkspaceId,
 	resolvePath,
@@ -3812,6 +3813,38 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
+		// Bind an environment to the session if the issue description requests
+		// one via `env=<name>` (or `[env=<name>]`). Validates the environment
+		// exists on disk; if not, logs a warning and proceeds unbound so the
+		// session still runs with repository defaults.
+		{
+			const envName = this.repositoryRouter.parseEnvironmentTagFromDescription(
+				fullIssue.description || "",
+			);
+			if (envName) {
+				try {
+					const env = loadEnvironment(this.cyrusHome, envName);
+					if (env) {
+						const session = agentSessionManager.getSession(sessionId);
+						if (session) {
+							session.environmentName = envName;
+							this.logger.info(
+								`Environment bound to session: ${envName} (session=${sessionId})`,
+							);
+						}
+					} else {
+						this.logger.warn(
+							`Environment "${envName}" referenced in issue ${issueMinimal.identifier} but no config found at ${this.cyrusHome}/environments/${envName}.json — ignoring`,
+						);
+					}
+				} catch (err) {
+					this.logger.warn(
+						`Failed to load environment "${envName}" for session ${sessionId}: ${(err as Error).message}`,
+					);
+				}
+			}
+		}
+
 		// Register session-to-repo mapping and activity sink (use primary repo)
 		this.sessionRepositories.set(sessionId, primaryRepo.id);
 		const activitySink = this.getActivitySinkForRepo(primaryRepo.id);
@@ -5913,6 +5946,27 @@ ${input.userComment}
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
+		// If the session is bound to a named environment, load it so the
+		// runner config builder can apply its overrides (systemPrompt, tools,
+		// mcpConfigPath, sandbox, plugins). Binding persists across restarts
+		// via session.environmentName, so resumed sessions reapply the env.
+		let environment: import("cyrus-core").EnvironmentConfig | undefined;
+		if (session.environmentName) {
+			try {
+				environment =
+					loadEnvironment(this.cyrusHome, session.environmentName) ?? undefined;
+				if (!environment) {
+					log.warn(
+						`Session bound to environment "${session.environmentName}" but config was not found — falling back to repository defaults`,
+					);
+				}
+			} catch (err) {
+				log.warn(
+					`Failed to load environment "${session.environmentName}": ${(err as Error).message} — falling back to repository defaults`,
+				);
+			}
+		}
+
 		const result = this.runnerConfigBuilder.buildIssueConfig({
 			session,
 			repository,
@@ -5932,6 +5986,7 @@ ${input.userComment}
 			plugins: await this.skillsPluginResolver.resolve(),
 			sandboxSettings: this.sdkSandboxSettings ?? undefined,
 			egressCaCertPath: this.egressCaCertPath ?? undefined,
+			environment,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
