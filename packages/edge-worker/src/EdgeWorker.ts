@@ -3886,11 +3886,23 @@ ${taskSection}`;
 		// Build allowed directories list - always include attachments directory
 		// Include repository paths from all repositories
 		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
+		// For multi-repo sessions, each secondary repo has its own sub-worktree
+		// with its own `.git/worktrees/<name>` metadata. Fan getGitMetadataDirectories
+		// over every worktree path so every repo's linked-worktree metadata lands
+		// in the sandbox allowlist.
+		const subWorktreePaths = Object.values(workspace.repoPaths ?? {});
+		const allWorktreePaths = Array.from(
+			new Set([workspace.path, ...subWorktreePaths]),
+		);
+		const gitMetadataDirs = allWorktreePaths.flatMap((p) =>
+			this.gitService.getGitMetadataDirectories(p),
+		);
 		const allowedDirectories: string[] = [
 			...new Set([
 				attachmentsDir,
 				...allRepoPaths,
-				...this.gitService.getGitMetadataDirectories(workspace.path),
+				...subWorktreePaths,
+				...gitMetadataDirs,
 			]),
 		];
 
@@ -6625,12 +6637,23 @@ ${input.userComment}
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
+		// Fan getGitMetadataDirectories over every worktree path — for multi-repo
+		// sessions, each secondary repo has its own sub-worktree whose
+		// `.git/worktrees/<name>` metadata also needs to be in the sandbox allowlist.
+		const subWorktreePaths = Object.values(session.workspace.repoPaths ?? {});
+		const allWorktreePaths = Array.from(
+			new Set([session.workspace.path, ...subWorktreePaths]),
+		);
+		const gitMetadataDirs = allWorktreePaths.flatMap((p) =>
+			this.gitService.getGitMetadataDirectories(p),
+		);
 		const allowedDirectories = [
 			...new Set([
 				attachmentsDir,
 				repository.repositoryPath,
 				...additionalAllowedDirectories,
-				...this.gitService.getGitMetadataDirectories(session.workspace.path),
+				...subWorktreePaths,
+				...gitMetadataDirs,
 			]),
 		];
 
