@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -89,6 +91,15 @@ export interface IssueRunnerConfigInput {
 	systemPrompt: string | undefined;
 	allowedTools: string[];
 	allowedDirectories: string[];
+	/**
+	 * Sandbox-only paths (read+write) that aren't semantically "working
+	 * directories" for the agent CLI. Typically collected via
+	 * GitService.getGitMetadataDirectories for every worktree so git can
+	 * read/write `.git/worktrees/<name>` metadata. Passed separately from
+	 * allowedDirectories on purpose: the CLI shouldn't see these as dirs
+	 * it can cd into, but the sandbox must let git touch them.
+	 */
+	sandboxGitMetadataDirectories?: string[];
 	disallowedTools: string[];
 	resumeSessionId?: string;
 	labels?: string[];
@@ -113,6 +124,72 @@ export interface IssueRunnerConfigInput {
 	sandboxSettings?: SandboxSettings;
 	/** CA cert path for MITM TLS termination — passed via child process env */
 	egressCaCertPath?: string;
+}
+
+/**
+ * Default home-directory allowances for node-based package managers and
+ * related developer tooling. Without these, `npm install`, `pnpm install`,
+ * `yarn`, and `bun install` all fail inside the sandbox because they read
+ * and write shared caches/stores under the user's home directory.
+ *
+ * Paths use the sandbox `~/` path-prefix form (see
+ * https://code.claude.com/docs/en/settings#sandbox-path-prefixes). Entries
+ * for both macOS and Linux layouts are included — irrelevant paths on a
+ * given OS are harmless no-ops.
+ */
+export function buildPackageManagerHomeAllowances(): {
+	read: string[];
+	write: string[];
+} {
+	// Read-only config files that tools commonly consult during install/auth.
+	const readOnlyConfigs = [
+		"~/.gitconfig",
+		// Git's XDG config dir — covers ~/.config/git/config and ~/.config/git/ignore,
+		// which git tries to access on nearly every command and warns about if missing
+		// from the sandbox read list.
+		"~/.config/git",
+		"~/.config/gh/hosts.yml",
+		"~/.config/gh/config.yml",
+		// SSH known_hosts — needed by git and other tools that ssh to git hosts
+		// (github.com, gitlab.com, etc.) to verify host keys without an interactive
+		// prompt. Only known_hosts, not the private keys in ~/.ssh.
+		"~/.ssh/known_hosts",
+		"~/.npmrc",
+		"~/.yarnrc",
+		"~/.yarnrc.yml",
+	];
+
+	// Package manager caches, stores, and global install dirs. These need
+	// read AND write access for installs to succeed.
+	const packageManagerDirs = [
+		// npm
+		"~/.npm",
+		// yarn (classic + berry)
+		"~/.yarn",
+		"~/.cache/yarn",
+		// pnpm (content-addressable store + state)
+		"~/.pnpm-store",
+		"~/.local/share/pnpm",
+		"~/.cache/pnpm",
+		"~/Library/pnpm",
+		"~/Library/Caches/pnpm",
+		// bun
+		"~/.bun",
+		// deno
+		"~/.deno",
+		"~/.cache/deno",
+		// node-gyp (native addon builds)
+		"~/.node-gyp",
+		// nvm / version managers that write lazily
+		"~/.nvm",
+		// generic XDG caches — some package managers fall back here
+		"~/.cache",
+	];
+
+	return {
+		read: [...readOnlyConfigs, ...packageManagerDirs],
+		write: [...packageManagerDirs],
+	};
 }
 
 /**
@@ -387,7 +464,19 @@ export class RunnerConfigBuilder {
 	): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 
+		const tmpDir = join(input.cyrusHome, "tmp");
+
 		if (input.sandboxSettings) {
+			// Ensure the tmp dir exists before sandbox start so Bun/npm/etc. can
+			// write to it atomically on first install.
+			try {
+				mkdirSync(tmpDir, { recursive: true });
+			} catch {
+				// best-effort; sandbox will surface clearer errors if this fails
+			}
+
+			const homeAllowances = buildPackageManagerHomeAllowances();
+
 			result.sandbox = {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
@@ -397,41 +486,88 @@ export class RunnerConfigBuilder {
 				// opens access to com.apple.trustd.agent, which is a potential data
 				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
 				enableWeakerNetworkIsolation: true,
+				// Run node-based package managers outside the sandbox. They spawn
+				// lifecycle scripts, compile native addons, and touch a long tail of
+				// paths that are impractical to fully enumerate. The egress proxy still
+				// sees their network traffic; excluding them from the filesystem
+				// sandbox is the practical trade-off that makes `install` work.
+				excludedCommands: [
+					...(input.sandboxSettings.excludedCommands ?? []),
+					"bun *",
+					"npm *",
+					"pnpm *",
+					"yarn *",
+				],
 				filesystem: {
 					...input.sandboxSettings.filesystem,
-					// "." resolves to the cwd of the primary folder Claude is working in.
+					// IMPORTANT: the "." path-prefix only resolves into the final
+					// sandbox rules when it's declared inside a committed
+					// `.claude/settings.json` file that Claude Code reads from disk.
+					// When sandbox settings are passed programmatically (like we do
+					// here via the SDK), "." is NOT expanded to the session cwd —
+					// so we must enumerate the worktree path explicitly.
 					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
 					// allowedDirectories contains the attachments dir, repo paths, and git
-					// metadata dirs — all of which need OS-level read access alongside the worktree.
-					allowRead: [".", ...input.allowedDirectories],
+					// metadata dirs — all of which need OS-level read access alongside the
+					// worktree. homeAllowances.read covers common node package manager
+					// caches/stores and git/gh config files. tmpDir is a dedicated session
+					// tmp dir for Bun and other tools that expect TMPDIR to be writable.
+					allowRead: [
+						input.session.workspace.path,
+						...input.allowedDirectories,
+						...(input.sandboxGitMetadataDirectories ?? []),
+						...Object.values(input.session.workspace.repoPaths ?? {}),
+						...homeAllowances.read,
+						tmpDir,
+					],
 					denyRead: ["~/"],
-					// Restrict subprocess writes to the session worktree only
-					allowWrite: [input.session.workspace.path],
+					// Writes are allowed in every worktree (primary + sub-worktrees
+					// for multi-repo), each worktree's `.git`/`.git/worktrees/<name>`
+					// metadata (git needs to write index.lock, HEAD, refs/...),
+					// plus package manager caches/stores and the shared tmp dir.
+					allowWrite: [
+						input.session.workspace.path,
+						...Object.values(input.session.workspace.repoPaths ?? {}),
+						...(input.sandboxGitMetadataDirectories ?? []),
+						...homeAllowances.write,
+						tmpDir,
+					],
 				},
 			};
 		}
 
+		// BUN_TMPDIR points at a path that is always inside allowWrite when the
+		// sandbox is enabled. Bun uses it for atomic installs and will fail if
+		// its default tmp dir isn't writable. We set BUN_TMPDIR rather than
+		// TMPDIR because the Claude Code native binary unconditionally overrides
+		// TMPDIR to its own sandbox-managed path when spawning sandboxed shells,
+		// so a TMPDIR we set here never reaches Bun. BUN_TMPDIR takes precedence
+		// over TMPDIR for Bun, so this is the reliable hook.
+		const additionalEnv: Record<string, string> = {
+			BUN_TMPDIR: tmpDir,
+		};
+
 		if (input.egressCaCertPath) {
-			result.additionalEnv = {
-				// Node.js (SDK, npm, etc.)
-				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
-				// OpenSSL-based tools (general fallback — also covers Ruby)
-				SSL_CERT_FILE: input.egressCaCertPath,
-				// Git HTTPS operations
-				GIT_SSL_CAINFO: input.egressCaCertPath,
-				// Python requests/pip
-				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
-				PIP_CERT: input.egressCaCertPath,
-				// curl (when compiled against OpenSSL, not SecureTransport)
-				CURL_CA_BUNDLE: input.egressCaCertPath,
-				// Rust/Cargo
-				CARGO_HTTP_CAINFO: input.egressCaCertPath,
-				// AWS CLI / boto3
-				AWS_CA_BUNDLE: input.egressCaCertPath,
-				// Deno
-				DENO_CERT: input.egressCaCertPath,
-			};
+			// Node.js (SDK, npm, etc.)
+			additionalEnv.NODE_EXTRA_CA_CERTS = input.egressCaCertPath;
+			// OpenSSL-based tools (general fallback — also covers Ruby)
+			additionalEnv.SSL_CERT_FILE = input.egressCaCertPath;
+			// Git HTTPS operations
+			additionalEnv.GIT_SSL_CAINFO = input.egressCaCertPath;
+			// Python requests/pip
+			additionalEnv.REQUESTS_CA_BUNDLE = input.egressCaCertPath;
+			additionalEnv.PIP_CERT = input.egressCaCertPath;
+			// curl (when compiled against OpenSSL, not SecureTransport)
+			additionalEnv.CURL_CA_BUNDLE = input.egressCaCertPath;
+			// Rust/Cargo
+			additionalEnv.CARGO_HTTP_CAINFO = input.egressCaCertPath;
+			// AWS CLI / boto3
+			additionalEnv.AWS_CA_BUNDLE = input.egressCaCertPath;
+			// Deno
+			additionalEnv.DENO_CERT = input.egressCaCertPath;
 		}
+
+		result.additionalEnv = additionalEnv;
 
 		return result;
 	}
