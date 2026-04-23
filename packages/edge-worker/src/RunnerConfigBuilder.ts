@@ -481,8 +481,12 @@ export class RunnerConfigBuilder {
 					// homeAllowances.read covers common node package manager caches/stores
 					// and git/gh config files. tmpDir is a dedicated session tmp dir for Bun
 					// and other tools that expect TMPDIR to be writable.
+					// session.workspace.path is included explicitly because "." does not
+					// always resolve into the read allowlist the way it does for writes,
+					// which leaves the worktree write-only (git/bun trip EPERM on stat).
 					allowRead: [
 						".",
+						input.session.workspace.path,
 						...input.allowedDirectories,
 						...homeAllowances.read,
 						tmpDir,
