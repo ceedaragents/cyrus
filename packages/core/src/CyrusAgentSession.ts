@@ -67,6 +67,18 @@ export interface RepositoryContext {
 	baseBranchName?: string;
 }
 
+export interface RepositoryContext {
+	repositoryId: string;
+	repositoryPath: string;
+	workspaceBaseDir: string;
+	allowedTools?: string[];
+	disallowedTools?: string[];
+	mcpConfigPath?: string;
+	promptTemplatePath?: string;
+	model?: string;
+	fallbackModel?: string;
+}
+
 export interface CyrusAgentSession {
 	/** Unique session identifier (was linearAgentActivitySessionId in v2.0) */
 	id: string;
@@ -89,6 +101,7 @@ export interface CyrusAgentSession {
 	/** Repository contexts for this session (always array, never undefined) */
 	repositories: RepositoryContext[];
 	workspace: Workspace;
+	repositoryContext?: RepositoryContext;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
