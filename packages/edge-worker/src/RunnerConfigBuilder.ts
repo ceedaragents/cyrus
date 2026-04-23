@@ -140,6 +140,11 @@ export function buildPackageManagerHomeAllowances(): {
 		// from the sandbox read list.
 		"~/.config/git",
 		"~/.config/gh/hosts.yml",
+		"~/.config/gh/config.yml",
+		// SSH known_hosts — needed by git and other tools that ssh to git hosts
+		// (github.com, gitlab.com, etc.) to verify host keys without an interactive
+		// prompt. Only known_hosts, not the private keys in ~/.ssh.
+		"~/.ssh/known_hosts",
 		"~/.npmrc",
 		"~/.yarnrc",
 		"~/.yarnrc.yml",
@@ -472,6 +477,18 @@ export class RunnerConfigBuilder {
 				// opens access to com.apple.trustd.agent, which is a potential data
 				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
 				enableWeakerNetworkIsolation: true,
+				// Run node-based package managers outside the sandbox. They spawn
+				// lifecycle scripts, compile native addons, and touch a long tail of
+				// paths that are impractical to fully enumerate. The egress proxy still
+				// sees their network traffic; excluding them from the filesystem
+				// sandbox is the practical trade-off that makes `install` work.
+				excludedCommands: [
+					...(input.sandboxSettings.excludedCommands ?? []),
+					"bun *",
+					"npm *",
+					"pnpm *",
+					"yarn *",
+				],
 				filesystem: {
 					...input.sandboxSettings.filesystem,
 					// IMPORTANT: the "." path-prefix only resolves into the final
