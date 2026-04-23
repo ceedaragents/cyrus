@@ -135,6 +135,10 @@ export function buildPackageManagerHomeAllowances(): {
 	// Read-only config files that tools commonly consult during install/auth.
 	const readOnlyConfigs = [
 		"~/.gitconfig",
+		// Git's XDG config dir — covers ~/.config/git/config and ~/.config/git/ignore,
+		// which git tries to access on nearly every command and warns about if missing
+		// from the sandbox read list.
+		"~/.config/git",
 		"~/.config/gh/hosts.yml",
 		"~/.npmrc",
 		"~/.yarnrc",
@@ -495,11 +499,15 @@ export class RunnerConfigBuilder {
 			};
 		}
 
-		// TMPDIR points at a path that is always inside allowWrite when the
-		// sandbox is enabled. Bun uses TMPDIR for atomic installs and will fail
-		// if its system default (e.g. /var/folders/... on macOS) isn't writable.
+		// BUN_TMPDIR points at a path that is always inside allowWrite when the
+		// sandbox is enabled. Bun uses it for atomic installs and will fail if
+		// its default tmp dir isn't writable. We set BUN_TMPDIR rather than
+		// TMPDIR because the Claude Code native binary unconditionally overrides
+		// TMPDIR to its own sandbox-managed path when spawning sandboxed shells,
+		// so a TMPDIR we set here never reaches Bun. BUN_TMPDIR takes precedence
+		// over TMPDIR for Bun, so this is the reliable hook.
 		const additionalEnv: Record<string, string> = {
-			TMPDIR: tmpDir,
+			BUN_TMPDIR: tmpDir,
 		};
 
 		if (input.egressCaCertPath) {
