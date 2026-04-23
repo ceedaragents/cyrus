@@ -21,6 +21,7 @@ import {
 	createLogger,
 	type IAgentRunner,
 	type ILogger,
+	LogLevel,
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
@@ -46,6 +47,29 @@ export class AbortError extends Error {
 		super(message);
 		this.name = "AbortError";
 	}
+}
+
+/**
+ * JSON.stringify replacer for Claude query options. The SDK's query options
+ * include non-serializable members (AbortController, async iterables,
+ * callbacks, pre-warmed sessions) — replace them with diagnostic placeholders
+ * so debug logs remain valid JSON.
+ */
+function serializeQueryOptionsReplacer(_key: string, value: unknown): unknown {
+	if (typeof value === "function") {
+		return `[Function${value.name ? `: ${value.name}` : ""}]`;
+	}
+	if (value instanceof AbortController) {
+		return "[AbortController]";
+	}
+	if (
+		value !== null &&
+		typeof value === "object" &&
+		Symbol.asyncIterator in (value as object)
+	) {
+		return "[AsyncIterable]";
+	}
+	return value;
 }
 
 export declare interface ClaudeRunner {
@@ -445,6 +469,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			const sandboxRequirements = checkLinuxSandboxRequirements();
 			logSandboxRequirementFailures(sandboxRequirements, this.logger);
 
+			const isDebugLogging = this.logger.getLevel() === LogLevel.DEBUG;
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
@@ -473,6 +499,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						// See: CYPACK-1108.
 						...this.repositoryEnv,
 						...this.config.additionalEnv,
+						// When logging at DEBUG level, enable the SDK's own debug output so
+						// --debug-to-stderr and DEBUG=1 propagate to the Claude subprocess.
+						...(isDebugLogging && { DEBUG_CLAUDE_AGENT_SDK: "1" }),
 					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
@@ -503,6 +532,16 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
 				},
 			};
+
+			if (isDebugLogging) {
+				this.logger.debug(
+					`Claude query options: ${JSON.stringify(
+						queryOptions,
+						serializeQueryOptionsReplacer,
+						2,
+					)}`,
+				);
+			}
 
 			// Process messages from the query
 			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost).
