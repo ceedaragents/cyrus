@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -113,6 +115,63 @@ export interface IssueRunnerConfigInput {
 	sandboxSettings?: SandboxSettings;
 	/** CA cert path for MITM TLS termination — passed via child process env */
 	egressCaCertPath?: string;
+}
+
+/**
+ * Default home-directory allowances for node-based package managers and
+ * related developer tooling. Without these, `npm install`, `pnpm install`,
+ * `yarn`, and `bun install` all fail inside the sandbox because they read
+ * and write shared caches/stores under the user's home directory.
+ *
+ * Paths use the sandbox `~/` path-prefix form (see
+ * https://code.claude.com/docs/en/settings#sandbox-path-prefixes). Entries
+ * for both macOS and Linux layouts are included — irrelevant paths on a
+ * given OS are harmless no-ops.
+ */
+export function buildPackageManagerHomeAllowances(): {
+	read: string[];
+	write: string[];
+} {
+	// Read-only config files that tools commonly consult during install/auth.
+	const readOnlyConfigs = [
+		"~/.gitconfig",
+		"~/.config/gh/hosts.yml",
+		"~/.npmrc",
+		"~/.yarnrc",
+		"~/.yarnrc.yml",
+	];
+
+	// Package manager caches, stores, and global install dirs. These need
+	// read AND write access for installs to succeed.
+	const packageManagerDirs = [
+		// npm
+		"~/.npm",
+		// yarn (classic + berry)
+		"~/.yarn",
+		"~/.cache/yarn",
+		// pnpm (content-addressable store + state)
+		"~/.pnpm-store",
+		"~/.local/share/pnpm",
+		"~/.cache/pnpm",
+		"~/Library/pnpm",
+		"~/Library/Caches/pnpm",
+		// bun
+		"~/.bun",
+		// deno
+		"~/.deno",
+		"~/.cache/deno",
+		// node-gyp (native addon builds)
+		"~/.node-gyp",
+		// nvm / version managers that write lazily
+		"~/.nvm",
+		// generic XDG caches — some package managers fall back here
+		"~/.cache",
+	];
+
+	return {
+		read: [...readOnlyConfigs, ...packageManagerDirs],
+		write: [...packageManagerDirs],
+	};
 }
 
 /**
@@ -387,7 +446,19 @@ export class RunnerConfigBuilder {
 	): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 
+		const tmpDir = join(input.cyrusHome, "tmp");
+
 		if (input.sandboxSettings) {
+			// Ensure the tmp dir exists before sandbox start so Bun/npm/etc. can
+			// write to it atomically on first install.
+			try {
+				mkdirSync(tmpDir, { recursive: true });
+			} catch {
+				// best-effort; sandbox will surface clearer errors if this fails
+			}
+
+			const homeAllowances = buildPackageManagerHomeAllowances();
+
 			result.sandbox = {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
@@ -403,35 +474,55 @@ export class RunnerConfigBuilder {
 					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
 					// allowedDirectories contains the attachments dir, repo paths, and git
 					// metadata dirs — all of which need OS-level read access alongside the worktree.
-					allowRead: [".", ...input.allowedDirectories],
+					// homeAllowances.read covers common node package manager caches/stores
+					// and git/gh config files. tmpDir is a dedicated session tmp dir for Bun
+					// and other tools that expect TMPDIR to be writable.
+					allowRead: [
+						".",
+						...input.allowedDirectories,
+						...homeAllowances.read,
+						tmpDir,
+					],
 					denyRead: ["~/"],
-					// Restrict subprocess writes to the session worktree only
-					allowWrite: [input.session.workspace.path],
+					// Restrict subprocess writes to the session worktree plus package
+					// manager caches/stores and the shared tmp dir.
+					allowWrite: [
+						input.session.workspace.path,
+						...homeAllowances.write,
+						tmpDir,
+					],
 				},
 			};
 		}
 
+		// TMPDIR points at a path that is always inside allowWrite when the
+		// sandbox is enabled. Bun uses TMPDIR for atomic installs and will fail
+		// if its system default (e.g. /var/folders/... on macOS) isn't writable.
+		const additionalEnv: Record<string, string> = {
+			TMPDIR: tmpDir,
+		};
+
 		if (input.egressCaCertPath) {
-			result.additionalEnv = {
-				// Node.js (SDK, npm, etc.)
-				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
-				// OpenSSL-based tools (general fallback — also covers Ruby)
-				SSL_CERT_FILE: input.egressCaCertPath,
-				// Git HTTPS operations
-				GIT_SSL_CAINFO: input.egressCaCertPath,
-				// Python requests/pip
-				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
-				PIP_CERT: input.egressCaCertPath,
-				// curl (when compiled against OpenSSL, not SecureTransport)
-				CURL_CA_BUNDLE: input.egressCaCertPath,
-				// Rust/Cargo
-				CARGO_HTTP_CAINFO: input.egressCaCertPath,
-				// AWS CLI / boto3
-				AWS_CA_BUNDLE: input.egressCaCertPath,
-				// Deno
-				DENO_CERT: input.egressCaCertPath,
-			};
+			// Node.js (SDK, npm, etc.)
+			additionalEnv.NODE_EXTRA_CA_CERTS = input.egressCaCertPath;
+			// OpenSSL-based tools (general fallback — also covers Ruby)
+			additionalEnv.SSL_CERT_FILE = input.egressCaCertPath;
+			// Git HTTPS operations
+			additionalEnv.GIT_SSL_CAINFO = input.egressCaCertPath;
+			// Python requests/pip
+			additionalEnv.REQUESTS_CA_BUNDLE = input.egressCaCertPath;
+			additionalEnv.PIP_CERT = input.egressCaCertPath;
+			// curl (when compiled against OpenSSL, not SecureTransport)
+			additionalEnv.CURL_CA_BUNDLE = input.egressCaCertPath;
+			// Rust/Cargo
+			additionalEnv.CARGO_HTTP_CAINFO = input.egressCaCertPath;
+			// AWS CLI / boto3
+			additionalEnv.AWS_CA_BUNDLE = input.egressCaCertPath;
+			// Deno
+			additionalEnv.DENO_CERT = input.egressCaCertPath;
 		}
+
+		result.additionalEnv = additionalEnv;
 
 		return result;
 	}
