@@ -329,6 +329,67 @@ describe("ClaudeRunner", () => {
 		});
 	});
 
+	describe("interrupt()", () => {
+		it("should swallow ede_diagnostic result and not emit session error when interrupted", async () => {
+			const messageHandler = vi.fn();
+			const errorHandler = vi.fn();
+			runner.on("message", messageHandler);
+			runner.on("error", errorHandler);
+
+			let interruptCalled = false;
+
+			mockQuery.mockImplementation(() => {
+				const iterable = {
+					async *[Symbol.asyncIterator]() {
+						yield {
+							type: "system",
+							subtype: "init",
+							session_id: "test-session",
+						} as any;
+						// Wait until interrupt is invoked, then emit the ede_diagnostic
+						// result message followed by the SDK-replaced exit error.
+						while (!interruptCalled) {
+							await new Promise((r) => setTimeout(r, 5));
+						}
+						yield {
+							type: "result",
+							subtype: "success",
+							is_error: true,
+							result:
+								"[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null",
+							duration_ms: 10,
+							session_id: "test-session",
+						} as any;
+						throw new Error(
+							"Claude Code returned an error result: [ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null",
+						);
+					},
+					interrupt: vi.fn(async () => {
+						interruptCalled = true;
+					}),
+				};
+				return iterable;
+			});
+
+			const startPromise = runner.start("test");
+			await new Promise((r) => setTimeout(r, 20));
+			await runner.interrupt();
+			await startPromise;
+
+			// The ede_diagnostic result must not reach consumers
+			const emittedResult = messageHandler.mock.calls.find(
+				([msg]) =>
+					msg?.type === "result" &&
+					typeof msg?.result === "string" &&
+					msg.result.includes("ede_diagnostic"),
+			);
+			expect(emittedResult).toBeUndefined();
+
+			// The replaced error must be treated as a normal interrupt, not a session error
+			expect(errorHandler).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("isRunning()", () => {
 		it("should return false initially", () => {
 			expect(runner.isRunning()).toBe(false);

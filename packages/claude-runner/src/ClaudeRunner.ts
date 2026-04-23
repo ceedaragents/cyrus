@@ -107,6 +107,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private canUseToolCallback: CanUseTool | undefined;
 	private repositoryEnv: Record<string, string> = {};
 	private keepSessionWarm: boolean;
+	private interrupting = false;
 
 	constructor(config: ClaudeRunnerConfig, keepSessionWarm = false) {
 		super();
@@ -575,6 +576,24 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					this.setupLogging();
 				}
 
+				// Swallow the ede_diagnostic "result" message emitted when the current
+				// turn is interrupted by interrupt(). Surfacing it to Linear would post
+				// a spurious error activity for a user-initiated stop.
+				if (
+					this.interrupting &&
+					message.type === "result" &&
+					"is_error" in message &&
+					message.is_error &&
+					"result" in message &&
+					typeof message.result === "string" &&
+					message.result.includes("ede_diagnostic")
+				) {
+					this.logger.info(
+						"Swallowed ede_diagnostic result triggered by interrupt",
+					);
+					continue;
+				}
+
 				this.messages.push(message);
 
 				// Log to detailed JSON log
@@ -644,11 +663,22 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				error instanceof Error &&
 				error.message.includes("Claude Code process exited with code 143");
 
+			// Interrupt-triggered diagnostic: when interrupt() is invoked mid-turn,
+			// the SDK surfaces the pending `result` message as an error of the form
+			// "Claude Code returned an error result: [ede_diagnostic] ...". This is
+			// the expected aftermath of a user-initiated interrupt, not a fault.
+			const isInterruptDiagnostic =
+				this.interrupting &&
+				error instanceof Error &&
+				error.message.includes("ede_diagnostic");
+
 			if (isAbortError) {
 				// User-initiated stop - log at info level, not error
 				this.logger.info("Session stopped by user");
 			} else if (isSigterm) {
 				this.logger.info("Session was terminated gracefully (SIGTERM)");
+			} else if (isInterruptDiagnostic) {
+				this.logger.info("Session turn interrupted by user");
 			} else {
 				// Actual error - log and emit
 				this.logger.error("Session error:", error);
@@ -662,6 +692,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			this.abortController = null;
 			this.activeQuery = null;
 			this.pendingResultMessage = null;
+			this.interrupting = false;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -735,7 +766,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	async interrupt(): Promise<void> {
 		if (this.activeQuery) {
 			this.logger.info("Interrupting current turn");
-			await this.activeQuery.interrupt();
+			this.interrupting = true;
+			try {
+				await this.activeQuery.interrupt();
+			} catch (err) {
+				this.interrupting = false;
+				throw err;
+			}
 		} else {
 			this.logger.debug("interrupt() called but no active query");
 		}
