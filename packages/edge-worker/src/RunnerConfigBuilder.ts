@@ -474,18 +474,19 @@ export class RunnerConfigBuilder {
 				enableWeakerNetworkIsolation: true,
 				filesystem: {
 					...input.sandboxSettings.filesystem,
-					// "." resolves to the cwd of the primary folder Claude is working in.
+					// IMPORTANT: the "." path-prefix only resolves into the final
+					// sandbox rules when it's declared inside a committed
+					// `.claude/settings.json` file that Claude Code reads from disk.
+					// When sandbox settings are passed programmatically (like we do
+					// here via the SDK), "." is NOT expanded to the session cwd —
+					// so we must enumerate the worktree path explicitly.
 					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
 					// allowedDirectories contains the attachments dir, repo paths, and git
-					// metadata dirs — all of which need OS-level read access alongside the worktree.
-					// homeAllowances.read covers common node package manager caches/stores
-					// and git/gh config files. tmpDir is a dedicated session tmp dir for Bun
-					// and other tools that expect TMPDIR to be writable.
-					// session.workspace.path is included explicitly because "." does not
-					// always resolve into the read allowlist the way it does for writes,
-					// which leaves the worktree write-only (git/bun trip EPERM on stat).
+					// metadata dirs — all of which need OS-level read access alongside the
+					// worktree. homeAllowances.read covers common node package manager
+					// caches/stores and git/gh config files. tmpDir is a dedicated session
+					// tmp dir for Bun and other tools that expect TMPDIR to be writable.
 					allowRead: [
-						".",
 						input.session.workspace.path,
 						...input.allowedDirectories,
 						...homeAllowances.read,
