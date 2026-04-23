@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-codex-runner",
-	"version": "0.2.48",
+	"version": "0.2.49",
 	"description": "Codex CLI process wrapper for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
