@@ -100,7 +100,7 @@ describe("ClaudeRunner debug logging", () => {
 			String(call[0]).startsWith("Claude query options:"),
 		);
 		expect(optionsLog).toBeDefined();
-		const payload = String(optionsLog\![0]).replace(
+		const payload = String(optionsLog![0]).replace(
 			/^Claude query options:\s*/,
 			"",
 		);
