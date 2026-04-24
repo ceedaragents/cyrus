@@ -81,6 +81,18 @@ describe("Environment loader", () => {
 		expect(env?.env).toEqual({ CYRUS_TARGET: "staging", FOO: "bar" });
 	});
 
+	it("loads the isolated flag", () => {
+		writeEnv("locked", { isolated: true });
+		expect(loadEnvironment(cyrusHome, "locked")?.isolated).toBe(true);
+	});
+
+	it("defaults isolated to undefined when omitted", () => {
+		writeEnv("default-merge", {});
+		expect(
+			loadEnvironment(cyrusHome, "default-merge")?.isolated,
+		).toBeUndefined();
+	});
+
 	it("loads claudeSettingSources subset", () => {
 		writeEnv("isolated", { claudeSettingSources: ["project"] });
 		expect(

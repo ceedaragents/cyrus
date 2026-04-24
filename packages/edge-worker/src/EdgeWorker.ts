@@ -3983,21 +3983,25 @@ ${taskSection}`;
 			),
 		);
 
-		// Build allowed directories list - always include attachments directory.
-		// Include repository paths from:
-		//   1. The repositories that were worktree'd for this session.
-		//   2. Any additional read-only repos declared by the bound
-		//      environment (`env.repositories`), resolved to their on-disk
-		//      paths via `resolveEnvironmentReadOnlyRepoPaths`.
+		// Build allowed directories list. Two modes:
+		//   - **isolated env** (`env.isolated === true`): only the
+		//     worktree paths and the env's declared read-only repos.
+		//     Attachments and git-metadata dirs are excluded so the
+		//     env config is the sole source of truth.
+		//   - **default**: includes attachments dir, all worktree paths,
+		//     env read-only repos, and git metadata dirs.
 		const worktreeRepoPaths = worktreeRepos.map((repo) => repo.repositoryPath);
-		const allowedDirectories: string[] = [
-			...new Set([
-				attachmentsDir,
-				...worktreeRepoPaths,
-				...envReadOnlyRepoPaths,
-				...this.gitService.getGitMetadataDirectories(workspace.path),
-			]),
-		];
+		const isIsolatedEnv = boundEnvironment?.isolated === true;
+		const allowedDirectories: string[] = isIsolatedEnv
+			? [...new Set([...worktreeRepoPaths, ...envReadOnlyRepoPaths])]
+			: [
+					...new Set([
+						attachmentsDir,
+						...worktreeRepoPaths,
+						...envReadOnlyRepoPaths,
+						...this.gitService.getGitMetadataDirectories(workspace.path),
+					]),
+				];
 
 		this.logger.debug(
 			`Configured allowed directories for ${fullIssue.identifier}:`,

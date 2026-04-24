@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -18,7 +17,10 @@ import type {
 	RepositoryConfig,
 	RunnerType,
 } from "cyrus-core";
-import { resolvePath } from "cyrus-core";
+import {
+	EnvironmentResolver,
+	isEnvironmentIsolated,
+} from "./EnvironmentResolver.js";
 
 /**
  * Subset of McpConfigService consumed by RunnerConfigBuilder.
@@ -270,63 +272,59 @@ export class RunnerConfigBuilder {
 		const resolvedWorkspaceId =
 			input.linearWorkspaceId ??
 			input.requireLinearWorkspaceId(input.repository);
-		const mcpConfig = this.mcpConfigProvider.buildMcpConfig(
+
+		// Delegate all "env vs default" resolution to EnvironmentResolver.
+		// In isolated mode it strips dynamic MCP servers, hooks, the
+		// Chrome arg, and default settingSources; in merge mode it
+		// preserves the legacy behavior. Either way, this method is now
+		// just orchestration — the rules live in one place.
+		const env = input.environment;
+		const baseMcpConfig = this.mcpConfigProvider.buildMcpConfig(
 			input.repository.id,
 			resolvedWorkspaceId,
 			input.sessionId,
 			input.mcpOptions,
 		);
-
-		// Resolve environment overrides (if the session has one bound).
-		// Env values take precedence over repository-level defaults.
-		const env = input.environment;
-		const envSystemPrompt = env
-			? resolveEnvironmentSystemPrompt(env, log)
-			: undefined;
-		const effectiveSystemPrompt = envSystemPrompt ?? input.systemPrompt;
-		const effectiveAllowedTools = env?.allowedTools ?? input.allowedTools;
-		const effectiveDisallowedTools =
-			env?.disallowedTools ?? input.disallowedTools;
-		const mcpConfigPath =
-			env?.mcpConfigPath ??
-			this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository);
-
-		// Environment can supply its own plugins (replacing auto-discovered
-		// skill plugins) and/or additional skill directory paths.
-		let effectivePlugins = input.plugins;
-		if (env?.plugins || env?.skills?.length) {
-			const envPlugins = (env?.plugins ?? []).map((p) => ({
-				type: "local" as const,
-				path: resolvePath(p.path),
-			}));
-			const skillPlugins = (env?.skills ?? []).map((path) => ({
-				type: "local" as const,
-				path: resolvePath(path),
-			}));
-			effectivePlugins = [...envPlugins, ...skillPlugins];
-		}
-
-		// Environment can override sandbox filesystem permissions.
-		const effectiveSandboxSettings = env?.sandbox
-			? mergeSandboxFilesystem(input.sandboxSettings, env.sandbox)
-			: input.sandboxSettings;
+		const baseMcpConfigPath = this.mcpConfigProvider.buildMergedMcpConfigPath(
+			input.repository,
+		);
+		const resolver = new EnvironmentResolver(log);
+		const resolved = resolver.resolve(env, {
+			systemPrompt: input.systemPrompt,
+			allowedTools: input.allowedTools,
+			disallowedTools: input.disallowedTools,
+			mcpConfigPath: baseMcpConfigPath,
+			mcpConfig: baseMcpConfig,
+			plugins: input.plugins,
+			sandboxSettings: input.sandboxSettings,
+			hooks,
+			settingSources: undefined,
+			addChromeExtraArg: true,
+			defaultAllowedDirectories: input.allowedDirectories,
+			envReadOnlyRepoPaths: [],
+			worktreePath: input.session.workspace.path,
+		});
 
 		// Build a shadow input that buildSandboxConfig can consume.
 		const sandboxInput: IssueRunnerConfigInput = {
 			...input,
-			sandboxSettings: effectiveSandboxSettings,
+			sandboxSettings: resolved.sandboxSettings,
 		};
 
 		const config: AgentRunnerConfig & Record<string, unknown> = {
 			workingDirectory: input.session.workspace.path,
-			allowedTools: effectiveAllowedTools,
-			disallowedTools: effectiveDisallowedTools,
-			allowedDirectories: input.allowedDirectories,
+			allowedTools: resolved.allowedTools,
+			disallowedTools: resolved.disallowedTools,
+			allowedDirectories: resolved.allowedDirectories,
 			workspaceName: input.session.issue?.identifier || input.session.issueId,
 			cyrusHome: input.cyrusHome,
-			mcpConfigPath,
-			mcpConfig,
-			appendSystemPrompt: effectiveSystemPrompt || "",
+			...(resolved.mcpConfigPath !== undefined && {
+				mcpConfigPath: resolved.mcpConfigPath,
+			}),
+			...(resolved.mcpConfig !== undefined && {
+				mcpConfig: resolved.mcpConfig,
+			}),
+			appendSystemPrompt: resolved.systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:
@@ -334,26 +332,26 @@ export class RunnerConfigBuilder {
 				input.repository.fallbackModel ||
 				this.runnerSelector.getDefaultFallbackModelForRunner(runnerType),
 			logger: log,
-			hooks,
+			hooks: resolved.hooks,
 			// Plugins providing skills (Claude runner only)
 			...(runnerType === "claude" &&
-				effectivePlugins?.length && { plugins: effectivePlugins }),
+				resolved.plugins?.length && { plugins: resolved.plugins }),
 			// SDK sandbox settings (Claude runner only):
 			// - Merge base settings with per-session filesystem.allowWrite (worktree path)
 			// - Pass CA cert path via env for MITM TLS termination
 			...(runnerType === "claude" &&
-				effectiveSandboxSettings &&
+				resolved.sandboxSettings &&
 				this.buildSandboxConfig(sandboxInput)),
-			// Enable Chrome integration for Claude runner (disabled for other runners)
-			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
-			// Environment can scope which Claude file-based settings sources
-			// (~/.claude/settings.json, repo .claude/settings.json, .claude/
-			// settings.local.json) get merged into the spawned agent. When
-			// omitted, ClaudeRunner falls back to all three for backwards
-			// compatibility — explicit `[]` opts out of all of them.
+			// Enable Chrome integration for Claude runner (disabled in
+			// isolated environments and for other runners).
 			...(runnerType === "claude" &&
-				env?.claudeSettingSources !== undefined && {
-					settingSources: env.claudeSettingSources,
+				resolved.addChromeExtraArg && { extraArgs: { chrome: null } }),
+			// Forward `settingSources` only when explicitly resolved (env
+			// said so, or isolation forced `[]`). Omitted lets the
+			// ClaudeRunner default of `["user","project","local"]` apply.
+			...(runnerType === "claude" &&
+				resolved.settingSources !== undefined && {
+					settingSources: resolved.settingSources,
 				}),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" &&
@@ -465,6 +463,11 @@ export class RunnerConfigBuilder {
 		const result: Record<string, unknown> = {};
 
 		if (input.sandboxSettings) {
+			const isolated = isEnvironmentIsolated(input.environment);
+			const baseFilesystem = (input.sandboxSettings.filesystem ?? {}) as Record<
+				string,
+				string[] | undefined
+			>;
 			result.sandbox = {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
@@ -474,17 +477,31 @@ export class RunnerConfigBuilder {
 				// opens access to com.apple.trustd.agent, which is a potential data
 				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
 				enableWeakerNetworkIsolation: true,
-				filesystem: {
-					...input.sandboxSettings.filesystem,
-					// "." resolves to the cwd of the primary folder Claude is working in.
-					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
-					// allowedDirectories contains the attachments dir, repo paths, and git
-					// metadata dirs — all of which need OS-level read access alongside the worktree.
-					allowRead: [".", ...input.allowedDirectories],
-					denyRead: ["~/"],
-					// Restrict subprocess writes to the session worktree only
-					allowWrite: [input.session.workspace.path],
-				},
+				filesystem: isolated
+					? {
+							// Isolation mode: env-supplied filesystem rules are the
+							// sole source of truth. The only runtime-safety addition
+							// is the worktree path in `allowWrite` so the agent can
+							// persist its own work.
+							...baseFilesystem,
+							allowWrite: Array.from(
+								new Set([
+									...(baseFilesystem.allowWrite ?? []),
+									input.session.workspace.path,
+								]),
+							),
+						}
+					: {
+							...baseFilesystem,
+							// "." resolves to the cwd of the primary folder Claude is working in.
+							// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
+							// allowedDirectories contains the attachments dir, repo paths, and git
+							// metadata dirs — all of which need OS-level read access alongside the worktree.
+							allowRead: [".", ...input.allowedDirectories],
+							denyRead: ["~/"],
+							// Restrict subprocess writes to the session worktree only
+							allowWrite: [input.session.workspace.path],
+						},
 			};
 		}
 
@@ -605,62 +622,4 @@ export class RunnerConfigBuilder {
 			],
 		};
 	}
-}
-
-/**
- * Resolve an environment's system prompt text, preferring inline
- * `systemPrompt` over a file at `systemPromptPath`. Returns undefined when
- * neither is set. File read errors are logged and swallowed — a missing
- * prompt file shouldn't break session creation.
- */
-function resolveEnvironmentSystemPrompt(
-	env: EnvironmentConfig,
-	log: ILogger,
-): string | undefined {
-	if (env.systemPrompt) return env.systemPrompt;
-	if (!env.systemPromptPath) return undefined;
-	try {
-		return readFileSync(resolvePath(env.systemPromptPath), "utf8");
-	} catch (err) {
-		log.warn(
-			`Failed to read environment systemPromptPath ${env.systemPromptPath}: ${(err as Error).message}`,
-		);
-		return undefined;
-	}
-}
-
-/**
- * Merge an environment's sandbox filesystem overrides into the global
- * sandbox settings. Environment-specified arrays replace the corresponding
- * global arrays; omitted arrays pass through unchanged.
- */
-function mergeSandboxFilesystem(
-	base: SandboxSettings | undefined,
-	envSandbox: NonNullable<EnvironmentConfig["sandbox"]>,
-): SandboxSettings | undefined {
-	const baseSettings = (base ?? {}) as SandboxSettings & {
-		filesystem?: Record<string, string[] | undefined>;
-	};
-	const baseFilesystem = baseSettings.filesystem ?? {};
-	const envFilesystem = envSandbox.filesystem ?? {};
-	const mergedFilesystem = {
-		...baseFilesystem,
-		...(envFilesystem.allowRead !== undefined && {
-			allowRead: envFilesystem.allowRead,
-		}),
-		...(envFilesystem.denyRead !== undefined && {
-			denyRead: envFilesystem.denyRead,
-		}),
-		...(envFilesystem.allowWrite !== undefined && {
-			allowWrite: envFilesystem.allowWrite,
-		}),
-		...(envFilesystem.denyWrite !== undefined && {
-			denyWrite: envFilesystem.denyWrite,
-		}),
-	};
-	return {
-		...baseSettings,
-		...(envSandbox.enabled !== undefined && { enabled: envSandbox.enabled }),
-		filesystem: mergedFilesystem,
-	} as SandboxSettings;
 }

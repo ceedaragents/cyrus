@@ -44,6 +44,26 @@ export const EnvironmentConfigSchema = z.object({
 	description: z.string().optional(),
 
 	/**
+	 * When `true`, the session is built **only** from this environment
+	 * config — no implicit merging with repository defaults, label
+	 * prompts, default tool lists, auto-discovered skill plugins,
+	 * dynamic Linear/Slack MCP servers, Cyrus-managed hooks, or the
+	 * Chrome extra-arg. Fields omitted from the env are treated as
+	 * empty/disabled rather than inheriting from elsewhere.
+	 *
+	 * Two runtime safety exceptions are always enforced:
+	 *   1. The session worktree path is added to sandbox `allowWrite`
+	 *      so the agent can persist its own work.
+	 *   2. The egress-proxy CA-cert env vars (NODE_EXTRA_CA_CERTS etc.)
+	 *      remain layered on top of `env` so MITM TLS keeps working.
+	 *
+	 * When `false` or omitted (default), the environment merges with
+	 * defaults — preserving backwards-compatible behavior for existing
+	 * environments.
+	 */
+	isolated: z.boolean().optional(),
+
+	/**
 	 * System prompt appended to the agent's base prompt. Overrides the
 	 * label-derived system prompt when set.
 	 */
