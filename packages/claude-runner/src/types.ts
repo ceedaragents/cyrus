@@ -69,6 +69,13 @@ export interface ClaudeRunnerConfig {
 	 * this warm instance instead of spawning a cold process (~20x faster first turn).
 	 */
 	warmSession?: WarmQuery;
+	/**
+	 * Which file-based Claude settings sources to load. Defaults to
+	 * `["user","project","local"]` for backwards compatibility with
+	 * CLAUDE.md, custom slash commands, and project settings. Set to
+	 * `[]` to disable all sources for a fully isolated session.
+	 */
+	settingSources?: ("user" | "project" | "local")[];
 }
 
 export interface ClaudeSessionInfo {

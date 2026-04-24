@@ -81,6 +81,27 @@ describe("Environment loader", () => {
 		expect(env?.env).toEqual({ CYRUS_TARGET: "staging", FOO: "bar" });
 	});
 
+	it("loads claudeSettingSources subset", () => {
+		writeEnv("isolated", { claudeSettingSources: ["project"] });
+		expect(
+			loadEnvironment(cyrusHome, "isolated")?.claudeSettingSources,
+		).toEqual(["project"]);
+	});
+
+	it("loads claudeSettingSources empty array (fully isolated)", () => {
+		writeEnv("airgap", { claudeSettingSources: [] });
+		expect(loadEnvironment(cyrusHome, "airgap")?.claudeSettingSources).toEqual(
+			[],
+		);
+	});
+
+	it("rejects invalid claudeSettingSources values", () => {
+		writeEnv("bad-sources", { claudeSettingSources: ["global"] });
+		expect(() => loadEnvironment(cyrusHome, "bad-sources")).toThrow(
+			EnvironmentLoadError,
+		);
+	});
+
 	it("rejects non-string env values", () => {
 		writeEnv("bad-env", { env: { COUNT: 42 } });
 		expect(() => loadEnvironment(cyrusHome, "bad-env")).toThrow(

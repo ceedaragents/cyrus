@@ -91,6 +91,26 @@ export const EnvironmentConfigSchema = z.object({
 	env: z.record(z.string(), z.string()).optional(),
 
 	/**
+	 * Which file-based Claude settings sources should be merged into
+	 * the spawned agent's configuration. Maps to the SDK's
+	 * `settingSources` option:
+	 *   - `"user"`: `~/.claude/settings.json` (per-user global)
+	 *   - `"project"`: `<repo>/.claude/settings.json` (checked-in)
+	 *   - `"local"`: `<repo>/.claude/settings.local.json` (gitignored)
+	 *
+	 * When omitted, the default `["user","project","local"]` is
+	 * applied (current behavior — preserves CLAUDE.md, custom slash
+	 * commands, etc.). Set to `[]` to opt the environment out of all
+	 * file-based settings for a fully isolated session, or to a subset
+	 * like `["project"]` to only inherit checked-in project settings.
+	 *
+	 * Currently honored by the Claude runner only.
+	 */
+	claudeSettingSources: z
+		.array(z.enum(["user", "project", "local"]))
+		.optional(),
+
+	/**
 	 * Whitelist of env variable keys that may be overridden inline from
 	 * a Linear issue description via `env=<name>$KEY=VALUE,$KEY=VALUE`.
 	 * Keys not in this list are silently dropped — this prevents issue

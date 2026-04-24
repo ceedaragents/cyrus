@@ -346,6 +346,15 @@ export class RunnerConfigBuilder {
 				this.buildSandboxConfig(sandboxInput)),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
+			// Environment can scope which Claude file-based settings sources
+			// (~/.claude/settings.json, repo .claude/settings.json, .claude/
+			// settings.local.json) get merged into the spawned agent. When
+			// omitted, ClaudeRunner falls back to all three for backwards
+			// compatibility — explicit `[]` opts out of all of them.
+			...(runnerType === "claude" &&
+				env?.claudeSettingSources !== undefined && {
+					settingSources: env.claudeSettingSources,
+				}),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" &&
 				input.createAskUserQuestionCallback && {
