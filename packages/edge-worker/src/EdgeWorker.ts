@@ -51,10 +51,12 @@ import type {
 	WebhookIssue,
 } from "cyrus-core";
 import {
+	AGENT_SESSION_THREAD_MARKER_PREFIX,
 	CLIIssueTrackerService,
 	CLIRPCServer,
 	createLogger,
 	DEFAULT_PROXY_URL,
+	EMAIL_SYNCED_THREAD_MARKER,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isCommentCreateWebhook,
@@ -4246,9 +4248,8 @@ ${taskSection}`;
 		}
 
 		// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
-		const AGENT_SESSION_MARKER = "This thread is for an agent session";
 		const isMentionTriggered =
-			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
+			commentBody && !commentBody.includes(AGENT_SESSION_THREAD_MARKER_PREFIX);
 		// Check if the comment contains the /label-based-prompt command
 		const isLabelBasedPromptRequested = commentBody?.includes(
 			"/label-based-prompt",
@@ -4985,14 +4986,6 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Body of the auto-generated root comment Linear posts when a comment thread
-	 * is mirrored to an email chain. We detect replies inside these threads by
-	 * walking a new comment's ancestry and matching this exact body.
-	 */
-	private static readonly EMAIL_SYNCED_THREAD_MARKER =
-		"This comment thread is synced to a corresponding email chain. All replies are displayed in both locations.";
-
-	/**
 	 * Email of the Cyrus Linear OAuth app user whose comments we must never
 	 * re-inject (otherwise Cyrus's own thread replies would feed back into its
 	 * session). Overridable via CYRUS_LINEAR_BOT_EMAIL.
@@ -5062,7 +5055,7 @@ ${taskSection}`;
 			}
 		}
 
-		if (rootBody !== EdgeWorker.EMAIL_SYNCED_THREAD_MARKER) {
+		if (rootBody !== EMAIL_SYNCED_THREAD_MARKER) {
 			return;
 		}
 
