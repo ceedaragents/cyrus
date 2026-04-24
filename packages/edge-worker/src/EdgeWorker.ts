@@ -5082,13 +5082,43 @@ ${taskSection}`;
 			return;
 		}
 
-		const author = comment.user?.name ?? comment.user?.email ?? undefined;
+		// Distinguish replies posted by an internal Linear user (user populated)
+		// from those delivered via Linear's email-to-thread sync (user null,
+		// externalUser populated for the email sender).
+		const internalUser = comment.user;
+		const externalUser = (
+			comment as unknown as {
+				externalUser?: { name?: string; email?: string } | null;
+			}
+		).externalUser;
+		const commentSource: "linear" | "email" = internalUser ? "linear" : "email";
+		const author =
+			internalUser?.name ??
+			internalUser?.email ??
+			externalUser?.name ??
+			externalUser?.email ??
+			undefined;
 		const timestamp =
 			typeof comment.createdAt === "string" ? comment.createdAt : undefined;
 
 		this.logger.info(
-			`Injecting email-synced comment ${commentId} into session ${mostRecentSession.id} on issue ${issueId}`,
+			`Injecting email-synced comment ${commentId} (source=${commentSource}) into session ${mostRecentSession.id} on issue ${issueId}`,
 		);
+
+		// Surface this in the Linear timeline so users can see Cyrus picked up an
+		// email-synced reply, similar to the prompted-activity acknowledgment.
+		try {
+			const authorLabel = author ? ` from **${author}**` : "";
+			await this.agentSessionManager.createThoughtActivity(
+				mostRecentSession.id,
+				`Received an email-synced thread reply${authorLabel} (comment \`${commentId}\`); routing it into this session.`,
+			);
+		} catch (error) {
+			this.logger.warn(
+				`Failed to post email-synced acknowledgment thought for ${commentId}`,
+				error,
+			);
+		}
 
 		try {
 			await this.handlePromptWithStreamingCheck(
@@ -5104,6 +5134,7 @@ ${taskSection}`;
 				linearWorkspaceId,
 				author,
 				timestamp,
+				commentSource,
 			);
 		} catch (error) {
 			this.logger.error(
@@ -5809,6 +5840,7 @@ ${taskSection}`;
 		attachmentManifest?: string,
 		commentAuthor?: string,
 		commentTimestamp?: string,
+		commentSource?: "linear" | "email",
 	): Promise<string> {
 		// Fetch labels for system prompt determination
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -5822,6 +5854,7 @@ ${taskSection}`;
 			userComment: promptBody,
 			commentAuthor,
 			commentTimestamp,
+			commentSource,
 			attachmentManifest,
 			isNewSession,
 			isStreaming: false, // This path is only for non-streaming prompts
@@ -5961,9 +5994,12 @@ ${taskSection}`;
 			if (input.commentAuthor || input.commentTimestamp) {
 				const author = input.commentAuthor || "Unknown";
 				const timestamp = input.commentTimestamp || new Date().toISOString();
+				const sourceLine = input.commentSource
+					? `\n  <source>${input.commentSource}</source>`
+					: "";
 				parts.push(`<user_comment>
   <author>${author}</author>
-  <timestamp>${timestamp}</timestamp>
+  <timestamp>${timestamp}</timestamp>${sourceLine}
   <content>
 ${input.userComment}
   </content>
@@ -6030,10 +6066,13 @@ ${input.userComment}
 		// Wrap comment in XML with author and timestamp for multi-player context
 		const author = input.commentAuthor || "Unknown";
 		const timestamp = input.commentTimestamp || new Date().toISOString();
+		const sourceLine = input.commentSource
+			? `\n  <source>${input.commentSource}</source>`
+			: "";
 
 		const commentXml = `<new_comment>
   <author>${author}</author>
-  <timestamp>${timestamp}</timestamp>
+  <timestamp>${timestamp}</timestamp>${sourceLine}
   <content>
 ${input.userComment}
   </content>
@@ -6730,6 +6769,7 @@ ${input.userComment}
 		linearWorkspaceId: string,
 		commentAuthor?: string,
 		commentTimestamp?: string,
+		commentSource?: "linear" | "email",
 	): Promise<boolean> {
 		const log = this.logger.withContext({ sessionId });
 		const existingRunner = session.agentRunner;
@@ -6744,10 +6784,26 @@ ${input.userComment}
 				`Adding prompt to existing stream for ${sessionId} (${logContext})`,
 			);
 
-			// Append attachment manifest to the prompt if we have one
+			// Wrap as <new_comment> XML when we have author/timestamp/source so
+			// mid-stream injections carry the same multi-player context as
+			// resume-path prompts.
 			let fullPrompt = promptBody;
+			if (commentAuthor || commentTimestamp || commentSource) {
+				const author = commentAuthor || "Unknown";
+				const timestamp = commentTimestamp || new Date().toISOString();
+				const sourceLine = commentSource
+					? `\n  <source>${commentSource}</source>`
+					: "";
+				fullPrompt = `<new_comment>
+  <author>${author}</author>
+  <timestamp>${timestamp}</timestamp>${sourceLine}
+  <content>
+${promptBody}
+  </content>
+</new_comment>`;
+			}
 			if (attachmentManifest) {
-				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+				fullPrompt = `${fullPrompt}\n\n${attachmentManifest}`;
 			}
 
 			existingRunner.addStreamMessage(fullPrompt);
@@ -6770,6 +6826,7 @@ ${input.userComment}
 			undefined, // maxTurns
 			commentAuthor,
 			commentTimestamp,
+			commentSource,
 		);
 
 		return false; // Session was resumed
@@ -6816,6 +6873,7 @@ ${input.userComment}
 		maxTurns?: number,
 		commentAuthor?: string,
 		commentTimestamp?: string,
+		commentSource?: "linear" | "email",
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId });
 		// Check for existing runner
@@ -6960,6 +7018,7 @@ ${input.userComment}
 			attachmentManifest,
 			commentAuthor,
 			commentTimestamp,
+			commentSource,
 		);
 
 		// Start session - use streaming mode if supported for ability to add messages later
