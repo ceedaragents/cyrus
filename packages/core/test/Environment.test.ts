@@ -81,6 +81,13 @@ describe("Environment loader", () => {
 		expect(env?.env).toEqual({ CYRUS_TARGET: "staging", FOO: "bar" });
 	});
 
+	it("loads restrictHomeDirectoryReads=false to opt out of home-dir denials", () => {
+		writeEnv("open-reads", { restrictHomeDirectoryReads: false });
+		expect(
+			loadEnvironment(cyrusHome, "open-reads")?.restrictHomeDirectoryReads,
+		).toBe(false);
+	});
+
 	it("loads the isolated flag", () => {
 		writeEnv("locked", { isolated: true });
 		expect(loadEnvironment(cyrusHome, "locked")?.isolated).toBe(true);

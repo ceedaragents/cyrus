@@ -111,6 +111,22 @@ export const EnvironmentConfigSchema = z.object({
 	env: z.record(z.string(), z.string()).optional(),
 
 	/**
+	 * When `true` (default), Cyrus enumerates the contents of `~/` and
+	 * adds each top-level entry that is NOT an ancestor of the
+	 * worktree (or one of `allowedDirectories`) to the session's
+	 * `disallowedTools` as `Read(<path>/**)`. This blocks the agent
+	 * from reading SSH keys, credentials, dotfiles, etc.
+	 *
+	 * Set to `false` to opt out — useful when an environment is
+	 * intentionally granting wider read access (e.g. a research env
+	 * pointed at multiple unrelated repos under `~/`). The env's own
+	 * `disallowedTools` and sandbox `denyRead` rules still apply.
+	 *
+	 * Currently honored by the Claude runner only.
+	 */
+	restrictHomeDirectoryReads: z.boolean().optional(),
+
+	/**
 	 * Which file-based Claude settings sources should be merged into
 	 * the spawned agent's configuration. Maps to the SDK's
 	 * `settingSources` option:

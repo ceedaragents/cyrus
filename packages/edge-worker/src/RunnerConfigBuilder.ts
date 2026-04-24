@@ -303,6 +303,7 @@ export class RunnerConfigBuilder {
 			defaultAllowedDirectories: input.allowedDirectories,
 			envReadOnlyRepoPaths: [],
 			worktreePath: input.session.workspace.path,
+			restrictHomeDirectoryReads: true,
 		});
 
 		// Build a shadow input that buildSandboxConfig can consume.
@@ -352,6 +353,13 @@ export class RunnerConfigBuilder {
 			...(runnerType === "claude" &&
 				resolved.settingSources !== undefined && {
 					settingSources: resolved.settingSources,
+				}),
+			// Forward the home-directory restriction toggle. Only set when
+			// the env opted out (false) — leaving it undefined lets the
+			// ClaudeRunner default (true, restrict) apply.
+			...(runnerType === "claude" &&
+				resolved.restrictHomeDirectoryReads === false && {
+					restrictHomeDirectoryReads: false,
 				}),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" &&

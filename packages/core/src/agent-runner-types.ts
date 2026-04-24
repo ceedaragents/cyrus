@@ -451,6 +451,17 @@ export interface AgentRunnerConfig {
 	/** Callback when session completes */
 	onComplete?: (messages: AgentMessage[]) => void | Promise<void>;
 	/**
+	 * When `true` (default), Cyrus enumerates entries in the user's
+	 * home directory and adds them to `disallowedTools` so the agent
+	 * cannot Read SSH keys, dotfiles, credentials, etc. Set `false`
+	 * to opt out — typically only useful from an environment config
+	 * that grants intentionally wider read access.
+	 *
+	 * Currently honored by the Claude runner only.
+	 */
+	restrictHomeDirectoryReads?: boolean;
+
+	/**
 	 * Which file-based Claude settings sources the SDK should load.
 	 * Maps to `@anthropic-ai/claude-agent-sdk`'s `settingSources` option:
 	 *   - `"user"`: `~/.claude/settings.json` (per-user global)

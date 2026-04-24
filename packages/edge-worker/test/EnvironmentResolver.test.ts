@@ -27,6 +27,7 @@ function baseInputs(
 		defaultAllowedDirectories: ["/attachments", "/repo", "/repo/.git"],
 		envReadOnlyRepoPaths: [],
 		worktreePath: "/work/CYPACK-1130",
+		restrictHomeDirectoryReads: true,
 		...overrides,
 	};
 }
@@ -56,6 +57,30 @@ describe("EnvironmentResolver — no env bound", () => {
 		expect(r.settingSources).toBeUndefined();
 		expect(r.addChromeExtraArg).toBe(true);
 		expect(r.allowedDirectories).toEqual(base.defaultAllowedDirectories);
+	});
+});
+
+describe("EnvironmentResolver — restrictHomeDirectoryReads", () => {
+	it("propagates the base default when the env omits the flag", () => {
+		const env: EnvironmentConfig = {};
+		expect(resolver.resolve(env, baseInputs()).restrictHomeDirectoryReads).toBe(
+			true,
+		);
+	});
+
+	it("forwards env.restrictHomeDirectoryReads=false to opt out", () => {
+		const env: EnvironmentConfig = { restrictHomeDirectoryReads: false };
+		expect(resolver.resolve(env, baseInputs()).restrictHomeDirectoryReads).toBe(
+			false,
+		);
+	});
+
+	it("forwards env.restrictHomeDirectoryReads=true even when base is false", () => {
+		const env: EnvironmentConfig = { restrictHomeDirectoryReads: true };
+		expect(
+			resolver.resolve(env, baseInputs({ restrictHomeDirectoryReads: false }))
+				.restrictHomeDirectoryReads,
+		).toBe(true);
 	});
 });
 
@@ -166,6 +191,15 @@ describe("EnvironmentResolver — isolated mode", () => {
 	it("returns no sandboxSettings when env omits sandbox in isolated mode", () => {
 		const env: EnvironmentConfig = { isolated: true };
 		expect(resolver.resolve(env, baseInputs()).sandboxSettings).toBeUndefined();
+	});
+
+	it("preserves the restrictHomeDirectoryReads default in isolated mode", () => {
+		// Isolation does NOT silently disable the home-dir safety enumeration.
+		// Authors must opt out explicitly via env.restrictHomeDirectoryReads=false.
+		const env: EnvironmentConfig = { isolated: true };
+		expect(resolver.resolve(env, baseInputs()).restrictHomeDirectoryReads).toBe(
+			true,
+		);
 	});
 
 	it("env claudeSettingSources subset wins over the isolation default", () => {

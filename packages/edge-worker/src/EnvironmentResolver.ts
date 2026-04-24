@@ -28,6 +28,12 @@ export interface EnvironmentResolverBaseInputs {
 	defaultAllowedDirectories: string[];
 	envReadOnlyRepoPaths: string[];
 	worktreePath: string;
+	/**
+	 * Whether the runtime should add the home-directory enumeration to
+	 * `disallowedTools`. Defaults to `true` upstream; `false` opts out
+	 * of the safety enumeration entirely.
+	 */
+	restrictHomeDirectoryReads: boolean;
 }
 
 /**
@@ -47,6 +53,7 @@ export interface EnvironmentResolverResult {
 	settingSources?: ("user" | "project" | "local")[];
 	addChromeExtraArg: boolean;
 	allowedDirectories: string[];
+	restrictHomeDirectoryReads: boolean;
 }
 
 /**
@@ -88,6 +95,7 @@ export class EnvironmentResolver {
 				settingSources: base.settingSources,
 				addChromeExtraArg: base.addChromeExtraArg,
 				allowedDirectories: base.defaultAllowedDirectories,
+				restrictHomeDirectoryReads: base.restrictHomeDirectoryReads,
 			};
 		}
 
@@ -124,6 +132,9 @@ export class EnvironmentResolver {
 			? Array.from(new Set([base.worktreePath, ...base.envReadOnlyRepoPaths]))
 			: base.defaultAllowedDirectories;
 
+		const restrictHomeDirectoryReads =
+			env.restrictHomeDirectoryReads ?? base.restrictHomeDirectoryReads;
+
 		return {
 			systemPrompt,
 			allowedTools,
@@ -136,6 +147,7 @@ export class EnvironmentResolver {
 			settingSources,
 			addChromeExtraArg,
 			allowedDirectories,
+			restrictHomeDirectoryReads,
 		};
 	}
 

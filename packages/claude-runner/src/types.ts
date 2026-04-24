@@ -70,6 +70,15 @@ export interface ClaudeRunnerConfig {
 	 */
 	warmSession?: WarmQuery;
 	/**
+	 * When `true` (default), Cyrus enumerates the contents of the
+	 * user's home directory and adds each top-level entry that is not
+	 * an ancestor of the working directory to `disallowedTools` (as
+	 * `Read(<path>/**)`), so the agent cannot read SSH keys, dotfiles,
+	 * credentials, etc. Set `false` to skip the enumeration entirely.
+	 */
+	restrictHomeDirectoryReads?: boolean;
+
+	/**
 	 * Which file-based Claude settings sources to load. Defaults to
 	 * `["user","project","local"]` for backwards compatibility with
 	 * CLAUDE.md, custom slash commands, and project settings. Set to
