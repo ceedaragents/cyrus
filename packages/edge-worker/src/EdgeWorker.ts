@@ -3907,6 +3907,14 @@ ${taskSection}`;
 				this.logger.info(
 					`Environment bound to session: ${envName} (session=${sessionId})`,
 				);
+				// Surface the binding in the Linear timeline so the user can
+				// see at a glance which environment scoped the session.
+				await this.activityPoster.postEnvironmentBindingActivity(
+					sessionId,
+					linearWorkspaceId,
+					boundEnvironment,
+					acceptedOverrides,
+				);
 			}
 		}
 
