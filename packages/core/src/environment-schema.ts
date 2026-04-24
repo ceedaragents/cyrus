@@ -92,18 +92,19 @@ export const EnvironmentConfigSchema = z.object({
 	skills: z.array(z.string()).optional(),
 
 	/**
-	 * Repository IDs whose on-disk paths should be granted read access for
-	 * this session. Each ID is looked up in the configured repositories
-	 * and the repository's `repositoryPath` (typically under
-	 * `~/.cyrus/repos/`) is added to the session's `allowedDirectories`.
-	 * Unknown IDs are silently skipped. Does not create worktrees — use
-	 * `gitWorktrees` for that.
+	 * Canonical repository names whose on-disk paths should be granted
+	 * read access for this session. Each entry is matched
+	 * (case-insensitive) against `RepositoryConfig.name` and the repo's
+	 * `repositoryPath` (typically under `~/.cyrus/repos/`) is added to
+	 * the session's `allowedDirectories`. Unknown names are silently
+	 * skipped. Does not create worktrees — use `gitWorktrees` for that.
 	 */
 	repositories: z.array(z.string()).optional(),
 
 	/**
-	 * Repository IDs for which git worktrees should be created when the
-	 * session starts. Zero or more entries.
+	 * Canonical repository names for which git worktrees should be
+	 * created when the session starts. Zero or more entries, matched
+	 * (case-insensitive) against `RepositoryConfig.name`.
 	 *
 	 * - 0 entries (`[]`): a plain workspace folder is created with no
 	 *   worktree (useful for research/read-only sessions).
@@ -113,8 +114,8 @@ export const EnvironmentConfigSchema = z.object({
 	 *   is created (existing multi-repo workspace behavior).
 	 *
 	 * When omitted, the routed repositories (from description tags,
-	 * labels, projects, or teams) are used — preserving current behavior.
-	 * Unknown IDs are silently skipped.
+	 * labels, projects, or teams) are used — preserving current
+	 * behavior. Unknown names are silently skipped.
 	 */
 	gitWorktrees: z.array(z.string()).optional(),
 });

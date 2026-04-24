@@ -148,9 +148,9 @@ describe("resolveEnvironmentWorktreeRepos", () => {
 	}
 
 	const all: RepositoryConfig[] = [
-		repo("a", "Repo A"),
-		repo("b", "Repo B"),
-		repo("c", "Repo C"),
+		repo("id-a", "Frontend"),
+		repo("id-b", "Backend"),
+		repo("id-c", "Docs"),
 	];
 
 	it("returns the fallback when the environment is null", () => {
@@ -169,23 +169,38 @@ describe("resolveEnvironmentWorktreeRepos", () => {
 		expect(resolveEnvironmentWorktreeRepos(env, [all[0]!], all)).toEqual([]);
 	});
 
-	it("resolves a single worktree repo id", () => {
-		const env: EnvironmentConfig = { gitWorktrees: ["b"] };
+	it("resolves a single worktree by repository name", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["Backend"] };
 		expect(resolveEnvironmentWorktreeRepos(env, [all[0]!], all)).toEqual([
 			all[1],
 		]);
 	});
 
-	it("resolves N worktree repo ids preserving order", () => {
-		const env: EnvironmentConfig = { gitWorktrees: ["c", "a"] };
+	it("resolves N worktrees preserving order", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["Docs", "Frontend"] };
 		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([
 			all[2],
 			all[0],
 		]);
 	});
 
-	it("silently skips unknown repo ids", () => {
-		const env: EnvironmentConfig = { gitWorktrees: ["a", "missing", "c"] };
+	it("matches repository names case-insensitively", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["frontend", "BACKEND"] };
+		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([
+			all[0],
+			all[1],
+		]);
+	});
+
+	it("does not match by repository id", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["id-a"] };
+		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([]);
+	});
+
+	it("silently skips unknown repository names", () => {
+		const env: EnvironmentConfig = {
+			gitWorktrees: ["Frontend", "Missing", "Docs"],
+		};
 		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([
 			all[0],
 			all[2],
@@ -194,10 +209,10 @@ describe("resolveEnvironmentWorktreeRepos", () => {
 });
 
 describe("resolveEnvironmentReadOnlyRepoPaths", () => {
-	function repo(id: string, path: string): RepositoryConfig {
+	function repo(id: string, name: string, path: string): RepositoryConfig {
 		return {
 			id,
-			name: id,
+			name,
 			repositoryPath: path,
 			baseBranch: "main",
 			workspaceBaseDir: "/ws",
@@ -205,8 +220,8 @@ describe("resolveEnvironmentReadOnlyRepoPaths", () => {
 	}
 
 	const all: RepositoryConfig[] = [
-		repo("docs", "/home/.cyrus/repos/docs"),
-		repo("api", "/home/.cyrus/repos/api"),
+		repo("id-docs", "Docs", "/home/.cyrus/repos/docs"),
+		repo("id-api", "API", "/home/.cyrus/repos/api"),
 	];
 
 	it("returns an empty list when the environment is null", () => {
@@ -223,7 +238,16 @@ describe("resolveEnvironmentReadOnlyRepoPaths", () => {
 		).toEqual([]);
 	});
 
-	it("resolves repo ids to their repositoryPath", () => {
+	it("resolves repository names to their repositoryPath", () => {
+		expect(
+			resolveEnvironmentReadOnlyRepoPaths(
+				{ repositories: ["Docs", "API"] },
+				all,
+			),
+		).toEqual(["/home/.cyrus/repos/docs", "/home/.cyrus/repos/api"]);
+	});
+
+	it("matches repository names case-insensitively", () => {
 		expect(
 			resolveEnvironmentReadOnlyRepoPaths(
 				{ repositories: ["docs", "api"] },
@@ -232,10 +256,16 @@ describe("resolveEnvironmentReadOnlyRepoPaths", () => {
 		).toEqual(["/home/.cyrus/repos/docs", "/home/.cyrus/repos/api"]);
 	});
 
-	it("silently skips unknown repo ids", () => {
+	it("does not match by repository id", () => {
+		expect(
+			resolveEnvironmentReadOnlyRepoPaths({ repositories: ["id-docs"] }, all),
+		).toEqual([]);
+	});
+
+	it("silently skips unknown repository names", () => {
 		expect(
 			resolveEnvironmentReadOnlyRepoPaths(
-				{ repositories: ["docs", "ghost"] },
+				{ repositories: ["Docs", "ghost"] },
 				all,
 			),
 		).toEqual(["/home/.cyrus/repos/docs"]);

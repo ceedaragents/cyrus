@@ -116,6 +116,20 @@ export function loadEnvironment(
 }
 
 /**
+ * Look up a configured repository by its canonical `name`
+ * (case-insensitive). Environment configs reference repos by the
+ * user-visible repository name rather than the internal `id`, so this
+ * is the single match rule used by both resolvers below.
+ */
+function findRepoByName(
+	name: string,
+	allRepos: RepositoryConfig[],
+): RepositoryConfig | undefined {
+	const target = name.toLowerCase();
+	return allRepos.find((r) => r.name.toLowerCase() === target);
+}
+
+/**
  * Resolve an environment's `gitWorktrees` field to the concrete
  * `RepositoryConfig[]` that should be worktree'd for a session.
  *
@@ -123,7 +137,8 @@ export function loadEnvironment(
  *   caller-supplied fallback (the routed repositories) unchanged.
  * - When `gitWorktrees` is an empty array, returns an empty list — the
  *   caller should create a no-worktree workspace.
- * - Unknown IDs are silently skipped; order follows `gitWorktrees`.
+ * - Entries are matched against `repository.name` (case-insensitive).
+ *   Unknown names are silently skipped; order follows `gitWorktrees`.
  */
 export function resolveEnvironmentWorktreeRepos(
 	env: EnvironmentConfig | null | undefined,
@@ -133,10 +148,9 @@ export function resolveEnvironmentWorktreeRepos(
 	if (!env || env.gitWorktrees === undefined) {
 		return fallback;
 	}
-	const byId = new Map(allRepos.map((r) => [r.id, r]));
 	const resolved: RepositoryConfig[] = [];
-	for (const id of env.gitWorktrees) {
-		const repo = byId.get(id);
+	for (const name of env.gitWorktrees) {
+		const repo = findRepoByName(name, allRepos);
 		if (repo) resolved.push(repo);
 	}
 	return resolved;
@@ -145,19 +159,19 @@ export function resolveEnvironmentWorktreeRepos(
 /**
  * Resolve an environment's `repositories` field to the concrete
  * `repositoryPath` values that should be added to the session's
- * `allowedDirectories` for read-only access. Unknown IDs are silently
- * skipped. Duplicates (already present in the worktree list) are the
- * caller's responsibility to deduplicate.
+ * `allowedDirectories` for read-only access. Entries are matched
+ * against `repository.name` (case-insensitive). Unknown names are
+ * silently skipped. Duplicates (already present in the worktree list)
+ * are the caller's responsibility to deduplicate.
  */
 export function resolveEnvironmentReadOnlyRepoPaths(
 	env: EnvironmentConfig | null | undefined,
 	allRepos: RepositoryConfig[],
 ): string[] {
 	if (!env?.repositories?.length) return [];
-	const byId = new Map(allRepos.map((r) => [r.id, r]));
 	const paths: string[] = [];
-	for (const id of env.repositories) {
-		const repo = byId.get(id);
+	for (const name of env.repositories) {
+		const repo = findRepoByName(name, allRepos);
 		if (repo) paths.push(repo.repositoryPath);
 	}
 	return paths;
