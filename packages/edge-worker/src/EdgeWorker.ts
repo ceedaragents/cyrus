@@ -24,6 +24,7 @@ import type {
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
 	BaseBranchResolution,
+	CommentCreateWebhook,
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
@@ -56,6 +57,7 @@ import {
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isCommentCreateWebhook,
 	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
@@ -2937,6 +2939,9 @@ ${taskSection}`;
 			} else if (isIssueStateIdUpdateWebhook(webhook)) {
 				// Handle issue state changes — wake up parked sessions when blocking issues complete
 				await this.handleIssueStateChange(webhook);
+			} else if (isCommentCreateWebhook(webhook)) {
+				// Inject email-synced comment replies into the active agent session.
+				await this.handleCommentCreatedWebhook(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					this.logger.debug(
@@ -4977,6 +4982,150 @@ ${taskSection}`;
 		}
 
 		await this.handleNormalPromptedActivity(webhook, repositories);
+	}
+
+	/**
+	 * Body of the auto-generated root comment Linear posts when a comment thread
+	 * is mirrored to an email chain. We detect replies inside these threads by
+	 * walking a new comment's ancestry and matching this exact body.
+	 */
+	private static readonly EMAIL_SYNCED_THREAD_MARKER =
+		"This comment thread is synced to a corresponding email chain. All replies are displayed in both locations.";
+
+	/**
+	 * Email of the Cyrus Linear OAuth app user whose comments we must never
+	 * re-inject (otherwise Cyrus's own thread replies would feed back into its
+	 * session). Overridable via CYRUS_LINEAR_BOT_EMAIL.
+	 */
+	private getCyrusLinearBotEmail(): string {
+		return (
+			process.env.CYRUS_LINEAR_BOT_EMAIL ??
+			"2902b10a-8454-4907-8670-4767dab347ff@oauthapp.linear.app"
+		);
+	}
+
+	/**
+	 * Handle a Comment/create webhook. When the comment is a reply inside a
+	 * Linear-to-email synced thread and the issue has an active agent session,
+	 * inject the comment body into the most recently created session as a
+	 * user prompt.
+	 */
+	private async handleCommentCreatedWebhook(
+		webhook: CommentCreateWebhook,
+	): Promise<void> {
+		const comment = webhook.data;
+		const linearWorkspaceId = webhook.organizationId;
+		const issueId = comment.issueId;
+		const commentId = comment.id;
+
+		if (!issueId) {
+			return;
+		}
+
+		// Step 3: ignore comments authored by Cyrus itself to avoid feedback loops.
+		const cyrusEmail = this.getCyrusLinearBotEmail();
+		if (comment.user?.email && comment.user.email === cyrusEmail) {
+			return;
+		}
+
+		// Step 1: must be a reply inside a thread. Root comments (parentId=null)
+		// cannot be inside an email-synced thread by definition.
+		const parentId = comment.parentId;
+		if (!parentId) {
+			return;
+		}
+
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
+		if (!issueTracker) {
+			this.logger.warn(
+				`No issue tracker for workspace ${linearWorkspaceId}; skipping comment-create injection`,
+			);
+			return;
+		}
+
+		// Walk ancestry to find the thread root, then check its body.
+		let currentId: string | undefined = parentId;
+		let rootBody: string | undefined;
+		let guard = 0;
+		while (currentId && guard++ < 10) {
+			try {
+				const ancestor = await issueTracker.fetchComment(currentId);
+				rootBody = ancestor.body;
+				currentId = ancestor.parentId;
+				if (!currentId) break;
+			} catch (error) {
+				this.logger.warn(
+					`Failed to fetch ancestor comment ${currentId} for comment-create webhook`,
+					error,
+				);
+				return;
+			}
+		}
+
+		if (rootBody !== EdgeWorker.EMAIL_SYNCED_THREAD_MARKER) {
+			return;
+		}
+
+		// Step 2: require at least one agent session on this issue.
+		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
+		if (sessions.length === 0) {
+			return;
+		}
+
+		// Step 4: inject into the most recently created session.
+		const mostRecent = sessions.reduce((a, b) =>
+			b.createdAt > a.createdAt ? b : a,
+		);
+
+		let repositories = this.getCachedRepositories(issueId);
+		if (!repositories || repositories.length === 0) {
+			const repoId = this.sessionRepositories.get(mostRecent.id);
+			const repo = repoId ? this.repositories.get(repoId) : undefined;
+			if (repo) {
+				repositories = [repo];
+			}
+		}
+		if (!repositories || repositories.length === 0) {
+			this.logger.warn(
+				`No repository available to inject email-synced comment ${commentId} on issue ${issueId}`,
+			);
+			return;
+		}
+
+		const promptBody = comment.body ?? "";
+		if (!promptBody.trim()) {
+			return;
+		}
+
+		const author = comment.user?.name ?? comment.user?.email ?? undefined;
+		const timestamp =
+			typeof comment.createdAt === "string" ? comment.createdAt : undefined;
+
+		this.logger.info(
+			`Injecting email-synced comment ${commentId} into session ${mostRecent.id} on issue ${issueId}`,
+		);
+
+		try {
+			await this.handlePromptWithStreamingCheck(
+				mostRecent,
+				repositories[0]!,
+				mostRecent.id,
+				this.agentSessionManager,
+				promptBody,
+				"",
+				false,
+				[],
+				`email-synced comment (${commentId})`,
+				linearWorkspaceId,
+				author,
+				timestamp,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to inject email-synced comment ${commentId} into session ${mostRecent.id}`,
+				error,
+			);
+		}
 	}
 
 	/**
