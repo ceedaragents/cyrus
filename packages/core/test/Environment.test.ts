@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { RepositoryConfig } from "../src/config-types.js";
 import {
 	assertSafeEnvironmentName,
 	ENVIRONMENTS_DIRNAME,
@@ -10,7 +11,10 @@ import {
 	getEnvironmentsDir,
 	listEnvironmentNames,
 	loadEnvironment,
+	resolveEnvironmentReadOnlyRepoPaths,
+	resolveEnvironmentWorktreeRepos,
 } from "../src/Environment.js";
+import type { EnvironmentConfig } from "../src/environment-schema.js";
 
 describe("Environment loader", () => {
 	let cyrusHome: string;
@@ -129,5 +133,111 @@ describe("Environment loader", () => {
 				EnvironmentLoadError,
 			);
 		});
+	});
+});
+
+describe("resolveEnvironmentWorktreeRepos", () => {
+	function repo(id: string, name: string): RepositoryConfig {
+		return {
+			id,
+			name,
+			repositoryPath: `/path/${id}`,
+			baseBranch: "main",
+			workspaceBaseDir: "/ws",
+		} as RepositoryConfig;
+	}
+
+	const all: RepositoryConfig[] = [
+		repo("a", "Repo A"),
+		repo("b", "Repo B"),
+		repo("c", "Repo C"),
+	];
+
+	it("returns the fallback when the environment is null", () => {
+		const fallback = [all[0]!];
+		expect(resolveEnvironmentWorktreeRepos(null, fallback, all)).toBe(fallback);
+	});
+
+	it("returns the fallback when env.gitWorktrees is undefined", () => {
+		const env: EnvironmentConfig = { description: "no worktrees field" };
+		const fallback = [all[0]!];
+		expect(resolveEnvironmentWorktreeRepos(env, fallback, all)).toBe(fallback);
+	});
+
+	it("returns an empty list when env.gitWorktrees=[] (no worktrees)", () => {
+		const env: EnvironmentConfig = { gitWorktrees: [] };
+		expect(resolveEnvironmentWorktreeRepos(env, [all[0]!], all)).toEqual([]);
+	});
+
+	it("resolves a single worktree repo id", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["b"] };
+		expect(resolveEnvironmentWorktreeRepos(env, [all[0]!], all)).toEqual([
+			all[1],
+		]);
+	});
+
+	it("resolves N worktree repo ids preserving order", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["c", "a"] };
+		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([
+			all[2],
+			all[0],
+		]);
+	});
+
+	it("silently skips unknown repo ids", () => {
+		const env: EnvironmentConfig = { gitWorktrees: ["a", "missing", "c"] };
+		expect(resolveEnvironmentWorktreeRepos(env, [], all)).toEqual([
+			all[0],
+			all[2],
+		]);
+	});
+});
+
+describe("resolveEnvironmentReadOnlyRepoPaths", () => {
+	function repo(id: string, path: string): RepositoryConfig {
+		return {
+			id,
+			name: id,
+			repositoryPath: path,
+			baseBranch: "main",
+			workspaceBaseDir: "/ws",
+		} as RepositoryConfig;
+	}
+
+	const all: RepositoryConfig[] = [
+		repo("docs", "/home/.cyrus/repos/docs"),
+		repo("api", "/home/.cyrus/repos/api"),
+	];
+
+	it("returns an empty list when the environment is null", () => {
+		expect(resolveEnvironmentReadOnlyRepoPaths(null, all)).toEqual([]);
+	});
+
+	it("returns an empty list when env.repositories is omitted", () => {
+		expect(resolveEnvironmentReadOnlyRepoPaths({}, all)).toEqual([]);
+	});
+
+	it("returns an empty list for env.repositories=[]", () => {
+		expect(
+			resolveEnvironmentReadOnlyRepoPaths({ repositories: [] }, all),
+		).toEqual([]);
+	});
+
+	it("resolves repo ids to their repositoryPath", () => {
+		expect(
+			resolveEnvironmentReadOnlyRepoPaths(
+				{ repositories: ["docs", "api"] },
+				all,
+			),
+		).toEqual(["/home/.cyrus/repos/docs", "/home/.cyrus/repos/api"]);
+	});
+
+	it("silently skips unknown repo ids", () => {
+		expect(
+			resolveEnvironmentReadOnlyRepoPaths(
+				{ repositories: ["docs", "ghost"] },
+				all,
+			),
+		).toEqual(["/home/.cyrus/repos/docs"]);
 	});
 });

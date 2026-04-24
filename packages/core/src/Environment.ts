@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import type { RepositoryConfig } from "./config-types.js";
 import { resolvePath } from "./config-types.js";
 import {
 	type EnvironmentConfig,
@@ -112,6 +113,54 @@ export function loadEnvironment(
 		config.name = environmentName;
 	}
 	return config;
+}
+
+/**
+ * Resolve an environment's `gitWorktrees` field to the concrete
+ * `RepositoryConfig[]` that should be worktree'd for a session.
+ *
+ * - When the environment is absent or omits `gitWorktrees`, returns the
+ *   caller-supplied fallback (the routed repositories) unchanged.
+ * - When `gitWorktrees` is an empty array, returns an empty list — the
+ *   caller should create a no-worktree workspace.
+ * - Unknown IDs are silently skipped; order follows `gitWorktrees`.
+ */
+export function resolveEnvironmentWorktreeRepos(
+	env: EnvironmentConfig | null | undefined,
+	fallback: RepositoryConfig[],
+	allRepos: RepositoryConfig[],
+): RepositoryConfig[] {
+	if (!env || env.gitWorktrees === undefined) {
+		return fallback;
+	}
+	const byId = new Map(allRepos.map((r) => [r.id, r]));
+	const resolved: RepositoryConfig[] = [];
+	for (const id of env.gitWorktrees) {
+		const repo = byId.get(id);
+		if (repo) resolved.push(repo);
+	}
+	return resolved;
+}
+
+/**
+ * Resolve an environment's `repositories` field to the concrete
+ * `repositoryPath` values that should be added to the session's
+ * `allowedDirectories` for read-only access. Unknown IDs are silently
+ * skipped. Duplicates (already present in the worktree list) are the
+ * caller's responsibility to deduplicate.
+ */
+export function resolveEnvironmentReadOnlyRepoPaths(
+	env: EnvironmentConfig | null | undefined,
+	allRepos: RepositoryConfig[],
+): string[] {
+	if (!env?.repositories?.length) return [];
+	const byId = new Map(allRepos.map((r) => [r.id, r]));
+	const paths: string[] = [];
+	for (const id of env.repositories) {
+		const repo = byId.get(id);
+		if (repo) paths.push(repo.repositoryPath);
+	}
+	return paths;
 }
 
 /**

@@ -92,13 +92,31 @@ export const EnvironmentConfigSchema = z.object({
 	skills: z.array(z.string()).optional(),
 
 	/**
-	 * Informational list of repository IDs this environment is intended
-	 * for. Not enforced at routing time — sessions bound to this
-	 * environment still run against whichever repository the issue routes
-	 * to. Useful as documentation for environment authors and for UIs
-	 * that want to surface relevant environments per repo.
+	 * Repository IDs whose on-disk paths should be granted read access for
+	 * this session. Each ID is looked up in the configured repositories
+	 * and the repository's `repositoryPath` (typically under
+	 * `~/.cyrus/repos/`) is added to the session's `allowedDirectories`.
+	 * Unknown IDs are silently skipped. Does not create worktrees — use
+	 * `gitWorktrees` for that.
 	 */
 	repositories: z.array(z.string()).optional(),
+
+	/**
+	 * Repository IDs for which git worktrees should be created when the
+	 * session starts. Zero or more entries.
+	 *
+	 * - 0 entries (`[]`): a plain workspace folder is created with no
+	 *   worktree (useful for research/read-only sessions).
+	 * - 1 entry: a single git worktree is created at the repository's
+	 *   workspace base dir (current single-repo behavior).
+	 * - 2+ entries: a parent folder containing per-repo worktree subdirs
+	 *   is created (existing multi-repo workspace behavior).
+	 *
+	 * When omitted, the routed repositories (from description tags,
+	 * labels, projects, or teams) are used — preserving current behavior.
+	 * Unknown IDs are silently skipped.
+	 */
+	gitWorktrees: z.array(z.string()).optional(),
 });
 
 export type EnvironmentConfig = z.infer<typeof EnvironmentConfigSchema>;

@@ -92,6 +92,8 @@ export {
 	getEnvironmentsDir,
 	listEnvironmentNames,
 	loadEnvironment,
+	resolveEnvironmentReadOnlyRepoPaths,
+	resolveEnvironmentWorktreeRepos,
 } from "./Environment.js";
 export {
 	type EnvironmentConfig,

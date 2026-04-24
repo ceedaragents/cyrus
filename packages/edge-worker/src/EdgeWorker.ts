@@ -27,6 +27,7 @@ import type {
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
+	EnvironmentConfig,
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
@@ -72,6 +73,8 @@ import {
 	loadEnvironment,
 	PersistenceManager,
 	requireLinearWorkspaceId,
+	resolveEnvironmentReadOnlyRepoPaths,
+	resolveEnvironmentWorktreeRepos,
 	resolvePath,
 	WebhookIpValidator,
 } from "cyrus-core";
@@ -3774,30 +3777,76 @@ ${taskSection}`;
 		// Move issue to started state automatically, in case it's not already
 		await this.moveIssueToStartedState(fullIssue, linearWorkspaceId);
 
+		// Resolve an environment binding (if any) BEFORE workspace creation so
+		// its `gitWorktrees` field can override which repositories get
+		// worktrees created. The environment name also persists on the session
+		// so its overrides reapply across restarts.
+		const envName = this.repositoryRouter.parseEnvironmentTagFromDescription(
+			fullIssue.description || "",
+		);
+		let boundEnvironment: EnvironmentConfig | null = null;
+		if (envName) {
+			try {
+				boundEnvironment = loadEnvironment(this.cyrusHome, envName);
+				if (!boundEnvironment) {
+					this.logger.warn(
+						`Environment "${envName}" referenced in issue ${issue.identifier} but no config found at ${this.cyrusHome}/environments/${envName}.json — ignoring`,
+					);
+				}
+			} catch (err) {
+				this.logger.warn(
+					`Failed to load environment "${envName}" for session ${sessionId}: ${(err as Error).message}`,
+				);
+			}
+		}
+
+		// If the environment specifies `gitWorktrees`, those repo IDs drive
+		// worktree creation; otherwise fall back to the routed repositories.
+		const allRepositories = Array.from(this.repositories.values());
+		const worktreeRepos = resolveEnvironmentWorktreeRepos(
+			boundEnvironment,
+			repositories,
+			allRepositories,
+		);
+		const envReadOnlyRepoPaths = resolveEnvironmentReadOnlyRepoPaths(
+			boundEnvironment,
+			allRepositories,
+		);
+
 		// Create workspace using full issue data
 		// IMPORTANT: The CLI app (apps/cli/src/services/WorkerService.ts) typically provides
 		// a custom createWorkspace handler, so the handler path is the one taken in production.
 		// When adding new options here, always update the handler signature in config-types.ts
 		// AND the CLI's handler implementation in WorkerService.ts to pass them through.
 		this.logger.info(
-			`createCyrusAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}`,
+			`createCyrusAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}, worktreeRepoCount=${worktreeRepos.length}`,
 		);
+		// 0-repo workspaces need an explicit workspaceBaseDir; use the routed
+		// primary repo's base dir so per-issue folders still land in a
+		// predictable location.
+		const workspaceBaseDirFallback =
+			worktreeRepos.length === 0 ? primaryRepo.workspaceBaseDir : undefined;
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repositories, {
+			? await this.config.handlers.createWorkspace(fullIssue, worktreeRepos, {
 					baseBranchOverrides,
+					...(workspaceBaseDirFallback && {
+						workspaceBaseDir: workspaceBaseDirFallback,
+					}),
 				})
-			: await this.gitService.createGitWorktree(fullIssue, repositories, {
+			: await this.gitService.createGitWorktree(fullIssue, worktreeRepos, {
 					baseBranchOverrides,
+					...(workspaceBaseDirFallback && {
+						workspaceBaseDir: workspaceBaseDirFallback,
+					}),
 				});
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 
-		// Create RepositoryContext entries for ALL repositories
-		// Use resolved base branches from workspace creation (already accounts for
-		// commit-ish overrides, graphite blocked-by, parent issues, and defaults)
-		const repositoryContexts = repositories.map((repo) => ({
+		// Create RepositoryContext entries for the repos that actually have
+		// worktrees in this session (may be empty when gitWorktrees=[]).
+		const repositoryContexts = worktreeRepos.map((repo) => ({
 			repositoryId: repo.id,
 			branchName: issueMinimal.branchName,
 			baseBranchName:
@@ -3813,35 +3862,14 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
-		// Bind an environment to the session if the issue description requests
-		// one via `env=<name>` (or `[env=<name>]`). Validates the environment
-		// exists on disk; if not, logs a warning and proceeds unbound so the
-		// session still runs with repository defaults.
-		{
-			const envName = this.repositoryRouter.parseEnvironmentTagFromDescription(
-				fullIssue.description || "",
-			);
-			if (envName) {
-				try {
-					const env = loadEnvironment(this.cyrusHome, envName);
-					if (env) {
-						const session = agentSessionManager.getSession(sessionId);
-						if (session) {
-							session.environmentName = envName;
-							this.logger.info(
-								`Environment bound to session: ${envName} (session=${sessionId})`,
-							);
-						}
-					} else {
-						this.logger.warn(
-							`Environment "${envName}" referenced in issue ${issueMinimal.identifier} but no config found at ${this.cyrusHome}/environments/${envName}.json — ignoring`,
-						);
-					}
-				} catch (err) {
-					this.logger.warn(
-						`Failed to load environment "${envName}" for session ${sessionId}: ${(err as Error).message}`,
-					);
-				}
+		// Persist the environment binding on the session so restarts reapply it.
+		if (boundEnvironment && envName) {
+			const session = agentSessionManager.getSession(sessionId);
+			if (session) {
+				session.environmentName = envName;
+				this.logger.info(
+					`Environment bound to session: ${envName} (session=${sessionId})`,
+				);
 			}
 		}
 
@@ -3852,9 +3880,11 @@ ${taskSection}`;
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
 
-		// Post combined routing + base branch activity
+		// Post combined routing + base branch activity — iterate the repos
+		// actually worktree'd for this session (may differ from the routed
+		// list when an environment overrides via `gitWorktrees`).
 		{
-			const repoLines = repositories.map((repo) => {
+			const repoLines = worktreeRepos.map((repo) => {
 				const resolution = workspace.resolvedBaseBranches?.[repo.id];
 				const branch = resolution?.branch ?? repo.baseBranch;
 				const sourceLabel = !resolution
@@ -3916,13 +3946,18 @@ ${taskSection}`;
 			),
 		);
 
-		// Build allowed directories list - always include attachments directory
-		// Include repository paths from all repositories
-		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
+		// Build allowed directories list - always include attachments directory.
+		// Include repository paths from:
+		//   1. The repositories that were worktree'd for this session.
+		//   2. Any additional read-only repos declared by the bound
+		//      environment (`env.repositories`), resolved to their on-disk
+		//      paths via `resolveEnvironmentReadOnlyRepoPaths`.
+		const worktreeRepoPaths = worktreeRepos.map((repo) => repo.repositoryPath);
 		const allowedDirectories: string[] = [
 			...new Set([
 				attachmentsDir,
-				...allRepoPaths,
+				...worktreeRepoPaths,
+				...envReadOnlyRepoPaths,
 				...this.gitService.getGitMetadataDirectories(workspace.path),
 			]),
 		];
