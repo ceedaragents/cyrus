@@ -5036,26 +5036,21 @@ ${taskSection}`;
 			return;
 		}
 
-		// Walk ancestry to find the thread root, then check its body.
-		let currentId: string | undefined = parentId;
-		let rootBody: string | undefined;
-		let guard = 0;
-		while (currentId && guard++ < 10) {
-			try {
-				const ancestor = await issueTracker.fetchComment(currentId);
-				rootBody = ancestor.body;
-				currentId = ancestor.parentId;
-				if (!currentId) break;
-			} catch (error) {
-				this.logger.warn(
-					`Failed to fetch ancestor comment ${currentId} for comment-create webhook`,
-					error,
-				);
-				return;
-			}
+		// Linear comment threads are flat: a root comment with direct children, no
+		// deeper nesting. Fetching the parent is therefore always fetching the
+		// root.
+		let root: Awaited<ReturnType<typeof issueTracker.fetchComment>>;
+		try {
+			root = await issueTracker.fetchComment(parentId);
+		} catch (error) {
+			this.logger.warn(
+				`Failed to fetch root comment ${parentId} for comment-create webhook`,
+				error,
+			);
+			return;
 		}
 
-		if (rootBody !== EMAIL_SYNCED_THREAD_MARKER) {
+		if (root.body !== EMAIL_SYNCED_THREAD_MARKER) {
 			return;
 		}
 
