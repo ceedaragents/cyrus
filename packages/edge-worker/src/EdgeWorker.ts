@@ -5073,13 +5073,13 @@ ${taskSection}`;
 		}
 
 		// Step 4: inject into the most recently created session.
-		const mostRecent = sessions.reduce((a, b) =>
+		const mostRecentSession = sessions.reduce((a, b) =>
 			b.createdAt > a.createdAt ? b : a,
 		);
 
 		let repositories = this.getCachedRepositories(issueId);
 		if (!repositories || repositories.length === 0) {
-			const repoId = this.sessionRepositories.get(mostRecent.id);
+			const repoId = this.sessionRepositories.get(mostRecentSession.id);
 			const repo = repoId ? this.repositories.get(repoId) : undefined;
 			if (repo) {
 				repositories = [repo];
@@ -5102,14 +5102,14 @@ ${taskSection}`;
 			typeof comment.createdAt === "string" ? comment.createdAt : undefined;
 
 		this.logger.info(
-			`Injecting email-synced comment ${commentId} into session ${mostRecent.id} on issue ${issueId}`,
+			`Injecting email-synced comment ${commentId} into session ${mostRecentSession.id} on issue ${issueId}`,
 		);
 
 		try {
 			await this.handlePromptWithStreamingCheck(
-				mostRecent,
+				mostRecentSession,
 				repositories[0]!,
-				mostRecent.id,
+				mostRecentSession.id,
 				this.agentSessionManager,
 				promptBody,
 				"",
@@ -5122,7 +5122,7 @@ ${taskSection}`;
 			);
 		} catch (error) {
 			this.logger.error(
-				`Failed to inject email-synced comment ${commentId} into session ${mostRecent.id}`,
+				`Failed to inject email-synced comment ${commentId} into session ${mostRecentSession.id}`,
 				error,
 			);
 		}
