@@ -4986,18 +4986,6 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Email of the Cyrus Linear OAuth app user whose comments we must never
-	 * re-inject (otherwise Cyrus's own thread replies would feed back into its
-	 * session). Overridable via CYRUS_LINEAR_BOT_EMAIL.
-	 */
-	private getCyrusLinearBotEmail(): string {
-		return (
-			process.env.CYRUS_LINEAR_BOT_EMAIL ??
-			"2902b10a-8454-4907-8670-4767dab347ff@oauthapp.linear.app"
-		);
-	}
-
-	/**
 	 * Handle a Comment/create webhook. When the comment is a reply inside a
 	 * Linear-to-email synced thread and the issue has an active agent session,
 	 * inject the comment body into the most recently created session as a
@@ -5016,8 +5004,17 @@ ${taskSection}`;
 		}
 
 		// Step 3: ignore comments authored by Cyrus itself to avoid feedback loops.
-		const cyrusEmail = this.getCyrusLinearBotEmail();
-		if (comment.user?.email && comment.user.email === cyrusEmail) {
+		// The OAuth-app email must be supplied via CYRUS_LINEAR_BOT_EMAIL — when
+		// unset, this webhook path is disabled to prevent Cyrus injecting its own
+		// replies back into its session.
+		const cyrusEmail = process.env.CYRUS_LINEAR_BOT_EMAIL?.trim();
+		if (!cyrusEmail) {
+			this.logger.debug(
+				`CYRUS_LINEAR_BOT_EMAIL is not set; skipping email-synced comment injection for ${commentId}`,
+			);
+			return;
+		}
+		if (comment.user?.email === cyrusEmail) {
 			return;
 		}
 
