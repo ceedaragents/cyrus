@@ -80,6 +80,17 @@ export const EnvironmentConfigSchema = z.object({
 	sandbox: EnvironmentSandboxSchema.optional(),
 
 	/**
+	 * Extra environment variables exposed to the agent runner
+	 * subprocess. Applied as the base layer of the runner's
+	 * `additionalEnv` — sandbox-managed variables (e.g. CA cert paths
+	 * for TLS interception) still win over any collisions here so the
+	 * TLS stack remains intact. Keys and values are plain strings; no
+	 * shell expansion is performed. Currently wired for the Claude
+	 * runner only.
+	 */
+	env: z.record(z.string(), z.string()).optional(),
+
+	/**
 	 * Plugin references (path-based). Replaces the auto-discovered skill
 	 * plugins for the session when set (empty array disables plugins).
 	 */

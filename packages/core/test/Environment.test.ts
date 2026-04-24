@@ -69,6 +69,25 @@ describe("Environment loader", () => {
 		});
 	});
 
+	it("loads env variables from the config", () => {
+		writeEnv("with-env", {
+			env: {
+				CYRUS_TARGET: "staging",
+				FOO: "bar",
+			},
+		});
+
+		const env = loadEnvironment(cyrusHome, "with-env");
+		expect(env?.env).toEqual({ CYRUS_TARGET: "staging", FOO: "bar" });
+	});
+
+	it("rejects non-string env values", () => {
+		writeEnv("bad-env", { env: { COUNT: 42 } });
+		expect(() => loadEnvironment(cyrusHome, "bad-env")).toThrow(
+			EnvironmentLoadError,
+		);
+	});
+
 	it("preserves an explicit name field over the filename stem", () => {
 		writeEnv("production", { name: "prod", description: "prod env" });
 		const env = loadEnvironment(cyrusHome, "production");

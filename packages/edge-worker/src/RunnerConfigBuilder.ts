@@ -383,6 +383,20 @@ export class RunnerConfigBuilder {
 			config.maxTurns = input.maxTurns;
 		}
 
+		// Layer the environment's custom env vars underneath any sandbox-
+		// managed ones (e.g. NODE_EXTRA_CA_CERTS). Sandbox wins on
+		// collisions so TLS interception keeps working even if an
+		// environment author accidentally shadows a CA cert variable.
+		if (
+			runnerType === "claude" &&
+			env?.env &&
+			Object.keys(env.env).length > 0
+		) {
+			const existing =
+				(config.additionalEnv as Record<string, string> | undefined) ?? {};
+			config.additionalEnv = { ...env.env, ...existing };
+		}
+
 		return { config, runnerType };
 	}
 
