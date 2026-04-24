@@ -517,29 +517,39 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Parse an `env=<name>` (or `[env=<name>]`) tag out of an issue description.
+	 * Parse an `env=<name>[$KEY=VAL[,$KEY=VAL]...]` tag from an issue
+	 * description. Returns the environment name plus any inline env
+	 * variable overrides, or `null` if no tag is found.
 	 *
-	 * Returns the first environment name found, or `null` if none.
-	 * Mirrors the escaped-bracket handling used for `repo=`; Linear may emit
-	 * `\[env=name\]` when users paste brackets.
+	 * Supported shapes:
+	 *   - `env=prod`
+	 *   - `[env=prod]` or `\[env=prod\]` (Linear-escaped)
+	 *   - `env=prod$FEATURE_FLAG=1,$CYRUS_REMOTE=true`
+	 *   - `[env=prod$FEATURE_FLAG=1,$CYRUS_REMOTE=true]`
 	 *
-	 * Only the first match is returned: a session can only bind to one
-	 * environment.
+	 * Only the first tag is returned (a session can only bind one
+	 * environment). Malformed override entries (e.g., lowercase keys,
+	 * missing `=`) are skipped silently — validation against the
+	 * environment's `allowInlineOverrides` is handled by the caller.
+	 *
+	 * Values run until the next `,$`, whitespace, or closing bracket;
+	 * commas and whitespace inside values are not supported.
 	 */
-	parseEnvironmentTagFromDescription(description: string): string | null {
+	parseEnvironmentTagFromDescription(
+		description: string,
+	): { name: string; overrides: Record<string, string> } | null {
 		if (!description) return null;
 
-		// Bracketed: [env=name] or \[env=name\]
-		const bracketed = description.match(/\\?\[env=([a-zA-Z0-9_\-.]+)\\?\]/);
-		if (bracketed?.[1]) return bracketed[1];
+		// Extract the full tag payload (name + any overrides).
+		// Bracketed form: capture everything between env= and ] (or \]),
+		// stopping at whitespace, backslash, or closing bracket.
+		const bracketed = description.match(/\\?\[env=([^\s\]\\]+)\\?\]/);
+		// Unbracketed form: everything up to the next whitespace.
+		const unbracketed = description.match(/(?:^|[\s\n])env=(\S+)/m);
+		const payload = bracketed?.[1] ?? unbracketed?.[1];
+		if (!payload) return null;
 
-		// Unbracketed: env=name at start of line / after whitespace
-		const unbracketed = description.match(
-			/(?:^|[\s\n])env=([a-zA-Z0-9_\-.]+)/m,
-		);
-		if (unbracketed?.[1]) return unbracketed[1];
-
-		return null;
+		return parseEnvTagPayload(payload);
 	}
 
 	/**
@@ -887,4 +897,47 @@ export class RepositoryRouter {
 			}
 		}
 	}
+}
+
+/**
+ * Parse the payload of an `env=` tag (everything after `env=` and before
+ * the next whitespace or closing bracket). Returns the environment name
+ * plus any parseable `$KEY=VALUE` override entries.
+ *
+ * Grammar:
+ *   payload      = name ( "$" kv ( "," "$" kv )* )?
+ *   name         = [A-Za-z0-9_\-.]+
+ *   kv           = KEY "=" value
+ *   KEY          = [A-Z_] [A-Z0-9_]*    (POSIX-style env var name)
+ *   value        = any run not containing "," or whitespace
+ *
+ * Malformed entries are dropped silently; callers validate accepted
+ * keys against the environment's allowInlineOverrides.
+ */
+function parseEnvTagPayload(
+	payload: string,
+): { name: string; overrides: Record<string, string> } | null {
+	// Split on `$` — first segment is the env name, rest are overrides.
+	const segments = payload.split("$");
+	const rawName = segments[0] ?? "";
+	// Strip any trailing comma the author may have included before the
+	// first `$` (tolerant parsing of `env=name,$KEY=value`).
+	const name = rawName.replace(/,+$/, "");
+	if (!/^[A-Za-z0-9_\-.]+$/.test(name)) return null;
+
+	const overrides: Record<string, string> = {};
+	const KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
+	for (let i = 1; i < segments.length; i++) {
+		let entry = segments[i] ?? "";
+		// Drop a trailing comma that served as a separator before the
+		// next `$KEY`. Values containing commas are not supported.
+		entry = entry.replace(/,+$/, "");
+		const eq = entry.indexOf("=");
+		if (eq <= 0) continue;
+		const key = entry.slice(0, eq);
+		const value = entry.slice(eq + 1);
+		if (!KEY_RE.test(key)) continue;
+		overrides[key] = value;
+	}
+	return { name, overrides };
 }

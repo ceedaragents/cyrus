@@ -383,18 +383,25 @@ export class RunnerConfigBuilder {
 			config.maxTurns = input.maxTurns;
 		}
 
-		// Layer the environment's custom env vars underneath any sandbox-
-		// managed ones (e.g. NODE_EXTRA_CA_CERTS). Sandbox wins on
-		// collisions so TLS interception keeps working even if an
-		// environment author accidentally shadows a CA cert variable.
-		if (
-			runnerType === "claude" &&
-			env?.env &&
-			Object.keys(env.env).length > 0
-		) {
+		// Layer env variables in precedence order (lowest to highest):
+		//   1. Environment file's `env` field (admin-declared defaults)
+		//   2. Per-session inline overrides parsed from the issue
+		//      description (`env=name$K=V`) — pre-filtered by the env's
+		//      `allowInlineOverrides` allowlist upstream.
+		//   3. Sandbox-managed variables (NODE_EXTRA_CA_CERTS etc.) —
+		//      must stay intact for TLS interception.
+		const sessionOverrides = input.session.environmentOverrides;
+		const hasEnvBase = env?.env && Object.keys(env.env).length > 0;
+		const hasOverrides =
+			sessionOverrides && Object.keys(sessionOverrides).length > 0;
+		if (runnerType === "claude" && (hasEnvBase || hasOverrides)) {
 			const existing =
 				(config.additionalEnv as Record<string, string> | undefined) ?? {};
-			config.additionalEnv = { ...env.env, ...existing };
+			config.additionalEnv = {
+				...(env?.env ?? {}),
+				...(sessionOverrides ?? {}),
+				...existing,
+			};
 		}
 
 		return { config, runnerType };

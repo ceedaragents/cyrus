@@ -91,6 +91,20 @@ export const EnvironmentConfigSchema = z.object({
 	env: z.record(z.string(), z.string()).optional(),
 
 	/**
+	 * Whitelist of env variable keys that may be overridden inline from
+	 * a Linear issue description via `env=<name>$KEY=VALUE,$KEY=VALUE`.
+	 * Keys not in this list are silently dropped — this prevents issue
+	 * authors (who may not be trusted admins) from smuggling arbitrary
+	 * env vars into an agent subprocess.
+	 *
+	 * If omitted or empty, **no** inline overrides are accepted even if
+	 * the environment's `env` field declares them — the file-declared
+	 * values remain the only source of truth. Set this explicitly to
+	 * opt an environment into inline tuning.
+	 */
+	allowInlineOverrides: z.array(z.string()).optional(),
+
+	/**
 	 * Plugin references (path-based). Replaces the auto-discovered skill
 	 * plugins for the session when set (empty array disables plugins).
 	 */

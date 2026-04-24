@@ -102,6 +102,14 @@ export interface CyrusAgentSession {
 	 * every resume.
 	 */
 	environmentName?: string;
+	/**
+	 * Inline env variable overrides accepted from the issue description
+	 * via `env=<name>$KEY=VALUE,$KEY=VALUE`. Only keys in the bound
+	 * environment's `allowInlineOverrides` are stored here. Merged on
+	 * top of the environment's `env` field (inline wins) when the
+	 * runner config is built; reapplied identically across restarts.
+	 */
+	environmentOverrides?: Record<string, string>;
 	metadata?: {
 		model?: string;
 		tools?: string[];

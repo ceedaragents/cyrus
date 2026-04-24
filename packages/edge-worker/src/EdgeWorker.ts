@@ -3781,10 +3781,12 @@ ${taskSection}`;
 		// its `gitWorktrees` field can override which repositories get
 		// worktrees created. The environment name also persists on the session
 		// so its overrides reapply across restarts.
-		const envName = this.repositoryRouter.parseEnvironmentTagFromDescription(
+		const envTag = this.repositoryRouter.parseEnvironmentTagFromDescription(
 			fullIssue.description || "",
 		);
+		const envName = envTag?.name;
 		let boundEnvironment: EnvironmentConfig | null = null;
+		const acceptedOverrides: Record<string, string> = {};
 		if (envName) {
 			try {
 				boundEnvironment = loadEnvironment(this.cyrusHome, envName);
@@ -3797,6 +3799,37 @@ ${taskSection}`;
 				this.logger.warn(
 					`Failed to load environment "${envName}" for session ${sessionId}: ${(err as Error).message}`,
 				);
+			}
+
+			// Filter any inline env overrides from the issue description
+			// against the environment's allowInlineOverrides allowlist.
+			// Overrides for unknown environments or unlisted keys are
+			// silently dropped and logged so issue authors can't smuggle
+			// arbitrary env vars into an agent subprocess.
+			if (
+				boundEnvironment &&
+				envTag &&
+				Object.keys(envTag.overrides).length > 0
+			) {
+				const allow = new Set(boundEnvironment.allowInlineOverrides ?? []);
+				const rejected: string[] = [];
+				for (const [key, value] of Object.entries(envTag.overrides)) {
+					if (allow.has(key)) {
+						acceptedOverrides[key] = value;
+					} else {
+						rejected.push(key);
+					}
+				}
+				if (rejected.length > 0) {
+					this.logger.warn(
+						`Inline env overrides rejected for session ${sessionId} (not in allowInlineOverrides of "${envName}"): ${rejected.join(", ")}`,
+					);
+				}
+				if (Object.keys(acceptedOverrides).length > 0) {
+					this.logger.info(
+						`Accepted inline env overrides for session ${sessionId}: ${Object.keys(acceptedOverrides).join(", ")}`,
+					);
+				}
 			}
 		}
 
@@ -3862,11 +3895,15 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
-		// Persist the environment binding on the session so restarts reapply it.
+		// Persist the environment binding (and any accepted inline env
+		// overrides) on the session so restarts reapply them identically.
 		if (boundEnvironment && envName) {
 			const session = agentSessionManager.getSession(sessionId);
 			if (session) {
 				session.environmentName = envName;
+				if (Object.keys(acceptedOverrides).length > 0) {
+					session.environmentOverrides = acceptedOverrides;
+				}
 				this.logger.info(
 					`Environment bound to session: ${envName} (session=${sessionId})`,
 				);
