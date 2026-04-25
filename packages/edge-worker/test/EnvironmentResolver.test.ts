@@ -28,6 +28,7 @@ function baseInputs(
 		envReadOnlyRepoPaths: [],
 		worktreePath: "/work/CYPACK-1130",
 		restrictHomeDirectoryReads: true,
+		strictToolPermissions: false,
 		...overrides,
 	};
 }
@@ -57,6 +58,47 @@ describe("EnvironmentResolver — no env bound", () => {
 		expect(r.settingSources).toBeUndefined();
 		expect(r.addChromeExtraArg).toBe(true);
 		expect(r.allowedDirectories).toEqual(base.defaultAllowedDirectories);
+	});
+});
+
+describe("EnvironmentResolver — strictToolPermissions", () => {
+	it("preserves base value when no env is bound", () => {
+		expect(
+			resolver.resolve(null, baseInputs({ strictToolPermissions: false }))
+				.strictToolPermissions,
+		).toBe(false);
+		expect(
+			resolver.resolve(null, baseInputs({ strictToolPermissions: true }))
+				.strictToolPermissions,
+		).toBe(true);
+	});
+
+	it("flips to true for any env-bound session by default", () => {
+		const env: EnvironmentConfig = {};
+		expect(resolver.resolve(env, baseInputs()).strictToolPermissions).toBe(
+			true,
+		);
+	});
+
+	it("env can opt out by setting false", () => {
+		const env: EnvironmentConfig = { strictToolPermissions: false };
+		expect(resolver.resolve(env, baseInputs()).strictToolPermissions).toBe(
+			false,
+		);
+	});
+
+	it("env explicit true matches the default", () => {
+		const env: EnvironmentConfig = { strictToolPermissions: true };
+		expect(resolver.resolve(env, baseInputs()).strictToolPermissions).toBe(
+			true,
+		);
+	});
+
+	it("isolated envs are strict by default", () => {
+		const env: EnvironmentConfig = { isolated: true };
+		expect(resolver.resolve(env, baseInputs()).strictToolPermissions).toBe(
+			true,
+		);
 	});
 });
 

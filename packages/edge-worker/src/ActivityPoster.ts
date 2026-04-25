@@ -262,6 +262,9 @@ export class ActivityPoster {
 		if (env.restrictHomeDirectoryReads === false) {
 			lines.push("- Home-directory read restriction: disabled");
 		}
+		if (env.strictToolPermissions === false) {
+			lines.push("- Strict tool permissions: disabled (legacy rubber-stamp)");
+		}
 		return lines;
 	}
 

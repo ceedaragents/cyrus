@@ -70,6 +70,15 @@ export interface ClaudeRunnerConfig {
 	 */
 	warmSession?: WarmQuery;
 	/**
+	 * When `true`, the `canUseTool` callback denies any tool the SDK
+	 * asks about (i.e., not in `allowedTools`) instead of allowing it
+	 * by default. Makes a small `allowedTools` list authoritative.
+	 * Defaults to `false` for backwards compatibility — env-bound
+	 * sessions are flipped to `true` upstream.
+	 */
+	strictToolPermissions?: boolean;
+
+	/**
 	 * When `true` (default), Cyrus enumerates the contents of the
 	 * user's home directory and adds each top-level entry that is not
 	 * an ancestor of the working directory to `disallowedTools` (as

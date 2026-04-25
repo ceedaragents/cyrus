@@ -111,6 +111,25 @@ export const EnvironmentConfigSchema = z.object({
 	env: z.record(z.string(), z.string()).optional(),
 
 	/**
+	 * When the SDK asks Cyrus about a tool that is not in
+	 * `allowedTools` (and isn't AskUserQuestion), the runner denies it
+	 * by default for env-bound sessions instead of rubber-stamping it.
+	 * This is what makes a small `allowedTools` list actually
+	 * authoritative.
+	 *
+	 * Defaults:
+	 *   - `true` for any session bound to an environment (current default)
+	 *   - `false` for sessions with no env bound (legacy behavior)
+	 *
+	 * Set to `false` on the environment to opt out (e.g. an
+	 * exploration/debugger env that wants every unlisted tool to fall
+	 * through to the SDK's prompt-or-default flow).
+	 *
+	 * Currently honored by the Claude runner only.
+	 */
+	strictToolPermissions: z.boolean().optional(),
+
+	/**
 	 * When `true` (default), Cyrus enumerates the contents of `~/` and
 	 * adds each top-level entry that is NOT an ancestor of the
 	 * worktree (or one of `allowedDirectories`) to the session's

@@ -451,6 +451,18 @@ export interface AgentRunnerConfig {
 	/** Callback when session completes */
 	onComplete?: (messages: AgentMessage[]) => void | Promise<void>;
 	/**
+	 * When `true`, the runner's `canUseTool` callback denies any tool
+	 * the SDK asks about (i.e., not in `allowedTools`) instead of
+	 * rubber-stamping it. Makes `allowedTools` authoritative.
+	 *
+	 * Defaults to `false` for backwards compatibility with legacy
+	 * sessions; env-bound sessions are flipped to `true` upstream.
+	 *
+	 * Currently honored by the Claude runner only.
+	 */
+	strictToolPermissions?: boolean;
+
+	/**
 	 * When `true` (default), Cyrus enumerates entries in the user's
 	 * home directory and adds them to `disallowedTools` so the agent
 	 * cannot Read SSH keys, dotfiles, credentials, etc. Set `false`

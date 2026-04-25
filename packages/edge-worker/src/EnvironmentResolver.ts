@@ -34,6 +34,14 @@ export interface EnvironmentResolverBaseInputs {
 	 * of the safety enumeration entirely.
 	 */
 	restrictHomeDirectoryReads: boolean;
+	/**
+	 * Whether the runtime's `canUseTool` callback should deny tools
+	 * the SDK asks about (i.e., not in `allowedTools`). The default
+	 * upstream is `false` (legacy rubber-stamp behavior); env-bound
+	 * sessions flip to `true` so a small `allowedTools` is actually
+	 * authoritative.
+	 */
+	strictToolPermissions: boolean;
 }
 
 /**
@@ -54,6 +62,7 @@ export interface EnvironmentResolverResult {
 	addChromeExtraArg: boolean;
 	allowedDirectories: string[];
 	restrictHomeDirectoryReads: boolean;
+	strictToolPermissions: boolean;
 }
 
 /**
@@ -96,6 +105,7 @@ export class EnvironmentResolver {
 				addChromeExtraArg: base.addChromeExtraArg,
 				allowedDirectories: base.defaultAllowedDirectories,
 				restrictHomeDirectoryReads: base.restrictHomeDirectoryReads,
+				strictToolPermissions: base.strictToolPermissions,
 			};
 		}
 
@@ -134,6 +144,9 @@ export class EnvironmentResolver {
 
 		const restrictHomeDirectoryReads =
 			env.restrictHomeDirectoryReads ?? base.restrictHomeDirectoryReads;
+		// Any env-bound session is strict by default — `allowedTools`
+		// becomes authoritative. Envs can opt out explicitly.
+		const strictToolPermissions = env.strictToolPermissions ?? true;
 
 		return {
 			systemPrompt,
@@ -148,6 +161,7 @@ export class EnvironmentResolver {
 			addChromeExtraArg,
 			allowedDirectories,
 			restrictHomeDirectoryReads,
+			strictToolPermissions,
 		};
 	}
 

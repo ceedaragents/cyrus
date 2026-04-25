@@ -81,6 +81,13 @@ describe("Environment loader", () => {
 		expect(env?.env).toEqual({ CYRUS_TARGET: "staging", FOO: "bar" });
 	});
 
+	it("loads strictToolPermissions=false to opt out of strict enforcement", () => {
+		writeEnv("loose", { strictToolPermissions: false });
+		expect(loadEnvironment(cyrusHome, "loose")?.strictToolPermissions).toBe(
+			false,
+		);
+	});
+
 	it("loads restrictHomeDirectoryReads=false to opt out of home-dir denials", () => {
 		writeEnv("open-reads", { restrictHomeDirectoryReads: false });
 		expect(

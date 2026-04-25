@@ -304,6 +304,7 @@ export class RunnerConfigBuilder {
 			envReadOnlyRepoPaths: [],
 			worktreePath: input.session.workspace.path,
 			restrictHomeDirectoryReads: true,
+			strictToolPermissions: false,
 		});
 
 		// Build a shadow input that buildSandboxConfig can consume.
@@ -360,6 +361,13 @@ export class RunnerConfigBuilder {
 			...(runnerType === "claude" &&
 				resolved.restrictHomeDirectoryReads === false && {
 					restrictHomeDirectoryReads: false,
+				}),
+			// Forward strict tool permission enforcement. Only set when
+			// true (env-bound sessions) — leaving undefined preserves the
+			// legacy rubber-stamp behavior for sessions with no env.
+			...(runnerType === "claude" &&
+				resolved.strictToolPermissions === true && {
+					strictToolPermissions: true,
 				}),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" &&

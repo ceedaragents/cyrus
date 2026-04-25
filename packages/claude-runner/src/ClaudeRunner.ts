@@ -116,8 +116,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		this.cyrusHome = config.cyrusHome;
 		this.formatter = new ClaudeMessageFormatter();
 
-		// Create canUseTool callback if onAskUserQuestion is provided
-		if (config.onAskUserQuestion) {
+		// Register the canUseTool callback when we either have an
+		// AskUserQuestion handler to delegate to, or strict tool
+		// permission enforcement is requested. In strict mode the
+		// callback is also responsible for denying any tool the SDK
+		// asks about that isn't AskUserQuestion — without it, the SDK
+		// rubber-stamps tools missing from `allowedTools`.
+		if (config.onAskUserQuestion || config.strictToolPermissions === true) {
 			this.canUseToolCallback = this.createCanUseToolCallback();
 		}
 
@@ -147,9 +152,20 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				toolUseID: string;
 			},
 		): Promise<PermissionResult> => {
-			// Only intercept AskUserQuestion tool
+			// Only intercept AskUserQuestion tool. For everything else,
+			// strict mode denies (so `allowedTools` is authoritative);
+			// otherwise we rubber-stamp to preserve legacy behavior for
+			// sessions that haven't opted in.
 			if (toolName !== "AskUserQuestion") {
-				// Allow all other tools to proceed normally
+				if (this.config.strictToolPermissions === true) {
+					this.logger.debug(
+						`Strict mode: denying ${toolName} (not in allowedTools)`,
+					);
+					return {
+						behavior: "deny",
+						message: `Tool "${toolName}" is not permitted by this environment's allowedTools. Add it to the environment config to enable.`,
+					};
+				}
 				return {
 					behavior: "allow",
 					updatedInput: input,
