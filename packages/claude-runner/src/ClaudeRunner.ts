@@ -543,6 +543,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(this.canUseToolCallback && {
 						canUseTool: this.canUseToolCallback,
 					}),
+					// In strict mode we MUST run with permissionMode "default"
+					// so the SDK actually consults canUseTool for tools not in
+					// allowedTools. Otherwise an inherited "bypassPermissions"
+					// (or similar) would skip the callback entirely and let the
+					// agent run anything.
+					...(this.config.strictToolPermissions === true && {
+						permissionMode: "default" as const,
+					}),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
