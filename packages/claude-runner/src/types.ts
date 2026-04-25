@@ -69,6 +69,31 @@ export interface ClaudeRunnerConfig {
 	 * this warm instance instead of spawning a cold process (~20x faster first turn).
 	 */
 	warmSession?: WarmQuery;
+	/**
+	 * When `true`, the `canUseTool` callback denies any tool the SDK
+	 * asks about (i.e., not in `allowedTools`) instead of allowing it
+	 * by default. Makes a small `allowedTools` list authoritative.
+	 * Defaults to `false` for backwards compatibility — env-bound
+	 * sessions are flipped to `true` upstream.
+	 */
+	strictToolPermissions?: boolean;
+
+	/**
+	 * When `true` (default), Cyrus enumerates the contents of the
+	 * user's home directory and adds each top-level entry that is not
+	 * an ancestor of the working directory to `disallowedTools` (as
+	 * `Read(<path>/**)`), so the agent cannot read SSH keys, dotfiles,
+	 * credentials, etc. Set `false` to skip the enumeration entirely.
+	 */
+	restrictHomeDirectoryReads?: boolean;
+
+	/**
+	 * Which file-based Claude settings sources to load. Defaults to
+	 * `["user","project","local"]` for backwards compatibility with
+	 * CLAUDE.md, custom slash commands, and project settings. Set to
+	 * `[]` to disable all sources for a fully isolated session.
+	 */
+	settingSources?: ("user" | "project" | "local")[];
 }
 
 export interface ClaudeSessionInfo {
