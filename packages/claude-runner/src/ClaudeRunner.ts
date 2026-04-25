@@ -152,13 +152,21 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				toolUseID: string;
 			},
 		): Promise<PermissionResult> => {
+			// Diagnostic: every canUseTool invocation is logged at INFO so
+			// operators can confirm whether the SDK is actually routing
+			// permission decisions through Cyrus (some tools may bypass the
+			// callback entirely depending on SDK version + permissionMode).
+			this.logger.info(
+				`canUseTool invoked: tool=${toolName} strict=${this.config.strictToolPermissions === true}`,
+			);
+
 			// Only intercept AskUserQuestion tool. For everything else,
 			// strict mode denies (so `allowedTools` is authoritative);
 			// otherwise we rubber-stamp to preserve legacy behavior for
 			// sessions that haven't opted in.
 			if (toolName !== "AskUserQuestion") {
 				if (this.config.strictToolPermissions === true) {
-					this.logger.debug(
+					this.logger.info(
 						`Strict mode: denying ${toolName} (not in allowedTools)`,
 					);
 					return {
