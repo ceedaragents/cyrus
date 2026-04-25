@@ -75,11 +75,13 @@ export {
 
 // Constants
 export {
+	AGENT_SESSION_THREAD_MARKER_PREFIX,
 	DEFAULT_BASE_BRANCH,
 	DEFAULT_CONFIG_FILENAME,
 	DEFAULT_PROXY_URL,
 	DEFAULT_REPOS_DIR,
 	DEFAULT_WORKTREES_DIR,
+	EMAIL_SYNCED_THREAD_MARKER,
 	getDefaultReposDir,
 	getDefaultWorktreesDir,
 } from "./constants.js";
@@ -118,6 +120,7 @@ export type {
 	AgentSessionSDK,
 	Comment,
 	CommentCreateInput,
+	CommentCreateWebhook,
 	CommentWithAttachments,
 	Connection,
 	FetchChildrenOptions,
@@ -156,6 +159,7 @@ export {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedEvent,
 	isAgentSessionPromptedWebhook,
+	isCommentCreateWebhook,
 	isCommentMentionEvent,
 	isIssueAssignedEvent,
 	isIssueAssignedWebhook,
