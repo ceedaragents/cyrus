@@ -25,6 +25,7 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
+import { availableTools } from "./config.js";
 import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
 import { buildHomeDirectoryDisallowedTools } from "./home-directory-restrictions.js";
 import {
@@ -408,12 +409,26 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						)
 					: [];
 
-			// Merge config-level denials with home directory denials, deduplicating in case
-			// any paths appear in both (e.g. an allowedDirectory that is also explicitly denied).
+			// In strict mode, also auto-deny any built-in tool name not
+			// represented in `allowedTools`. The Claude Agent SDK silently
+			// bypasses `canUseTool` for several "safe" tools (Glob, Grep,
+			// Edit, Write, Bash, etc.), so the only reliable way to make
+			// `allowedTools` truly authoritative is to explicitly disallow
+			// every other tool name. AskUserQuestion is always preserved
+			// because Cyrus needs it for the agentic permission flow.
+			const strictMode = this.config.strictToolPermissions === true;
+			const strictModeDisallowedTools = strictMode
+				? buildStrictDisallowedTools(processedAllowedTools ?? [])
+				: [];
+
+			// Merge config-level denials with home directory + strict-mode
+			// denials, deduplicating in case any paths/names appear in
+			// multiple sources.
 			const processedDisallowedTools = [
 				...new Set([
 					...(this.config.disallowedTools ?? []),
 					...homeDisallowedTools,
+					...strictModeDisallowedTools,
 				]),
 			];
 
@@ -1108,4 +1123,40 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			this.logger.error("Error writing readable log entry:", error);
 		}
 	}
+}
+
+/**
+ * Extract the bare tool name from a Claude Code allowedTools entry.
+ *   "Read"           -> "Read"
+ *   "Read(**)"       -> "Read"
+ *   "Bash(grep *)"   -> "Bash"
+ *   "mcp__svr__tool" -> "mcp__svr__tool" (kept verbatim — MCP tools
+ *                       use a different namespace and are matched whole)
+ */
+export function extractToolName(entry: string): string {
+	const paren = entry.indexOf("(");
+	return paren === -1 ? entry : entry.slice(0, paren);
+}
+
+/**
+ * Compute the list of disallowedTools entries that, when combined with
+ * an authoritative `allowedTools`, makes the SDK actually enforce the
+ * allowlist for built-in tools the SDK would otherwise auto-allow
+ * (Glob, Grep, Edit, Write, Bash, etc.).
+ *
+ * For each tool name in `availableTools` not represented in
+ * `allowedTools`, emit a bare-name disallow entry. AskUserQuestion is
+ * never disallowed because Cyrus relies on it for the agentic
+ * permission flow.
+ */
+export function buildStrictDisallowedTools(allowedTools: string[]): string[] {
+	const allowedToolNames = new Set(allowedTools.map(extractToolName));
+	const denials: string[] = [];
+	for (const tool of availableTools) {
+		const name = extractToolName(tool);
+		if (name === "AskUserQuestion") continue;
+		if (allowedToolNames.has(name)) continue;
+		denials.push(name);
+	}
+	return denials;
 }
