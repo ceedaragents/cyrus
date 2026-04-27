@@ -29,7 +29,10 @@ export interface SentryErrorReporterOptions {
 	 */
 	sampleRate?: number;
 	/**
-	 * If true, prints debug logs from the SDK itself. Wired to CYRUS_LOG_LEVEL=DEBUG.
+	 * If true, prints debug logs from the SDK itself. Decoupled from
+	 * CYRUS_LOG_LEVEL — gate on the dedicated `CYRUS_SENTRY_DEBUG` env var so
+	 * app-level debugging doesn't pull in the firehose of Sentry-internal
+	 * tracing/transport chatter.
 	 */
 	debug?: boolean;
 	/**

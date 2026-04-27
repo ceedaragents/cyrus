@@ -62,7 +62,11 @@ export function createErrorReporter(
 		dsn,
 		release: params.release,
 		environment,
-		debug: (env.CYRUS_LOG_LEVEL ?? "").toUpperCase() === "DEBUG",
+		// Sentry SDK debug output is unrelated to app log level — gating it on
+		// CYRUS_LOG_LEVEL=DEBUG floods stdout with OpenTelemetry tracing
+		// inheritance / client-report flush messages that belong to the SDK,
+		// not Cyrus. Use a dedicated opt-in env var.
+		debug: isTruthyEnv(env.CYRUS_SENTRY_DEBUG),
 		tags,
 		structuredContext: buildStructuredContext({
 			env,
