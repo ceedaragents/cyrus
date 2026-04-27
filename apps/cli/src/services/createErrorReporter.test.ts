@@ -8,6 +8,8 @@ vi.mock("@sentry/node", () => ({
 	flush: vi.fn().mockResolvedValue(true),
 	withScope: (cb: (s: unknown) => void) =>
 		cb({ setTag: vi.fn(), setExtra: vi.fn(), setUser: vi.fn() }),
+	extraErrorDataIntegration: vi.fn(() => ({ name: "ExtraErrorData" })),
+	consoleIntegration: vi.fn(() => ({ name: "Console" })),
 }));
 
 import * as Sentry from "@sentry/node";
@@ -24,10 +26,15 @@ describe("createErrorReporter", () => {
 		expect(Sentry.init).not.toHaveBeenCalled();
 	});
 
-	it("returns a NoopErrorReporter when no DSN is configured", () => {
+	it("falls back to the bundled DEFAULT_SENTRY_DSN when no env DSN is configured", async () => {
+		const { DEFAULT_SENTRY_DSN } = await import("./createErrorReporter.js");
 		const reporter = createErrorReporter({ env: {} });
-		expect(reporter).toBeInstanceOf(NoopErrorReporter);
-		expect(reporter.isEnabled).toBe(false);
+		if (DEFAULT_SENTRY_DSN) {
+			expect(reporter).toBeInstanceOf(SentryErrorReporter);
+		} else {
+			expect(reporter).toBeInstanceOf(NoopErrorReporter);
+			expect(reporter.isEnabled).toBe(false);
+		}
 	});
 
 	it.each(["true", "yes", "on", "TRUE", "1"])(
@@ -59,26 +66,59 @@ describe("createErrorReporter", () => {
 		);
 	});
 
-	it("applies CYRUS_TEAM_ID as the team_id tag on initialScope", () => {
+	it("applies CYRUS_TEAM_ID as the team_id tag and structured cyrus context on initialScope", () => {
 		createErrorReporter({
 			env: {
 				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
 				CYRUS_TEAM_ID: "team-42",
 			},
+			release: "1.2.3",
 		});
 		expect(Sentry.init).toHaveBeenCalledWith(
 			expect.objectContaining({
-				initialScope: { tags: { team_id: "team-42" } },
+				initialScope: {
+					tags: { team_id: "team-42" },
+					contexts: {
+						cyrus: {
+							team_id: "team-42",
+							environment: "production",
+							release: "1.2.3",
+						},
+					},
+				},
 			}),
 		);
 	});
 
-	it("does not set initialScope when no global tags are configured", () => {
+	it("includes optional CYRUS_LINEAR_WORKSPACE / CYRUS_DEPLOYMENT_ID in the structured context", () => {
+		createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+				CYRUS_LINEAR_WORKSPACE: "ceedar",
+				CYRUS_DEPLOYMENT_ID: "fly-iad-1",
+			},
+		});
+		const initArg = (
+			Sentry.init as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls.at(-1)?.[0] as {
+			initialScope: { contexts: { cyrus: Record<string, unknown> } };
+		};
+		expect(initArg.initialScope.contexts.cyrus).toMatchObject({
+			team_id: "team-42",
+			linear_workspace: "ceedar",
+			deployment_id: "fly-iad-1",
+		});
+	});
+
+	it("leaves initialScope undefined when no team_id / workspace / deployment is configured", () => {
 		createErrorReporter({
 			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
 		});
 		expect(Sentry.init).toHaveBeenCalledWith(
-			expect.objectContaining({ initialScope: undefined }),
+			expect.objectContaining({
+				initialScope: undefined,
+			}),
 		);
 	});
 

@@ -15,6 +15,13 @@ export interface SentryErrorReporterOptions {
 	 */
 	tags?: Record<string, string>;
 	/**
+	 * Structured context block attached to every event under the `cyrus` key.
+	 * Unlike tags, contexts are not indexed for search but support nested
+	 * structured data — ideal for grouping related fields (team_id, version,
+	 * environment, deployment) under one heading in the Sentry UI.
+	 */
+	structuredContext?: Record<string, unknown>;
+	/**
 	 * Sample rate for error events. Sentry's default is 1.0 (send everything).
 	 * Lower this if a high-volume error path needs sampling.
 	 */
@@ -58,9 +65,22 @@ export class SentryErrorReporter implements ErrorReporter {
 			// error tracking. Flip this on later if we need transaction data.
 			tracesSampleRate: 0,
 			beforeSend: options.beforeSend,
-			// Apply caller-provided tags (e.g. team_id) to every event so they
-			// don't have to be re-set at each capture site.
-			initialScope: options.tags ? { tags: options.tags } : undefined,
+			// Append integrations that enrich every event with structured data:
+			//   - extraErrorDataIntegration walks Error subclasses and serialises
+			//     non-standard own properties as `extra` (so e.g. `err.statusCode`,
+			//     `err.requestId`, custom Cyrus error fields surface in Sentry).
+			//   - consoleIntegration captures console.* output as breadcrumbs so
+			//     events arrive with a structured trail of the last log lines.
+			integrations: (defaults) => [
+				...defaults,
+				Sentry.extraErrorDataIntegration({ depth: 4 }),
+				Sentry.consoleIntegration(),
+			],
+			// Apply caller-provided tags (e.g. team_id) and a structured `cyrus`
+			// context to every event. Tags are indexed/searchable; the context is
+			// shown as a grouped structured block in the Sentry UI and is the
+			// home for fields too noisy or unbounded to be tags.
+			initialScope: buildInitialScope(options),
 		});
 	}
 
@@ -85,6 +105,20 @@ export class SentryErrorReporter implements ErrorReporter {
 	async flush(timeoutMs = 2000): Promise<boolean> {
 		return Sentry.flush(timeoutMs);
 	}
+}
+
+function buildInitialScope(
+	options: SentryErrorReporterOptions,
+): NonNullable<Parameters<typeof Sentry.init>[0]>["initialScope"] {
+	const hasTags = options.tags && Object.keys(options.tags).length > 0;
+	const hasContext =
+		options.structuredContext &&
+		Object.keys(options.structuredContext).length > 0;
+	if (!hasTags && !hasContext) return undefined;
+	return {
+		...(hasTags ? { tags: options.tags } : {}),
+		...(hasContext ? { contexts: { cyrus: options.structuredContext } } : {}),
+	};
 }
 
 function applyContext(

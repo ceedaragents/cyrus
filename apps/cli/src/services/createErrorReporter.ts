@@ -14,7 +14,8 @@ import { scrubSentryEvent } from "./sentryScrubber.js";
  * End users may override this with the `CYRUS_SENTRY_DSN` env var, or disable
  * reporting entirely with `CYRUS_SENTRY_DISABLED=1`.
  */
-export const DEFAULT_SENTRY_DSN = "https://4a343e39f7439cb5669604657fca148e@o4509685010399232.ingest.us.sentry.io/4511293576839168";
+export const DEFAULT_SENTRY_DSN =
+	"https://4a343e39f7439cb5669604657fca148e@o4509685010399232.ingest.us.sentry.io/4511293576839168";
 
 export interface CreateErrorReporterParams {
 	release?: string;
@@ -55,18 +56,50 @@ export function createErrorReporter(
 	// not just events emitted directly via the Sentry SDK's initialScope.
 	if (tags) setGlobalErrorTags(tags);
 
+	const environment = env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production";
+
 	return new SentryErrorReporter({
 		dsn,
 		release: params.release,
-		environment: env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production",
+		environment,
 		debug: (env.CYRUS_LOG_LEVEL ?? "").toUpperCase() === "DEBUG",
 		tags,
+		structuredContext: buildStructuredContext({
+			env,
+			environment,
+			release: params.release,
+			tags,
+		}),
 		sampleRate: parseSampleRate(env.CYRUS_SENTRY_SAMPLE_RATE),
 		// Always scrub. Cyrus' logger.error sites pass arbitrary args (request
 		// bodies, configs, headers) that may carry tokens; we cannot trust call
 		// sites to redact, so we filter on the way out.
 		beforeSend: scrubSentryEvent,
 	});
+}
+
+/**
+ * Build the structured `cyrus` context block attached to every event. This is
+ * the structured-logging counterpart to {@link buildInitialTags}: tags get
+ * the indexed/searchable subset (team_id), the context block carries the
+ * richer typed fields that show up grouped in the Sentry UI.
+ */
+function buildStructuredContext(input: {
+	env: NodeJS.ProcessEnv;
+	environment: string;
+	release: string | undefined;
+	tags: Record<string, string> | undefined;
+}): Record<string, unknown> | undefined {
+	const ctx: Record<string, unknown> = {
+		environment: input.environment,
+	};
+	if (input.release) ctx.release = input.release;
+	if (input.tags?.team_id) ctx.team_id = input.tags.team_id;
+	const linearWorkspace = input.env.CYRUS_LINEAR_WORKSPACE?.trim();
+	if (linearWorkspace) ctx.linear_workspace = linearWorkspace;
+	const deployment = input.env.CYRUS_DEPLOYMENT_ID?.trim();
+	if (deployment) ctx.deployment_id = deployment;
+	return Object.keys(ctx).length > 1 || ctx.team_id ? ctx : undefined;
 }
 
 /**
