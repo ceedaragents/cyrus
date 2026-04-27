@@ -17,6 +17,7 @@ import type {
 	RepositoryConfig,
 	RunnerType,
 } from "cyrus-core";
+import { buildPrMarkerHook } from "./hooks/PrMarkerHook.js";
 
 /**
  * Subset of McpConfigService consumed by RunnerConfigBuilder.
@@ -210,10 +211,18 @@ export class RunnerConfigBuilder {
 	} {
 		const log = input.logger;
 
-		// Configure hooks: PostToolUse for screenshot tools + Stop hook for PR/summary enforcement
+		// Configure hooks: PostToolUse for screenshot tools + PR-marker enforcement,
+		// plus the Stop hook that blocks the session when work is unshipped.
 		const screenshotHooks = this.buildScreenshotHooks(log);
+		const prMarkerHook = buildPrMarkerHook(log);
 		const stopHook = this.buildStopHook(log);
-		const hooks = { ...screenshotHooks, ...stopHook };
+		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
+			...stopHook,
+			PostToolUse: [
+				...(screenshotHooks.PostToolUse ?? []),
+				...(prMarkerHook.PostToolUse ?? []),
+			],
+		};
 
 		// Determine runner type and model override from selectors
 		const runnerSelection = this.runnerSelector.determineRunnerSelection(
