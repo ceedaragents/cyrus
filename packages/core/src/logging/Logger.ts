@@ -78,35 +78,34 @@ class Logger implements ILogger {
 	debug(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.DEBUG) {
 			console.log(`${this.formatPrefix(LogLevel.DEBUG)} ${message}`, ...args);
+			this.forwardLog("debug", message, args);
 		}
-		this.forwardLog("debug", message, args);
 	}
 
 	info(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.INFO) {
 			console.log(`${this.formatPrefix(LogLevel.INFO)} ${message}`, ...args);
+			this.forwardLog("info", message, args);
 		}
-		this.forwardLog("info", message, args);
 	}
 
 	warn(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.WARN) {
 			console.warn(`${this.formatPrefix(LogLevel.WARN)} ${message}`, ...args);
+			this.forwardLog("warn", message, args);
 		}
-		this.forwardLog("warn", message, args);
 	}
 
 	error(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.ERROR) {
 			console.error(`${this.formatPrefix(LogLevel.ERROR)} ${message}`, ...args);
+			this.forwardLog("error", message, args);
 		}
 
-		// Forward to the process-wide error reporter so ad-hoc `logger.error(msg, err)`
-		// calls scattered across the codebase (claude-runner, edge-worker, transports,
-		// persistence, etc.) automatically surface in Sentry without requiring the
-		// reporter to be threaded through every constructor.
+		// Errors always capture to Sentry Issues regardless of the configured
+		// log level. The level controls *verbosity* — silencing alerts on real
+		// failures by setting CYRUS_LOG_LEVEL=SILENT would be a footgun.
 		this.forwardToErrorReporter(message, args);
-		this.forwardLog("error", message, args);
 	}
 
 	/**
