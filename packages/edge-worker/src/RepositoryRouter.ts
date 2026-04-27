@@ -25,7 +25,8 @@ export type RepositoryRoutingResult =
 				| "team-based"
 				| "team-prefix"
 				| "catch-all"
-				| "workspace-fallback";
+				| "workspace-fallback"
+				| "existing-session";
 	  }
 	| { type: "needs_selection"; workspaceRepos: RepositoryConfig[] }
 	| { type: "none" };
@@ -184,7 +185,7 @@ export class RepositoryRouter {
 				return {
 					type: "selected",
 					repositories: activeRepos,
-					routingMethod: "workspace-fallback",
+					routingMethod: "existing-session",
 				};
 			}
 		}

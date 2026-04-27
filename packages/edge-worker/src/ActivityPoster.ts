@@ -129,6 +129,7 @@ export class ActivityPoster {
 			"team-prefix": "Team prefix routing",
 			"catch-all": "Catch-all",
 			"workspace-fallback": "Workspace fallback",
+			"existing-session": "Existing session",
 		};
 		const methodDisplay = routingMethod
 			? (methodDisplayMap[routingMethod] ?? routingMethod)

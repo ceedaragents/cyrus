@@ -481,7 +481,10 @@ describe("RepositoryRouter", () => {
 				]);
 
 				// Then: Should select repo with active session (not team-matched repo)
-				expectRouting(result).shouldSelectRepository(repo1);
+				expectRouting(result).shouldSelectRepositoryVia(
+					repo1,
+					"existing-session",
+				);
 			});
 
 			it("should skip active session check when issue has no active sessions", async () => {
