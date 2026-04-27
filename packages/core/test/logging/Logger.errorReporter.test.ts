@@ -126,12 +126,7 @@ describe("Logger error → reporter forwarding", () => {
 	});
 
 	it("does not capture debug/info/warn as Issues, only as structured Logs", () => {
-		// At DEBUG level, debug/info/warn are forwarded to the structured log
-		// stream but never produce Sentry Issues.
-		const log = createLogger({
-			component: "EdgeWorker",
-			level: LogLevel.DEBUG,
-		});
+		const log = createLogger({ component: "EdgeWorker" });
 		log.debug("d", new Error("d"));
 		log.info("i", new Error("i"));
 		log.warn("w", new Error("w"));
@@ -148,7 +143,6 @@ describe("Logger error → reporter forwarding", () => {
 		setGlobalErrorTags({ team_id: "team-42" });
 		const log = createLogger({
 			component: "EdgeWorker",
-			level: LogLevel.DEBUG,
 			context: { sessionId: "s-1", issueIdentifier: "CYPACK-7" },
 		});
 		log.debug("d");
@@ -172,29 +166,22 @@ describe("Logger error → reporter forwarding", () => {
 		}
 	});
 
-	it("gates Sentry Logs forwarding on the configured log level", () => {
-		// At default INFO level, debug calls are dropped from both console and Sentry Logs.
-		const log = createLogger({ component: "EdgeWorker", level: LogLevel.INFO });
-		log.debug("dropped");
-		log.info("kept");
-		expect(reporter.logs.map((l) => l.message)).toEqual(["kept"]);
-
-		// At WARN level, info is also dropped.
-		const warnLog = createLogger({ component: "X", level: LogLevel.WARN });
-		warnLog.info("dropped-too");
-		warnLog.warn("kept-warn");
-		expect(
-			reporter.logs.filter((l) => l.attributes?.component === "X"),
-		).toHaveLength(1);
-	});
-
-	it("error always captures as a Sentry Issue regardless of CYRUS_LOG_LEVEL=SILENT", () => {
-		const log = createLogger({ component: "Critical", level: LogLevel.SILENT });
-		log.error("boom", new Error("x"));
-		// Issue capture happens — the level only controls verbosity / log volume.
+	it("forwards every level to Sentry Logs even when console is silenced (CYRUS_LOG_LEVEL=SILENT)", () => {
+		// CYRUS_LOG_LEVEL controls the local console only; structured-log
+		// forwarding is the always-on backbone.
+		const log = createLogger({ component: "X", level: LogLevel.SILENT });
+		log.debug("d");
+		log.info("i");
+		log.warn("w");
+		log.error("e", new Error("boom"));
+		expect(reporter.logs.map((l) => l.level)).toEqual([
+			"debug",
+			"info",
+			"warn",
+			"error",
+		]);
+		// And errors still capture as Issues regardless.
 		expect(reporter.exceptions).toHaveLength(1);
-		// Structured log forwarding is gated by level, so silent level drops it.
-		expect(reporter.logs).toHaveLength(0);
 	});
 
 	it("summarises Error trailing args into a primitive attribute", () => {
