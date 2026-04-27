@@ -1,6 +1,18 @@
 import type { ErrorEvent, EventHint } from "@sentry/node";
 
 /**
+ * Mirrors Sentry's `Log` shape just enough for the scrubber to operate on it.
+ * Generic over the level type so this hook plugs into the SDK's `beforeSendLog`
+ * signature without redeclaring the LogSeverityLevel literal union here.
+ */
+export interface SentryLog<LevelT = string> {
+	level: LevelT;
+	message: unknown;
+	attributes?: Record<string, unknown>;
+	severityNumber?: number;
+}
+
+/**
  * Substring patterns (lowercased) that mark a key as sensitive. We err on the
  * side of dropping: a redaction is recoverable from local logs, a leaked token
  * is not.
@@ -158,5 +170,40 @@ export function scrubSentryEvent(
 		}
 	}
 
+	// Breadcrumbs come from `consoleIntegration` (every console.* line) and
+	// other auto-captured trails. They ride along on every event, so anything
+	// the app printed before the failure — request bodies, headers, repo paths
+	// — would otherwise leak with the next captured exception.
+	if (event.breadcrumbs) {
+		for (const bc of event.breadcrumbs) {
+			if (typeof bc.message === "string") {
+				bc.message = redactBearerInString(bc.message);
+			}
+			if (bc.data) {
+				bc.data = scrubValue(bc.data) as Record<string, unknown>;
+			}
+		}
+	}
+
 	return event;
+}
+
+/**
+ * Scrub a Sentry Logs entry. Wired as `beforeSendLog` on `Sentry.init`. The
+ * Logs stream is a separate pipeline from Issues — `beforeSend` does not run
+ * on logs, so we need a dedicated hook to keep the redaction guarantees
+ * symmetric across both ingestion paths.
+ *
+ * Generic in `T` so the SDK's stricter `Log` shape (with `level:
+ * LogSeverityLevel`) flows through unchanged — TypeScript would otherwise
+ * narrow the return to a looser `string` level on assignment.
+ */
+export function scrubSentryLog<T extends SentryLog<unknown>>(log: T): T {
+	if (typeof log.message === "string") {
+		log.message = redactBearerInString(log.message) as T["message"];
+	}
+	if (log.attributes) {
+		log.attributes = scrubValue(log.attributes) as Record<string, unknown>;
+	}
+	return log;
 }

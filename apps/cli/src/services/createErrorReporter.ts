@@ -4,7 +4,7 @@ import {
 	setGlobalErrorTags,
 } from "cyrus-core";
 import { SentryErrorReporter } from "./SentryErrorReporter.js";
-import { scrubSentryEvent } from "./sentryScrubber.js";
+import { scrubSentryEvent, scrubSentryLog } from "./sentryScrubber.js";
 
 /**
  * Default DSN baked into release builds. Empty until an admin creates the
@@ -58,6 +58,12 @@ export function createErrorReporter(
 
 	const environment = env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production";
 
+	// Sentry Logs ride a higher-volume pipeline than Issues and we want every
+	// forwarded log line tied to a tenant for slicing. Gate the log stream on
+	// `CYRUS_TEAM_ID` so installs without tenant tagging only ship Issues —
+	// keeps cost and noise bounded for self-hosted users who haven't opted in.
+	const logsEnabled = !!tags?.team_id;
+
 	return new SentryErrorReporter({
 		dsn,
 		release: params.release,
@@ -75,10 +81,15 @@ export function createErrorReporter(
 			tags,
 		}),
 		sampleRate: parseSampleRate(env.CYRUS_SENTRY_SAMPLE_RATE),
+		logsEnabled,
 		// Always scrub. Cyrus' logger.error sites pass arbitrary args (request
 		// bodies, configs, headers) that may carry tokens; we cannot trust call
 		// sites to redact, so we filter on the way out.
 		beforeSend: scrubSentryEvent,
+		// Logs use a separate ingestion path from Issues — `beforeSend` does
+		// not run on them, so we register a dedicated hook with the same scrub
+		// rules to keep both paths symmetric.
+		beforeSendLog: scrubSentryLog,
 	});
 }
 

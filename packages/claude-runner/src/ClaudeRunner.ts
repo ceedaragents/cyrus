@@ -297,9 +297,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			isRunning: true,
 		};
 
-		this.logger.info(
-			"Starting new session (session ID will be assigned by Claude)",
-		);
+		const isResumed = !!this.config.resumeSessionId;
+		this.logger.event(isResumed ? "session_resumed" : "session_started", {
+			resumeSessionId: this.config.resumeSessionId,
+			workingDirectory: this.config.workingDirectory,
+			model: this.config.model,
+			fallbackModel: this.config.fallbackModel,
+		});
 		this.logger.debug("Working directory:", this.config.workingDirectory);
 
 		// Ensure working directory exists
@@ -533,15 +537,30 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				},
 			};
 
+			// Always forward the resolved query options as a structured event so
+			// post-hoc Sentry investigation has the exact shape Claude was
+			// invoked with. Local console only prints it at DEBUG to keep
+			// terminals readable in production.
+			const serializedQueryOptions = JSON.stringify(
+				queryOptions,
+				serializeQueryOptionsReplacer,
+				2,
+			);
 			if (isDebugLogging) {
-				this.logger.debug(
-					`Claude query options: ${JSON.stringify(
-						queryOptions,
-						serializeQueryOptionsReplacer,
-						2,
-					)}`,
-				);
+				this.logger.debug(`Claude query options: ${serializedQueryOptions}`);
 			}
+			// Sentry Logs cap attribute size; truncate so we don't lose the
+			// outer event when the merged env/MCP/system-prompt payload is huge.
+			const QUERY_OPTIONS_MAX_CHARS = 16_000;
+			const queryOptionsAttribute =
+				serializedQueryOptions.length > QUERY_OPTIONS_MAX_CHARS
+					? `${serializedQueryOptions.slice(0, QUERY_OPTIONS_MAX_CHARS)}…[truncated]`
+					: serializedQueryOptions;
+			this.logger.event("claude_query_options", {
+				options: queryOptionsAttribute,
+				model: this.config.model,
+				fallbackModel: this.config.fallbackModel,
+			});
 
 			// Process messages from the query
 			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost).
@@ -562,9 +581,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				// Extract session ID from first message if we don't have one yet
 				if (!this.sessionInfo.sessionId && message.session_id) {
 					this.sessionInfo.sessionId = message.session_id;
-					this.logger.info(
-						`Session ID assigned by Claude: ${message.session_id}`,
-					);
+					this.logger.event("claude_session_id_assigned", {
+						claudeSessionId: message.session_id,
+					});
 
 					// Update streaming prompt with session ID if it exists
 					if (this.streamingPrompt) {
@@ -597,6 +616,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				// follow-up messages so the SDK session can be reused. Otherwise we
 				// complete the streaming prompt on result so the for-await loop exits
 				// and the subprocess can shut down (pre-warm-sessions behavior).
+				this.logger.event("message_emitted", {
+					messageType: message.type,
+					claudeSessionId: this.sessionInfo?.sessionId,
+				});
 				this.emit("message", message);
 				this.processMessage(message);
 				if (
@@ -612,9 +635,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			// Session completed successfully - mark as not running BEFORE emitting result
 			// This ensures any code checking isRunning() during result processing sees the correct state
-			this.logger.info(
-				`Session completed with ${this.messages.length} messages`,
-			);
+			this.logger.event("session_completed", {
+				messageCount: this.messages.length,
+				claudeSessionId: this.sessionInfo?.sessionId,
+			});
 			this.sessionInfo.isRunning = false;
 
 			// Emit deferred result message after marking isRunning = false
@@ -646,9 +670,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			if (isAbortError) {
 				// User-initiated stop - log at info level, not error
-				this.logger.info("Session stopped by user");
+				this.logger.event("session_stopped", {
+					reason: "user_abort",
+					claudeSessionId: this.sessionInfo?.sessionId,
+				});
 			} else if (isSigterm) {
-				this.logger.info("Session was terminated gracefully (SIGTERM)");
+				this.logger.event("session_stopped", {
+					reason: "sigterm",
+					claudeSessionId: this.sessionInfo?.sessionId,
+				});
 			} else {
 				// Actual error - log and emit
 				this.logger.error("Session error:", error);
@@ -746,7 +776,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	stop(): void {
 		if (this.abortController) {
-			this.logger.info("Stopping session");
+			this.logger.event("session_stop_requested", {
+				claudeSessionId: this.sessionInfo?.sessionId,
+			});
 			this.abortController.abort();
 			this.abortController = null;
 		}

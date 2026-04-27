@@ -6,7 +6,7 @@ import {
 	getGlobalErrorReporter,
 	getGlobalErrorTags,
 } from "../error-reporting/globalReporter.js";
-import type { ILogger, LogContext } from "./ILogger.js";
+import type { ILogger, LogContext, LogEventAttributes } from "./ILogger.js";
 import { LogLevel } from "./ILogger.js";
 
 function formatContext(context: LogContext): string {
@@ -79,24 +79,25 @@ class Logger implements ILogger {
 		if (this.level <= LogLevel.DEBUG) {
 			console.log(`${this.formatPrefix(LogLevel.DEBUG)} ${message}`, ...args);
 		}
-		// Sentry Logs forwarding is intentionally NOT gated on this.level.
-		// CYRUS_LOG_LEVEL controls local console verbosity; the structured-log
-		// stream is the always-on backbone, so e.g. running production at INFO
-		// still ships full debug-level traces to Sentry for post-hoc analysis.
-		this.forwardLog("debug", message, args);
+		// debug/info are NOT forwarded to Sentry Logs — they're far too high-volume
+		// to ship unconditionally. Use {@link event} for major lifecycle events
+		// that should always reach Sentry; warn/error keep auto-forwarding.
 	}
 
 	info(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.INFO) {
 			console.log(`${this.formatPrefix(LogLevel.INFO)} ${message}`, ...args);
 		}
-		this.forwardLog("info", message, args);
+		// See debug() — info is local-only. Promote to event() if it must ship.
 	}
 
 	warn(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.WARN) {
 			console.warn(`${this.formatPrefix(LogLevel.WARN)} ${message}`, ...args);
 		}
+		// All WARN logs forward to Sentry Logs unconditionally so operators see
+		// degraded-state signals even when running production at higher local
+		// verbosity thresholds.
 		this.forwardLog("warn", message, args);
 	}
 
@@ -111,6 +112,58 @@ class Logger implements ILogger {
 		// reporter to be threaded through every constructor.
 		this.forwardToErrorReporter(message, args);
 		this.forwardLog("error", message, args);
+	}
+
+	event(name: string, attributes?: LogEventAttributes): void {
+		// Mirror major events to the local console at INFO so operators reading
+		// terminal output see lifecycle transitions without reading Sentry.
+		if (this.level <= LogLevel.INFO) {
+			const suffix =
+				attributes && Object.keys(attributes).length > 0
+					? ` ${JSON.stringify(attributes)}`
+					: "";
+			console.log(
+				`${this.formatPrefix(LogLevel.INFO)} [event:${name}]${suffix}`,
+			);
+		}
+		this.forwardEvent(name, attributes);
+	}
+
+	/**
+	 * Common per-call attribute scaffold shared between {@link forwardLog} and
+	 * {@link forwardEvent}. Centralises the merge of process-wide tags
+	 * (team_id, …), the component name, and the structured logger context so
+	 * the two forwarding paths stay in lockstep.
+	 */
+	private buildBaseAttributes(): ErrorReporterLogAttributes {
+		const attrs: ErrorReporterLogAttributes = {
+			...getGlobalErrorTags(),
+			component: this.component,
+		};
+		if (this.context.sessionId) attrs.sessionId = this.context.sessionId;
+		if (this.context.platform) attrs.platform = this.context.platform;
+		if (this.context.issueIdentifier)
+			attrs.issueIdentifier = this.context.issueIdentifier;
+		if (this.context.repository) attrs.repository = this.context.repository;
+		return attrs;
+	}
+
+	/**
+	 * Forward a named major event to the structured-log stream. Distinct from
+	 * {@link forwardLog} so call sites can opt specific lifecycle/audit-style
+	 * events into Sentry Logs without re-enabling the firehose of debug/info
+	 * logs. Reporter implementations gate this independently (e.g. the Sentry
+	 * reporter only ships logs when CYRUS_TEAM_ID is configured).
+	 */
+	private forwardEvent(name: string, attributes?: LogEventAttributes): void {
+		const reporter = getGlobalErrorReporter();
+		if (!reporter.isEnabled) return;
+		const merged: ErrorReporterLogAttributes = {
+			...this.buildBaseAttributes(),
+			event: name,
+			...(attributes ?? {}),
+		};
+		reporter.log("info", `event:${name}`, merged);
 	}
 
 	/**
@@ -129,17 +182,7 @@ class Logger implements ILogger {
 		const reporter = getGlobalErrorReporter();
 		if (!reporter.isEnabled) return;
 
-		const attributes: ErrorReporterLogAttributes = {
-			...getGlobalErrorTags(),
-			component: this.component,
-		};
-		if (this.context.sessionId) attributes.sessionId = this.context.sessionId;
-		if (this.context.platform) attributes.platform = this.context.platform;
-		if (this.context.issueIdentifier) {
-			attributes.issueIdentifier = this.context.issueIdentifier;
-		}
-		if (this.context.repository)
-			attributes.repository = this.context.repository;
+		const attributes = this.buildBaseAttributes();
 
 		// Sentry Logs only accept primitive attribute values, so summarise non-
 		// primitive trailing args (Errors, objects) into a one-line tail rather
@@ -160,17 +203,13 @@ class Logger implements ILogger {
 		const error = extractError(args);
 		// Start with process-wide tags (e.g. team_id from CYRUS_TEAM_ID) so they
 		// apply to every forwarded event. Per-call context wins on key collisions.
-		const contextTags: Record<string, string> = {
-			...getGlobalErrorTags(),
-			component: this.component,
-		};
-		if (this.context.sessionId) contextTags.sessionId = this.context.sessionId;
-		if (this.context.platform) contextTags.platform = this.context.platform;
-		if (this.context.issueIdentifier) {
-			contextTags.issueIdentifier = this.context.issueIdentifier;
+		// Sentry tags are string-only — coerce primitives, drop nullish.
+		const baseAttrs = this.buildBaseAttributes();
+		const contextTags: Record<string, string> = {};
+		for (const [k, v] of Object.entries(baseAttrs)) {
+			if (v === undefined || v === null) continue;
+			contextTags[k] = typeof v === "string" ? v : String(v);
 		}
-		if (this.context.repository)
-			contextTags.repository = this.context.repository;
 
 		const extra: Record<string, unknown> = { message };
 		if (args.length > 0) extra.args = args;

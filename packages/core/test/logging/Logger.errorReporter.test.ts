@@ -125,21 +125,19 @@ describe("Logger error → reporter forwarding", () => {
 		// No assertions on reporter — by definition Noop swallows
 	});
 
-	it("does not capture debug/info/warn as Issues, only as structured Logs", () => {
+	it("does not capture debug/info/warn as Issues, only warn forwards to Logs", () => {
 		const log = createLogger({ component: "EdgeWorker" });
 		log.debug("d", new Error("d"));
 		log.info("i", new Error("i"));
 		log.warn("w", new Error("w"));
 		expect(reporter.exceptions).toHaveLength(0);
 		expect(reporter.messages).toHaveLength(0);
-		expect(reporter.logs.map((l) => l.level)).toEqual([
-			"debug",
-			"info",
-			"warn",
-		]);
+		// debug/info are local-only now to keep Sentry Logs volume bounded;
+		// warn/error continue to forward unconditionally.
+		expect(reporter.logs.map((l) => l.level)).toEqual(["warn"]);
 	});
 
-	it("forwards every log level to reporter.log with team_id and component attributes", () => {
+	it("forwards only warn/error logs by default; events ride through unconditionally", () => {
 		setGlobalErrorTags({ team_id: "team-42" });
 		const log = createLogger({
 			component: "EdgeWorker",
@@ -149,12 +147,12 @@ describe("Logger error → reporter forwarding", () => {
 		log.info("i");
 		log.warn("w");
 		log.error("e");
+		log.event("session_started", { claudeSessionId: "abc" });
 
 		expect(reporter.logs.map((l) => l.level)).toEqual([
-			"debug",
-			"info",
 			"warn",
 			"error",
+			"info", // event() is forwarded at info level
 		]);
 		for (const entry of reporter.logs) {
 			expect(entry.attributes).toMatchObject({
@@ -164,21 +162,26 @@ describe("Logger error → reporter forwarding", () => {
 				issueIdentifier: "CYPACK-7",
 			});
 		}
+		const eventEntry = reporter.logs.at(-1);
+		expect(eventEntry?.attributes).toMatchObject({
+			event: "session_started",
+			claudeSessionId: "abc",
+		});
 	});
 
-	it("forwards every level to Sentry Logs even when console is silenced (CYRUS_LOG_LEVEL=SILENT)", () => {
-		// CYRUS_LOG_LEVEL controls the local console only; structured-log
-		// forwarding is the always-on backbone.
+	it("forwards warn/error and events to Sentry Logs even when console is silenced", () => {
+		// CYRUS_LOG_LEVEL controls the local console only; warn/error and
+		// explicit events are the always-on backbone.
 		const log = createLogger({ component: "X", level: LogLevel.SILENT });
 		log.debug("d");
 		log.info("i");
 		log.warn("w");
 		log.error("e", new Error("boom"));
+		log.event("session_completed");
 		expect(reporter.logs.map((l) => l.level)).toEqual([
-			"debug",
-			"info",
 			"warn",
 			"error",
+			"info",
 		]);
 		// And errors still capture as Issues regardless.
 		expect(reporter.exceptions).toHaveLength(1);

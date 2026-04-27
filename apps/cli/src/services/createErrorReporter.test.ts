@@ -169,13 +169,42 @@ describe("createErrorReporter", () => {
 		},
 	);
 
-	it("enables Sentry Logs (enableLogs: true)", () => {
+	it("disables Sentry Logs when CYRUS_TEAM_ID is unset", () => {
 		createErrorReporter({
 			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
 		});
 		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({ enableLogs: false }),
+		);
+	});
+
+	it("enables Sentry Logs only when CYRUS_TEAM_ID is set", () => {
+		createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
 			expect.objectContaining({ enableLogs: true }),
 		);
+	});
+
+	it("Issue capture stays enabled even without CYRUS_TEAM_ID", () => {
+		const reporter = createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		expect(reporter.isEnabled).toBe(true);
+		reporter.captureException(new Error("boom"));
+		expect(Sentry.captureException).toHaveBeenCalled();
+	});
+
+	it("does not forward logs when CYRUS_TEAM_ID is unset", () => {
+		const reporter = createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		reporter.log("info", "hello", { component: "EdgeWorker" });
+		expect(Sentry.logger.info).not.toHaveBeenCalled();
 	});
 
 	it("forwards logger.* calls to Sentry.logger.* with team_id attribute", () => {
@@ -210,6 +239,22 @@ describe("createErrorReporter", () => {
 			extra: { token: "ghp_abcdefghijklmnopqrstuvwxyz" },
 		}) as { extra: Record<string, unknown> };
 		expect(scrubbed.extra.token).toBe("[REDACTED]");
+	});
+
+	it("installs the log scrub hook as beforeSendLog", () => {
+		createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		const call = (Sentry.init as unknown as { mock: { calls: unknown[][] } })
+			.mock.calls[0]?.[0] as { beforeSendLog?: (l: unknown) => unknown };
+		expect(typeof call.beforeSendLog).toBe("function");
+		const scrubbed = call.beforeSendLog!({
+			level: "info",
+			message: "Bearer abcdefghijklmnopqrstuvwxyz",
+			attributes: { token: "ghp_abcdefghijklmnopqrstuvwxyz" },
+		}) as { message: string; attributes: Record<string, unknown> };
+		expect(scrubbed.message).toContain("Bearer [REDACTED]");
+		expect(scrubbed.attributes.token).toBe("[REDACTED]");
 	});
 
 	it("Noop reporter flush resolves true and no-ops capture methods", async () => {

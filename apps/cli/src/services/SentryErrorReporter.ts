@@ -44,6 +44,24 @@ export interface SentryErrorReporterOptions {
 			? F
 			: never
 		: never;
+	/**
+	 * Hook invoked before a structured log entry is shipped to Sentry Logs.
+	 * Distinct from {@link beforeSend} (which only runs on Issues events) —
+	 * Logs have their own ingestion pipeline, so a separate redaction hook is
+	 * required to keep secret-scrubbing symmetric across both paths.
+	 */
+	beforeSendLog?: Parameters<typeof Sentry.init>[0] extends infer T
+		? T extends { beforeSendLog?: infer F }
+			? F
+			: never
+		: never;
+	/**
+	 * Whether structured logs (Sentry Logs) should be forwarded. Issues are
+	 * always forwarded when this reporter is constructed; logs are gated
+	 * separately so opt-in env requirements (e.g. `CYRUS_TEAM_ID`) can hold
+	 * back the higher-volume log stream without disabling error reporting.
+	 */
+	logsEnabled?: boolean;
 }
 
 /**
@@ -60,6 +78,7 @@ export class SentryErrorReporter implements ErrorReporter {
 	readonly isEnabled = true;
 
 	private readonly globalLogAttributes: ErrorReporterLogAttributes;
+	private readonly logsEnabled: boolean;
 
 	constructor(options: SentryErrorReporterOptions) {
 		// Stash the global tag set (team_id, …) so every Sentry.logger.* call
@@ -67,6 +86,7 @@ export class SentryErrorReporter implements ErrorReporter {
 		// attributes store from event tags, so initialScope.tags doesn't reach
 		// it. https://docs.sentry.io/product/explore/logs/
 		this.globalLogAttributes = options.tags ? { ...options.tags } : {};
+		this.logsEnabled = options.logsEnabled ?? false;
 
 		Sentry.init({
 			dsn: options.dsn,
@@ -77,12 +97,13 @@ export class SentryErrorReporter implements ErrorReporter {
 			// Performance monitoring is intentionally disabled — we only ship
 			// error tracking. Flip this on later if we need transaction data.
 			tracesSampleRate: 0,
-			// Forward every Logger.{debug,info,warn,error} call to the Sentry
-			// Logs explorer (separate from Issues — see the docs link above).
-			// Logs accept high volume and are the right surface for "what was
-			// the system doing right before this error?".
-			enableLogs: true,
+			// Sentry Logs ingestion is gated independently of error capture so
+			// callers can hold back the higher-volume log stream (e.g. until
+			// CYRUS_TEAM_ID is set for tenant tagging) without disabling
+			// exception reporting.
+			enableLogs: this.logsEnabled,
 			beforeSend: options.beforeSend,
+			beforeSendLog: options.beforeSendLog,
 			// Append integrations that enrich every event with structured data:
 			//   - extraErrorDataIntegration walks Error subclasses and serialises
 			//     non-standard own properties as `extra` (so e.g. `err.statusCode`,
@@ -125,6 +146,10 @@ export class SentryErrorReporter implements ErrorReporter {
 		message: string,
 		attributes?: ErrorReporterLogAttributes,
 	): void {
+		// Honour the construction-time gate so a misconfigured caller can't
+		// accidentally re-enable the logs firehose. The SDK is also init'd
+		// with `enableLogs: this.logsEnabled` so this is belt-and-braces.
+		if (!this.logsEnabled) return;
 		// Merge per-call attributes on top of the process-wide set so team_id
 		// (and any other CYRUS_* tag we configured) lands on every log record.
 		const merged: ErrorReporterLogAttributes = {

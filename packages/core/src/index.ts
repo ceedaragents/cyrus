@@ -16,7 +16,11 @@ export {
 	setGlobalErrorReporter,
 	setGlobalErrorTags,
 } from "./error-reporting/index.js";
-export type { ILogger, LogContext } from "./logging/index.js";
+export type {
+	ILogger,
+	LogContext,
+	LogEventAttributes,
+} from "./logging/index.js";
 export { createLogger, LogLevel } from "./logging/index.js";
 
 // export { Session } from './Session.js'
