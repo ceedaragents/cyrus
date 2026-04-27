@@ -299,11 +299,19 @@ export class EdgeWorker extends EventEmitter {
 		// when CYRUS_APP_URL (destination), CYRUS_API_KEY (proof of team
 		// ownership), and CYRUS_TEAM_ID (which team the transcripts belong to)
 		// are all configured. If any is missing the store stays null and the
-		// SDK falls back to local JSONL only.
+		// SDK falls back to local JSONL only. Operators can also opt out
+		// explicitly by setting CYRUS_DISABLE_REMOTE_SESSION_STORE=1, which
+		// keeps transcripts local even when the three vars above are present.
 		const sessionStoreBaseUrl = process.env.CYRUS_APP_URL;
 		const sessionStoreApiKey = process.env.CYRUS_API_KEY;
 		const sessionStoreTeamId = process.env.CYRUS_TEAM_ID;
-		if (sessionStoreBaseUrl && sessionStoreApiKey && sessionStoreTeamId) {
+		const sessionStoreDisabled = this.isRemoteSessionStoreDisabled();
+		if (
+			!sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
 			this.claudeSessionStore = new HttpSessionStore({
 				baseUrl: sessionStoreBaseUrl,
 				apiKey: sessionStoreApiKey,
@@ -312,6 +320,15 @@ export class EdgeWorker extends EventEmitter {
 			});
 			this.logger.info(
 				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl} for team ${sessionStoreTeamId}`,
+			);
+		} else if (
+			sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
+			this.logger.info(
+				"[SessionStore] Remote session store disabled via CYRUS_DISABLE_REMOTE_SESSION_STORE; transcripts will stay local.",
 			);
 		}
 
@@ -6172,6 +6189,22 @@ ${input.userComment}
 	 */
 	private isWarmSessionsEnabled(): boolean {
 		const raw = process.env.CYRUS_ENABLE_WARM_SESSIONS;
+		if (!raw) return false;
+		const v = raw.toLowerCase().trim();
+		return v === "1" || v === "true";
+	}
+
+	/**
+	 * Whether the remote Claude session store is explicitly disabled.
+	 *
+	 * The remote store mirrors SDK transcripts to the Cyrus hosted control
+	 * plane and is on by default whenever `CYRUS_APP_URL`, `CYRUS_API_KEY`,
+	 * and `CYRUS_TEAM_ID` are all set. Operators can opt out — without
+	 * unsetting those vars (which other features depend on) — by setting
+	 * `CYRUS_DISABLE_REMOTE_SESSION_STORE=1` (or `=true`).
+	 */
+	private isRemoteSessionStoreDisabled(): boolean {
+		const raw = process.env.CYRUS_DISABLE_REMOTE_SESSION_STORE;
 		if (!raw) return false;
 		const v = raw.toLowerCase().trim();
 		return v === "1" || v === "true";
