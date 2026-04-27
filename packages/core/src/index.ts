@@ -1,5 +1,12 @@
 // Logging
 
+// Error reporting
+export type {
+	ErrorReporter,
+	ErrorReporterContext,
+	ErrorReporterSeverity,
+} from "./error-reporting/index.js";
+export { NoopErrorReporter } from "./error-reporting/index.js";
 export type { ILogger, LogContext } from "./logging/index.js";
 export { createLogger, LogLevel } from "./logging/index.js";
 
