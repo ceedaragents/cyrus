@@ -1,4 +1,7 @@
-import { getGlobalErrorReporter } from "../error-reporting/globalReporter.js";
+import {
+	getGlobalErrorReporter,
+	getGlobalErrorTags,
+} from "../error-reporting/globalReporter.js";
 import type { ILogger, LogContext } from "./ILogger.js";
 import { LogLevel } from "./ILogger.js";
 
@@ -103,7 +106,12 @@ class Logger implements ILogger {
 		if (!reporter.isEnabled) return;
 
 		const error = extractError(args);
-		const contextTags: Record<string, string> = { component: this.component };
+		// Start with process-wide tags (e.g. team_id from CYRUS_TEAM_ID) so they
+		// apply to every forwarded event. Per-call context wins on key collisions.
+		const contextTags: Record<string, string> = {
+			...getGlobalErrorTags(),
+			component: this.component,
+		};
 		if (this.context.sessionId) contextTags.sessionId = this.context.sessionId;
 		if (this.context.platform) contextTags.platform = this.context.platform;
 		if (this.context.issueIdentifier) {

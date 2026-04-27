@@ -8,9 +8,11 @@ export type {
 } from "./error-reporting/index.js";
 export {
 	getGlobalErrorReporter,
+	getGlobalErrorTags,
 	NoopErrorReporter,
 	resetGlobalErrorReporter,
 	setGlobalErrorReporter,
+	setGlobalErrorTags,
 } from "./error-reporting/index.js";
 export type { ILogger, LogContext } from "./logging/index.js";
 export { createLogger, LogLevel } from "./logging/index.js";

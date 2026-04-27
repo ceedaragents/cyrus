@@ -7,6 +7,7 @@ import type {
 import {
 	resetGlobalErrorReporter,
 	setGlobalErrorReporter,
+	setGlobalErrorTags,
 } from "../../src/error-reporting/globalReporter.js";
 import { createLogger } from "../../src/logging/index.js";
 
@@ -117,5 +118,31 @@ describe("Logger error → reporter forwarding", () => {
 		log.warn("w", new Error("w"));
 		expect(reporter.exceptions).toHaveLength(0);
 		expect(reporter.messages).toHaveLength(0);
+	});
+
+	it("merges process-wide tags (e.g. team_id) into every forwarded event", () => {
+		setGlobalErrorTags({ team_id: "team-42" });
+		const log = createLogger({ component: "EdgeWorker" });
+		log.error("Boom", new Error("x"));
+		log.error("Plain message");
+
+		expect(reporter.exceptions[0]?.context?.tags).toMatchObject({
+			team_id: "team-42",
+			component: "EdgeWorker",
+		});
+		expect(reporter.messages[0]?.context?.tags).toMatchObject({
+			team_id: "team-42",
+			component: "EdgeWorker",
+		});
+	});
+
+	it("per-call context tags override global tags on key collision", () => {
+		setGlobalErrorTags({ component: "should-not-win", team_id: "team-42" });
+		const log = createLogger({ component: "EdgeWorker" });
+		log.error("Boom", new Error("x"));
+		expect(reporter.exceptions[0]?.context?.tags).toMatchObject({
+			component: "EdgeWorker",
+			team_id: "team-42",
+		});
 	});
 });

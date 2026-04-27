@@ -2,6 +2,7 @@ import type { ErrorReporter } from "./ErrorReporter.js";
 import { NoopErrorReporter } from "./NoopErrorReporter.js";
 
 let globalReporter: ErrorReporter = new NoopErrorReporter();
+let globalTags: Readonly<Record<string, string>> = Object.freeze({});
 
 /**
  * Install the process-wide {@link ErrorReporter}.
@@ -29,8 +30,28 @@ export function getGlobalErrorReporter(): ErrorReporter {
 }
 
 /**
- * Restore the default no-op reporter. Intended for tests.
+ * Install process-wide tags applied to every event captured via
+ * {@link getGlobalErrorReporter} or forwarded by the Logger. Use this for
+ * tenant/deployment identifiers (e.g. `team_id`) that should be present on
+ * every event regardless of which capture site emitted it.
+ *
+ * The Sentry SDK's `initialScope` covers events emitted directly through
+ * `Sentry.*` APIs, but Logger.error builds an explicit per-event tag map that
+ * overrides scope tags by key — so we mirror the registry here so Logger can
+ * merge them in.
+ */
+export function setGlobalErrorTags(tags: Record<string, string>): void {
+	globalTags = Object.freeze({ ...tags });
+}
+
+export function getGlobalErrorTags(): Readonly<Record<string, string>> {
+	return globalTags;
+}
+
+/**
+ * Restore the default no-op reporter and clear global tags. Intended for tests.
  */
 export function resetGlobalErrorReporter(): void {
 	globalReporter = new NoopErrorReporter();
+	globalTags = Object.freeze({});
 }

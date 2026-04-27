@@ -1,4 +1,8 @@
-import { type ErrorReporter, NoopErrorReporter } from "cyrus-core";
+import {
+	type ErrorReporter,
+	NoopErrorReporter,
+	setGlobalErrorTags,
+} from "cyrus-core";
 import { SentryErrorReporter } from "./SentryErrorReporter.js";
 
 /**
@@ -44,12 +48,18 @@ export function createErrorReporter(
 		return new NoopErrorReporter();
 	}
 
+	const tags = buildInitialTags(env);
+	// Mirror the same tags into the process-wide registry so Logger.error
+	// forwarding (which builds its own per-event tag map) includes them too,
+	// not just events emitted directly via the Sentry SDK's initialScope.
+	if (tags) setGlobalErrorTags(tags);
+
 	return new SentryErrorReporter({
 		dsn,
 		release: params.release,
 		environment: env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production",
 		debug: (env.CYRUS_LOG_LEVEL ?? "").toUpperCase() === "DEBUG",
-		tags: buildInitialTags(env),
+		tags,
 	});
 }
 
