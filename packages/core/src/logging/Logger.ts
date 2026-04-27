@@ -1,3 +1,4 @@
+import { getGlobalErrorReporter } from "../error-reporting/globalReporter.js";
 import type { ILogger, LogContext } from "./ILogger.js";
 import { LogLevel } from "./ILogger.js";
 
@@ -89,6 +90,41 @@ class Logger implements ILogger {
 		if (this.level <= LogLevel.ERROR) {
 			console.error(`${this.formatPrefix(LogLevel.ERROR)} ${message}`, ...args);
 		}
+
+		// Forward to the process-wide error reporter so ad-hoc `logger.error(msg, err)`
+		// calls scattered across the codebase (claude-runner, edge-worker, transports,
+		// persistence, etc.) automatically surface in Sentry without requiring the
+		// reporter to be threaded through every constructor.
+		this.forwardToErrorReporter(message, args);
+	}
+
+	private forwardToErrorReporter(message: string, args: unknown[]): void {
+		const reporter = getGlobalErrorReporter();
+		if (!reporter.isEnabled) return;
+
+		const error = extractError(args);
+		const contextTags: Record<string, string> = { component: this.component };
+		if (this.context.sessionId) contextTags.sessionId = this.context.sessionId;
+		if (this.context.platform) contextTags.platform = this.context.platform;
+		if (this.context.issueIdentifier) {
+			contextTags.issueIdentifier = this.context.issueIdentifier;
+		}
+		if (this.context.repository)
+			contextTags.repository = this.context.repository;
+
+		const extra: Record<string, unknown> = { message };
+		if (args.length > 0) extra.args = args;
+
+		if (error) {
+			reporter.captureException(error, { tags: contextTags, extra });
+		} else {
+			// No Error object found — capture the message at "error" severity so
+			// otherwise-invisible failure paths still produce a Sentry event.
+			reporter.captureMessage(message, "error", {
+				tags: contextTags,
+				extra,
+			});
+		}
 	}
 
 	withContext(context: LogContext): ILogger {
@@ -114,4 +150,24 @@ export function createLogger(options: {
 	context?: LogContext;
 }): ILogger {
 	return new Logger(options);
+}
+
+/**
+ * Find the first {@link Error} in the trailing args of a `logger.error(...)`
+ * call. Also follows `error.cause` chains (used by transports that wrap an
+ * underlying failure) and unwraps objects that look like `{ error: Error }`.
+ */
+function extractError(args: unknown[]): Error | undefined {
+	for (const arg of args) {
+		if (arg instanceof Error) return arg;
+		if (
+			arg &&
+			typeof arg === "object" &&
+			"error" in arg &&
+			(arg as { error: unknown }).error instanceof Error
+		) {
+			return (arg as { error: Error }).error;
+		}
+	}
+	return undefined;
 }

@@ -6,7 +6,12 @@ export type {
 	ErrorReporterContext,
 	ErrorReporterSeverity,
 } from "./error-reporting/index.js";
-export { NoopErrorReporter } from "./error-reporting/index.js";
+export {
+	getGlobalErrorReporter,
+	NoopErrorReporter,
+	resetGlobalErrorReporter,
+	setGlobalErrorReporter,
+} from "./error-reporting/index.js";
 export type { ILogger, LogContext } from "./logging/index.js";
 export { createLogger, LogLevel } from "./logging/index.js";
 

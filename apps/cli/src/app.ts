@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { setGlobalErrorReporter } from "cyrus-core";
 import dotenv from "dotenv";
 import { Application } from "./Application.js";
 import { AuthCommand } from "./commands/AuthCommand.js";
@@ -31,8 +32,11 @@ const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 preloadEnvForBootstrap();
 
 // Initialise the error reporter as early as possible so that exceptions
-// thrown by subsequent imports/bootstrap are captured.
+// thrown by subsequent imports/bootstrap are captured. Install it as the
+// process-wide reporter so that every Logger.error(...) call across the
+// codebase forwards to Sentry automatically.
 const errorReporter = createErrorReporter({ release: packageJson.version });
+setGlobalErrorReporter(errorReporter);
 
 // Setup Commander program
 const program = new Command();

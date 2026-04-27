@@ -351,21 +351,14 @@ export class Application {
 			void this.shutdown();
 		});
 
-		// Handle uncaught exceptions and unhandled promise rejections
+		// Handle uncaught exceptions and unhandled promise rejections.
+		// Logger.error forwards the Error arg to the global ErrorReporter, so we
+		// don't need to call captureException explicitly here.
 		process.on("uncaughtException", (error) => {
-			this.logger.error(`🚨 Uncaught Exception: ${error.message}`);
-			this.logger.error(`Error type: ${error.constructor.name}`);
-			this.logger.error(`Stack: ${error.stack}`);
 			this.logger.error(
-				"This error was caught by the global handler, preventing application crash",
+				`🚨 Uncaught Exception: ${error.message} (type: ${error.constructor.name}). This error was caught by the global handler, preventing application crash.`,
+				error,
 			);
-
-			this.errorReporter.captureException(error, {
-				tags: {
-					handler: "uncaughtException",
-					version: this.version,
-				},
-			});
 
 			// Attempt graceful shutdown but don't wait indefinitely
 			this.shutdown().finally(() => {
@@ -375,26 +368,13 @@ export class Application {
 		});
 
 		process.on("unhandledRejection", (reason, promise) => {
-			this.logger.error(`🚨 Unhandled Promise Rejection at: ${promise}`);
-			this.logger.error(`Reason: ${reason}`);
+			const error =
+				reason instanceof Error ? reason : new Error(String(reason));
 			this.logger.error(
-				"This rejection was caught by the global handler, continuing operation",
+				`🚨 Unhandled Promise Rejection at: ${promise}. This rejection was caught by the global handler, continuing operation.`,
+				error,
 			);
-
-			// Log stack trace if reason is an Error
-			if (reason instanceof Error && reason.stack) {
-				this.logger.error(`Stack: ${reason.stack}`);
-			}
-
-			this.errorReporter.captureException(reason, {
-				tags: {
-					handler: "unhandledRejection",
-					version: this.version,
-				},
-			});
-
-			// Log the error but don't exit the process for promise rejections
-			// as they might be recoverable
+			// Don't exit for promise rejections — they might be recoverable.
 		});
 	}
 }
