@@ -10,6 +10,11 @@ export interface SentryErrorReporterOptions {
 	release?: string;
 	environment?: string;
 	/**
+	 * Tags applied to every event emitted by this reporter (e.g. `team_id` from
+	 * `CYRUS_TEAM_ID`). See https://docs.sentry.io/platform-redirect/?next=/enriching-events/tags
+	 */
+	tags?: Record<string, string>;
+	/**
 	 * Sample rate for error events. Sentry's default is 1.0 (send everything).
 	 * Lower this if a high-volume error path needs sampling.
 	 */
@@ -53,6 +58,9 @@ export class SentryErrorReporter implements ErrorReporter {
 			// error tracking. Flip this on later if we need transaction data.
 			tracesSampleRate: 0,
 			beforeSend: options.beforeSend,
+			// Apply caller-provided tags (e.g. team_id) to every event so they
+			// don't have to be re-set at each capture site.
+			initialScope: options.tags ? { tags: options.tags } : undefined,
 		});
 	}
 

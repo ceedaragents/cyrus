@@ -49,7 +49,25 @@ export function createErrorReporter(
 		release: params.release,
 		environment: env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production",
 		debug: (env.CYRUS_LOG_LEVEL ?? "").toUpperCase() === "DEBUG",
+		tags: buildInitialTags(env),
 	});
+}
+
+/**
+ * Build the global tag set applied to every Sentry event. Currently picks up
+ * `CYRUS_TEAM_ID` and exposes it as the `team_id` tag so events can be
+ * filtered per Cyrus tenant in Sentry.
+ *
+ * Add additional process-wide tags here rather than at capture sites — keeps
+ * call sites free of cross-cutting concerns.
+ */
+function buildInitialTags(
+	env: NodeJS.ProcessEnv,
+): Record<string, string> | undefined {
+	const tags: Record<string, string> = {};
+	const teamId = env.CYRUS_TEAM_ID?.trim();
+	if (teamId) tags.team_id = teamId;
+	return Object.keys(tags).length > 0 ? tags : undefined;
 }
 
 function isTruthyEnv(value: string | undefined): boolean {

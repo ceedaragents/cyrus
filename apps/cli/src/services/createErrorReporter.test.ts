@@ -59,6 +59,29 @@ describe("createErrorReporter", () => {
 		);
 	});
 
+	it("applies CYRUS_TEAM_ID as the team_id tag on initialScope", () => {
+		createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({
+				initialScope: { tags: { team_id: "team-42" } },
+			}),
+		);
+	});
+
+	it("does not set initialScope when no global tags are configured", () => {
+		createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({ initialScope: undefined }),
+		);
+	});
+
 	it("forwards CYRUS_SENTRY_ENVIRONMENT", () => {
 		createErrorReporter({
 			env: {
