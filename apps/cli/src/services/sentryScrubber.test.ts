@@ -88,6 +88,30 @@ describe("scrubSentryEvent", () => {
 		);
 	});
 
+	it("preserves session identifier attributes (sessionId / claudeSessionId)", () => {
+		// Identifier attributes are the whole point of structured log slicing —
+		// we surface them in Sentry intentionally. Real session secrets live
+		// under compound keys (`session_token`, `session_cookie`) which still
+		// trip the more specific patterns.
+		const out = scrubSentryEvent(
+			ev({
+				extra: {
+					sessionId: "019dd0f6-464d-7c70-a9bf-f60bb2e772eb",
+					claudeSessionId: "c5c1fc00-1234-5678-90ab-cdef01234567",
+					session_token: "secret-token-payload-1234567890",
+					session_cookie: "cookieval",
+				},
+			}),
+		);
+		expect(out!.extra!.sessionId).toBe("019dd0f6-464d-7c70-a9bf-f60bb2e772eb");
+		expect(out!.extra!.claudeSessionId).toBe(
+			"c5c1fc00-1234-5678-90ab-cdef01234567",
+		);
+		// Compound keys with a real secret pattern still redact.
+		expect(out!.extra!.session_token).toBe("[REDACTED]");
+		expect(out!.extra!.session_cookie).toBe("[REDACTED]");
+	});
+
 	it("leaves benign fields untouched", () => {
 		const out = scrubSentryEvent(
 			ev({ extra: { component: "EdgeWorker", count: 3, ok: true } }),

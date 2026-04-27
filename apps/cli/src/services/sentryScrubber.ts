@@ -27,7 +27,11 @@ const SENSITIVE_KEY_PATTERNS = [
 	"authorization",
 	"auth_header",
 	"cookie",
-	"session",
+	// NOTE: "session" intentionally omitted — it's too broad (matches the
+	// `sessionId` / `claudeSessionId` identifier attributes we *want* in
+	// Sentry for log slicing). Real session secrets are caught by the more
+	// specific patterns ("token", "cookie", "secret") via compounds like
+	// `session_token`, `session_cookie`, `session_secret`.
 	"private_key",
 	"privatekey",
 	"client_secret",
