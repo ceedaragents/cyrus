@@ -2942,6 +2942,15 @@ ${taskSection}`;
 		// Track active webhook processing for status endpoint
 		this.activeWebhookCount++;
 
+		const webhookAction = (webhook as { action?: string }).action;
+		const webhookType = (webhook as { type?: string }).type;
+		this.logger.event("webhook_received", {
+			source: "linear",
+			action: webhookAction,
+			type: webhookType,
+			repoCount: repos.length,
+		});
+
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			this.logger.debug(
