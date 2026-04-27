@@ -99,4 +99,7 @@ function applyContext(
 		for (const [k, v] of Object.entries(context.extra)) scope.setExtra(k, v);
 	}
 	if (context.user) scope.setUser(context.user);
+	if (context.fingerprint && context.fingerprint.length > 0) {
+		scope.setFingerprint(context.fingerprint);
+	}
 }

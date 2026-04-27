@@ -4,6 +4,7 @@ import {
 	setGlobalErrorTags,
 } from "cyrus-core";
 import { SentryErrorReporter } from "./SentryErrorReporter.js";
+import { scrubSentryEvent } from "./sentryScrubber.js";
 
 /**
  * Default DSN baked into release builds. Empty until an admin creates the
@@ -60,7 +61,23 @@ export function createErrorReporter(
 		environment: env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production",
 		debug: (env.CYRUS_LOG_LEVEL ?? "").toUpperCase() === "DEBUG",
 		tags,
+		sampleRate: parseSampleRate(env.CYRUS_SENTRY_SAMPLE_RATE),
+		// Always scrub. Cyrus' logger.error sites pass arbitrary args (request
+		// bodies, configs, headers) that may carry tokens; we cannot trust call
+		// sites to redact, so we filter on the way out.
+		beforeSend: scrubSentryEvent,
 	});
+}
+
+/**
+ * Parse a sample rate from env. Returns undefined for malformed/empty values
+ * so the SentryErrorReporter default (1.0) applies.
+ */
+function parseSampleRate(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const n = Number.parseFloat(value);
+	if (!Number.isFinite(n) || n < 0 || n > 1) return undefined;
+	return n;
 }
 
 /**

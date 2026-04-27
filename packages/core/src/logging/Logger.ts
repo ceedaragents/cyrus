@@ -123,14 +123,27 @@ class Logger implements ILogger {
 		const extra: Record<string, unknown> = { message };
 		if (args.length > 0) extra.args = args;
 
+		// Stable fingerprint so messages with embedded IDs (issue identifiers,
+		// session UUIDs, file paths) don't fragment into one Sentry issue per
+		// unique value. Errors with their own stack frames already group well, so
+		// we still pass a fingerprint to bias grouping toward (component +
+		// templated message) — keeps the same logical failure together even when
+		// the underlying Error type differs across call sites.
+		const fingerprint = ["logger", this.component, templatizeMessage(message)];
+
 		if (error) {
-			reporter.captureException(error, { tags: contextTags, extra });
+			reporter.captureException(error, {
+				tags: contextTags,
+				extra,
+				fingerprint,
+			});
 		} else {
 			// No Error object found — capture the message at "error" severity so
 			// otherwise-invisible failure paths still produce a Sentry event.
 			reporter.captureMessage(message, "error", {
 				tags: contextTags,
 				extra,
+				fingerprint,
 			});
 		}
 	}
@@ -165,6 +178,30 @@ export function createLogger(options: {
  * call. Also follows `error.cause` chains (used by transports that wrap an
  * underlying failure) and unwraps objects that look like `{ error: Error }`.
  */
+/**
+ * Replace dynamic fragments in a log message with placeholders so messages
+ * that differ only by embedded IDs/paths/numbers collapse to one fingerprint.
+ *
+ * Conservative on purpose — over-templating would merge unrelated failures.
+ * We strip the things known to vary across otherwise-identical log lines:
+ *   - UUIDs, hex blobs (16+ chars)
+ *   - Linear-style identifiers (TEAM-123)
+ *   - Absolute paths
+ *   - Long digit runs (timestamps, ports, retry counts)
+ */
+function templatizeMessage(message: string): string {
+	return message
+		.replace(
+			/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+			"<uuid>",
+		)
+		.replace(/\b[0-9a-f]{16,}\b/gi, "<hex>")
+		.replace(/\b[A-Z]{2,10}-\d+\b/g, "<id>")
+		.replace(/(?:\/[\w.-]+){2,}/g, "<path>")
+		.replace(/\b\d{4,}\b/g, "<num>")
+		.slice(0, 200);
+}
+
 function extractError(args: unknown[]): Error | undefined {
 	for (const arg of args) {
 		if (arg instanceof Error) return arg;

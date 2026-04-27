@@ -19,6 +19,13 @@ export interface ErrorReporterContext {
 	tags?: Record<string, string>;
 	extra?: Record<string, unknown>;
 	user?: { id?: string; email?: string; username?: string };
+	/**
+	 * Stable grouping key. Without this Sentry groups by message text — fine
+	 * for thrown Errors, but `logger.error("failed for issue ABC-123", err)`
+	 * style calls fragment into one group per ID. Pass a sanitised template
+	 * (e.g. ["component", "failed for issue <id>"]) to keep groups bounded.
+	 */
+	fingerprint?: string[];
 }
 
 /**

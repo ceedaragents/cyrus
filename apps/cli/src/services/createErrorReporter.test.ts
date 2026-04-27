@@ -94,6 +94,47 @@ describe("createErrorReporter", () => {
 		);
 	});
 
+	it("forwards CYRUS_SENTRY_SAMPLE_RATE when valid", () => {
+		createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_SENTRY_SAMPLE_RATE: "0.25",
+			},
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({ sampleRate: 0.25 }),
+		);
+	});
+
+	it.each(["foo", "-1", "2", ""])(
+		"falls back to default sampleRate when CYRUS_SENTRY_SAMPLE_RATE=%s is invalid",
+		(value) => {
+			createErrorReporter({
+				env: {
+					CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+					CYRUS_SENTRY_SAMPLE_RATE: value,
+				},
+			});
+			expect(Sentry.init).toHaveBeenCalledWith(
+				expect.objectContaining({ sampleRate: 1 }),
+			);
+		},
+	);
+
+	it("installs the scrub hook as beforeSend", () => {
+		createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		const call = (Sentry.init as unknown as { mock: { calls: unknown[][] } })
+			.mock.calls[0]?.[0] as { beforeSend?: (e: unknown) => unknown };
+		expect(typeof call.beforeSend).toBe("function");
+		// Smoke-check it actually scrubs.
+		const scrubbed = call.beforeSend!({
+			extra: { token: "ghp_abcdefghijklmnopqrstuvwxyz" },
+		}) as { extra: Record<string, unknown> };
+		expect(scrubbed.extra.token).toBe("[REDACTED]");
+	});
+
 	it("Noop reporter flush resolves true and no-ops capture methods", async () => {
 		const reporter = createErrorReporter({
 			env: { CYRUS_SENTRY_DISABLED: "1" },

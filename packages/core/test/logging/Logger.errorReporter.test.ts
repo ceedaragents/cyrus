@@ -136,6 +136,32 @@ describe("Logger error → reporter forwarding", () => {
 		});
 	});
 
+	it("sets a stable fingerprint that templatizes IDs and paths", () => {
+		const log = createLogger({ component: "EdgeWorker" });
+		log.error("Failed for issue CYPACK-42 at /Users/x/work/foo.ts");
+		log.error("Failed for issue CYPACK-99 at /Users/y/work/bar.ts");
+
+		// Both messages should collapse to the same fingerprint group.
+		const fp0 = reporter.messages[0]?.context?.fingerprint;
+		const fp1 = reporter.messages[1]?.context?.fingerprint;
+		expect(fp0).toBeDefined();
+		expect(fp0).toEqual(fp1);
+		expect(fp0?.[0]).toBe("logger");
+		expect(fp0?.[1]).toBe("EdgeWorker");
+		expect(fp0?.[2]).toContain("<id>");
+		expect(fp0?.[2]).toContain("<path>");
+	});
+
+	it("attaches a fingerprint when forwarding an Error", () => {
+		const log = createLogger({ component: "ClaudeRunner" });
+		log.error(
+			"Session failed for c5c1fc00-1234-1234-1234-c5c1fc00aaaa",
+			new Error("x"),
+		);
+		const fp = reporter.exceptions[0]?.context?.fingerprint;
+		expect(fp?.[2]).toContain("<uuid>");
+	});
+
 	it("per-call context tags override global tags on key collision", () => {
 		setGlobalErrorTags({ component: "should-not-win", team_id: "team-42" });
 		const log = createLogger({ component: "EdgeWorker" });
