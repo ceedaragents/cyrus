@@ -910,14 +910,34 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	/**
 	 * Interrupt the current turn without killing the session.
 	 * The session stays warm and can accept new messages.
+	 *
+	 * Only safe to call on warm sessions (see {@link isWarm}). Calling
+	 * `interrupt()` on a non-warm session aborts the underlying request and
+	 * causes the SDK to emit a "Request was aborted" error. Callers should
+	 * gate on `isWarm()` and prefer `stop()` for non-warm sessions.
 	 */
 	async interrupt(): Promise<void> {
+		if (!this.keepSessionWarm) {
+			this.logger.debug(
+				"interrupt() called on non-warm session; falling back to stop()",
+			);
+			this.stop();
+			return;
+		}
 		if (this.activeQuery) {
 			this.logger.info("Interrupting current turn");
 			await this.activeQuery.interrupt();
 		} else {
 			this.logger.debug("interrupt() called but no active query");
 		}
+	}
+
+	/**
+	 * Whether this runner keeps its SDK session warm between turns. Warm
+	 * sessions can be safely interrupted; non-warm sessions cannot.
+	 */
+	isWarm(): boolean {
+		return this.keepSessionWarm;
 	}
 
 	/**

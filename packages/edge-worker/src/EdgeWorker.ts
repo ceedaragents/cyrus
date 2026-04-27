@@ -4412,31 +4412,38 @@ ${taskSection}`;
 		const issueTitle = issue?.title || "this issue";
 		const senderName = webhook.agentSession.creator?.name || "user";
 
-		if (isDoubleStop) {
-			// Second stop within window — full kill
+		// Only warm sessions can be safely interrupted without killing the
+		// underlying request. Non-warm sessions get a single-shot full stop —
+		// calling interrupt() on them surfaces a "Request was aborted" error
+		// from the SDK (see CYPACK-1145).
+		const supportsInterrupt = Boolean(
+			existingRunner?.interrupt && existingRunner?.isWarm?.(),
+		);
+
+		if (isDoubleStop || !supportsInterrupt) {
+			// Either a second stop within window, or a non-warm runner — full kill
 			this.agentSessionManager.requestSessionStop(agentSessionId);
 			if (existingRunner) {
 				existingRunner.stop();
-				log.info(`Double-stop: fully aborted session ${agentSessionId}`);
+				log.info(
+					isDoubleStop
+						? `Double-stop: fully aborted session ${agentSessionId}`
+						: `Stopped session ${agentSessionId} (interrupt not supported)`,
+				);
 			}
 			this.lastStopTimeBySession.delete(agentSessionId);
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
-				`I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`,
+				isDoubleStop
+					? `I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`
+					: `I've stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Action Taken:** Session terminated`,
 			);
 		} else {
-			// First stop — interrupt current turn, keep session warm
-			if (existingRunner?.interrupt) {
-				await existingRunner.interrupt();
-				log.info(
-					`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
-				);
-			} else if (existingRunner) {
-				// Runner doesn't support interrupt — fall back to full stop
-				this.agentSessionManager.requestSessionStop(agentSessionId);
-				existingRunner.stop();
-				log.info(`Stopped session ${agentSessionId} (no interrupt support)`);
-			}
+			// First stop on a warm session — interrupt current turn, keep session warm
+			await existingRunner!.interrupt!();
+			log.info(
+				`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
+			);
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
 				`Interrupted by ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
