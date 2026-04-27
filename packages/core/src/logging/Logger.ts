@@ -1,3 +1,7 @@
+import type {
+	ErrorReporterLogAttributes,
+	ErrorReporterLogLevel,
+} from "../error-reporting/ErrorReporter.js";
 import {
 	getGlobalErrorReporter,
 	getGlobalErrorTags,
@@ -75,18 +79,21 @@ class Logger implements ILogger {
 		if (this.level <= LogLevel.DEBUG) {
 			console.log(`${this.formatPrefix(LogLevel.DEBUG)} ${message}`, ...args);
 		}
+		this.forwardLog("debug", message, args);
 	}
 
 	info(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.INFO) {
 			console.log(`${this.formatPrefix(LogLevel.INFO)} ${message}`, ...args);
 		}
+		this.forwardLog("info", message, args);
 	}
 
 	warn(message: string, ...args: unknown[]): void {
 		if (this.level <= LogLevel.WARN) {
 			console.warn(`${this.formatPrefix(LogLevel.WARN)} ${message}`, ...args);
 		}
+		this.forwardLog("warn", message, args);
 	}
 
 	error(message: string, ...args: unknown[]): void {
@@ -99,6 +106,47 @@ class Logger implements ILogger {
 		// persistence, etc.) automatically surface in Sentry without requiring the
 		// reporter to be threaded through every constructor.
 		this.forwardToErrorReporter(message, args);
+		this.forwardLog("error", message, args);
+	}
+
+	/**
+	 * Forward a log line at any level to the process-wide error reporter's
+	 * structured-log stream (e.g. Sentry Logs). Distinct from {@link
+	 * forwardToErrorReporter} which captures errors as Sentry Issues — Logs
+	 * accept every level without spamming alerts and let us slice/dice via
+	 * attributes (team_id, component, sessionId, …). Safe to call when the
+	 * reporter is disabled; the noop implementation drops the call.
+	 */
+	private forwardLog(
+		level: ErrorReporterLogLevel,
+		message: string,
+		args: unknown[],
+	): void {
+		const reporter = getGlobalErrorReporter();
+		if (!reporter.isEnabled) return;
+
+		const attributes: ErrorReporterLogAttributes = {
+			...getGlobalErrorTags(),
+			component: this.component,
+		};
+		if (this.context.sessionId) attributes.sessionId = this.context.sessionId;
+		if (this.context.platform) attributes.platform = this.context.platform;
+		if (this.context.issueIdentifier) {
+			attributes.issueIdentifier = this.context.issueIdentifier;
+		}
+		if (this.context.repository)
+			attributes.repository = this.context.repository;
+
+		// Sentry Logs only accept primitive attribute values, so summarise non-
+		// primitive trailing args (Errors, objects) into a one-line tail rather
+		// than dropping them. The full structured payload still goes via
+		// captureException for level=error.
+		if (args.length > 0) {
+			const tail = summariseArgs(args);
+			if (tail) attributes.args = tail;
+		}
+
+		reporter.log(level, message, attributes);
 	}
 
 	private forwardToErrorReporter(message: string, args: unknown[]): void {
@@ -200,6 +248,32 @@ function templatizeMessage(message: string): string {
 		.replace(/(?:\/[\w.-]+){2,}/g, "<path>")
 		.replace(/\b\d{4,}\b/g, "<num>")
 		.slice(0, 200);
+}
+
+/**
+ * Summarise trailing log args into a single string suitable as a structured
+ * attribute value (Sentry Logs only accept primitives). Errors collapse to
+ * `name: message`, objects to a JSON-stringified preview, primitives to their
+ * String() form. Truncated to keep the payload bounded.
+ */
+function summariseArgs(args: unknown[]): string | undefined {
+	const parts: string[] = [];
+	for (const arg of args) {
+		if (arg instanceof Error) {
+			parts.push(`${arg.name}: ${arg.message}`);
+		} else if (arg && typeof arg === "object") {
+			try {
+				parts.push(JSON.stringify(arg));
+			} catch {
+				parts.push("[object]");
+			}
+		} else if (arg !== undefined) {
+			parts.push(String(arg));
+		}
+	}
+	if (parts.length === 0) return undefined;
+	const joined = parts.join(" ");
+	return joined.length > 500 ? `${joined.slice(0, 500)}…` : joined;
 }
 
 function extractError(args: unknown[]): Error | undefined {

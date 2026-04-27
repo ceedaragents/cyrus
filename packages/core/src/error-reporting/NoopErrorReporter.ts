@@ -17,6 +17,10 @@ export class NoopErrorReporter implements ErrorReporter {
 		// intentionally empty
 	}
 
+	log(): void {
+		// intentionally empty
+	}
+
 	async flush(): Promise<boolean> {
 		return true;
 	}

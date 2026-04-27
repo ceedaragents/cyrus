@@ -4,6 +4,8 @@
 export type {
 	ErrorReporter,
 	ErrorReporterContext,
+	ErrorReporterLogAttributes,
+	ErrorReporterLogLevel,
 	ErrorReporterSeverity,
 } from "./error-reporting/index.js";
 export {

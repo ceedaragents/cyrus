@@ -10,6 +10,14 @@ vi.mock("@sentry/node", () => ({
 		cb({ setTag: vi.fn(), setExtra: vi.fn(), setUser: vi.fn() }),
 	extraErrorDataIntegration: vi.fn(() => ({ name: "ExtraErrorData" })),
 	consoleIntegration: vi.fn(() => ({ name: "Console" })),
+	logger: {
+		trace: vi.fn(),
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		fatal: vi.fn(),
+	},
 }));
 
 import * as Sentry from "@sentry/node";
@@ -160,6 +168,35 @@ describe("createErrorReporter", () => {
 			);
 		},
 	);
+
+	it("enables Sentry Logs (enableLogs: true)", () => {
+		createErrorReporter({
+			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({ enableLogs: true }),
+		);
+	});
+
+	it("forwards logger.* calls to Sentry.logger.* with team_id attribute", () => {
+		const reporter = createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
+		});
+		reporter.log("info", "hello world", { component: "EdgeWorker" });
+		expect(Sentry.logger.info).toHaveBeenCalledWith(
+			"hello world",
+			expect.objectContaining({ team_id: "team-42", component: "EdgeWorker" }),
+		);
+
+		reporter.log("warn", "rate limit");
+		expect(Sentry.logger.warn).toHaveBeenCalledWith(
+			"rate limit",
+			expect.objectContaining({ team_id: "team-42" }),
+		);
+	});
 
 	it("installs the scrub hook as beforeSend", () => {
 		createErrorReporter({

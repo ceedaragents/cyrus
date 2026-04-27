@@ -1,6 +1,8 @@
 export type {
 	ErrorReporter,
 	ErrorReporterContext,
+	ErrorReporterLogAttributes,
+	ErrorReporterLogLevel,
 	ErrorReporterSeverity,
 } from "./ErrorReporter.js";
 export {

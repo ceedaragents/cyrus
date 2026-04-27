@@ -2,6 +2,8 @@ import * as Sentry from "@sentry/node";
 import type {
 	ErrorReporter,
 	ErrorReporterContext,
+	ErrorReporterLogAttributes,
+	ErrorReporterLogLevel,
 	ErrorReporterSeverity,
 } from "cyrus-core";
 
@@ -54,7 +56,15 @@ export interface SentryErrorReporterOptions {
 export class SentryErrorReporter implements ErrorReporter {
 	readonly isEnabled = true;
 
+	private readonly globalLogAttributes: ErrorReporterLogAttributes;
+
 	constructor(options: SentryErrorReporterOptions) {
+		// Stash the global tag set (team_id, …) so every Sentry.logger.* call
+		// merges them into per-log attributes — Sentry Logs has a separate
+		// attributes store from event tags, so initialScope.tags doesn't reach
+		// it. https://docs.sentry.io/product/explore/logs/
+		this.globalLogAttributes = options.tags ? { ...options.tags } : {};
+
 		Sentry.init({
 			dsn: options.dsn,
 			release: options.release,
@@ -64,6 +74,11 @@ export class SentryErrorReporter implements ErrorReporter {
 			// Performance monitoring is intentionally disabled — we only ship
 			// error tracking. Flip this on later if we need transaction data.
 			tracesSampleRate: 0,
+			// Forward every Logger.{debug,info,warn,error} call to the Sentry
+			// Logs explorer (separate from Issues — see the docs link above).
+			// Logs accept high volume and are the right surface for "what was
+			// the system doing right before this error?".
+			enableLogs: true,
 			beforeSend: options.beforeSend,
 			// Append integrations that enrich every event with structured data:
 			//   - extraErrorDataIntegration walks Error subclasses and serialises
@@ -100,6 +115,39 @@ export class SentryErrorReporter implements ErrorReporter {
 			applyContext(scope, context);
 			Sentry.captureMessage(message, severity);
 		});
+	}
+
+	log(
+		level: ErrorReporterLogLevel,
+		message: string,
+		attributes?: ErrorReporterLogAttributes,
+	): void {
+		// Merge per-call attributes on top of the process-wide set so team_id
+		// (and any other CYRUS_* tag we configured) lands on every log record.
+		const merged: ErrorReporterLogAttributes = {
+			...this.globalLogAttributes,
+			...attributes,
+		};
+		switch (level) {
+			case "trace":
+				Sentry.logger.trace(message, merged);
+				break;
+			case "debug":
+				Sentry.logger.debug(message, merged);
+				break;
+			case "info":
+				Sentry.logger.info(message, merged);
+				break;
+			case "warn":
+				Sentry.logger.warn(message, merged);
+				break;
+			case "error":
+				Sentry.logger.error(message, merged);
+				break;
+			case "fatal":
+				Sentry.logger.fatal(message, merged);
+				break;
+		}
 	}
 
 	async flush(timeoutMs = 2000): Promise<boolean> {

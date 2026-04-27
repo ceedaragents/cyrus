@@ -9,6 +9,29 @@ export type ErrorReporterSeverity =
 	| "debug";
 
 /**
+ * Severity level for structured logs forwarded to the tracker's log stream
+ * (separate from event capture). Mirrors Sentry's Logs API.
+ */
+export type ErrorReporterLogLevel =
+	| "trace"
+	| "debug"
+	| "info"
+	| "warn"
+	| "error"
+	| "fatal";
+
+/**
+ * Per-log structured attributes. Keys are arbitrary; values must be JSON-
+ * serialisable primitives. The reporter merges process-wide tags (e.g.
+ * `team_id`) into these on the way out so call sites don't need to repeat
+ * cross-cutting fields.
+ */
+export type ErrorReporterLogAttributes = Record<
+	string,
+	string | number | boolean | null | undefined
+>;
+
+/**
  * Structured context attached to a reported event.
  *
  * Keys are arbitrary; values must be JSON-serialisable. Implementations
@@ -46,6 +69,19 @@ export interface ErrorReporter {
 		message: string,
 		severity?: ErrorReporterSeverity,
 		context?: ErrorReporterContext,
+	): void;
+
+	/**
+	 * Forward a structured log entry to the tracker's log stream (e.g. Sentry
+	 * Logs). Distinct from {@link captureMessage}: log entries flow into the
+	 * Logs explorer, not the Issues stream, so this can be called for every
+	 * log line without spamming alerts. Implementations that don't support
+	 * structured logs should silently no-op.
+	 */
+	log(
+		level: ErrorReporterLogLevel,
+		message: string,
+		attributes?: ErrorReporterLogAttributes,
 	): void;
 
 	/**

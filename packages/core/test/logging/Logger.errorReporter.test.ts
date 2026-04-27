@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ErrorReporter,
 	ErrorReporterContext,
+	ErrorReporterLogAttributes,
+	ErrorReporterLogLevel,
 	ErrorReporterSeverity,
 } from "../../src/error-reporting/ErrorReporter.js";
 import {
@@ -28,6 +30,18 @@ class FakeReporter implements ErrorReporter {
 		context?: ErrorReporterContext,
 	): void {
 		this.messages.push({ message, severity, context });
+	}
+	logs: Array<{
+		level: ErrorReporterLogLevel;
+		message: string;
+		attributes?: ErrorReporterLogAttributes;
+	}> = [];
+	log(
+		level: ErrorReporterLogLevel,
+		message: string,
+		attributes?: ErrorReporterLogAttributes,
+	): void {
+		this.logs.push({ level, message, attributes });
 	}
 	async flush(): Promise<boolean> {
 		return true;
@@ -111,13 +125,53 @@ describe("Logger error → reporter forwarding", () => {
 		// No assertions on reporter — by definition Noop swallows
 	});
 
-	it("does not forward debug/info/warn", () => {
+	it("does not capture debug/info/warn as Issues, only as structured Logs", () => {
 		const log = createLogger({ component: "EdgeWorker" });
 		log.debug("d", new Error("d"));
 		log.info("i", new Error("i"));
 		log.warn("w", new Error("w"));
 		expect(reporter.exceptions).toHaveLength(0);
 		expect(reporter.messages).toHaveLength(0);
+		// But the structured log stream still receives them.
+		expect(reporter.logs.map((l) => l.level)).toEqual([
+			"debug",
+			"info",
+			"warn",
+		]);
+	});
+
+	it("forwards every log level to reporter.log with team_id and component attributes", () => {
+		setGlobalErrorTags({ team_id: "team-42" });
+		const log = createLogger({
+			component: "EdgeWorker",
+			context: { sessionId: "s-1", issueIdentifier: "CYPACK-7" },
+		});
+		log.debug("d");
+		log.info("i");
+		log.warn("w");
+		log.error("e");
+
+		expect(reporter.logs.map((l) => l.level)).toEqual([
+			"debug",
+			"info",
+			"warn",
+			"error",
+		]);
+		for (const entry of reporter.logs) {
+			expect(entry.attributes).toMatchObject({
+				team_id: "team-42",
+				component: "EdgeWorker",
+				sessionId: "s-1",
+				issueIdentifier: "CYPACK-7",
+			});
+		}
+	});
+
+	it("summarises Error trailing args into a primitive attribute", () => {
+		const log = createLogger({ component: "Transport" });
+		log.error("Failed", new Error("boom"));
+		const errLog = reporter.logs.find((l) => l.level === "error");
+		expect(errLog?.attributes?.args).toContain("Error: boom");
 	});
 
 	it("merges process-wide tags (e.g. team_id) into every forwarded event", () => {
