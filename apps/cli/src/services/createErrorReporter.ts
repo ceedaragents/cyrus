@@ -30,8 +30,11 @@ export interface CreateErrorReporterParams {
  *
  * Order of resolution:
  *   1. If `CYRUS_SENTRY_DISABLED` is truthy → noop.
- *   2. Else if a DSN is available (env var or compiled default) → Sentry.
- *   3. Else → noop.
+ *   2. If `CYRUS_TEAM_ID` is unset → noop. Both Issues and Logs require a
+ *      tenant tag so we can slice/filter per Cyrus install in Sentry; without
+ *      it we send nothing rather than emit untenanted noise.
+ *   3. Else if a DSN is available (env var or compiled default) → Sentry.
+ *   4. Else → noop.
  *
  * Initialise this as early as possible during process startup so that
  * exceptions thrown by subsequent imports/bootstrap are captured.
@@ -45,24 +48,25 @@ export function createErrorReporter(
 		return new NoopErrorReporter();
 	}
 
+	const tags = buildInitialTags(env);
+	// CYRUS_TEAM_ID is the single gate for *both* Issues and Logs — installs
+	// without tenant tagging stay silent so the team's Sentry org isn't
+	// flooded with untenanted self-hosted noise we can't slice.
+	if (!tags?.team_id) {
+		return new NoopErrorReporter();
+	}
+
 	const dsn = env.CYRUS_SENTRY_DSN?.trim() || DEFAULT_SENTRY_DSN;
 	if (!dsn) {
 		return new NoopErrorReporter();
 	}
 
-	const tags = buildInitialTags(env);
-	// Mirror the same tags into the process-wide registry so Logger.error
+	// Mirror the tag set into the process-wide registry so Logger.error
 	// forwarding (which builds its own per-event tag map) includes them too,
 	// not just events emitted directly via the Sentry SDK's initialScope.
-	if (tags) setGlobalErrorTags(tags);
+	setGlobalErrorTags(tags);
 
 	const environment = env.CYRUS_SENTRY_ENVIRONMENT?.trim() || "production";
-
-	// Sentry Logs ride a higher-volume pipeline than Issues and we want every
-	// forwarded log line tied to a tenant for slicing. Gate the log stream on
-	// `CYRUS_TEAM_ID` so installs without tenant tagging only ship Issues —
-	// keeps cost and noise bounded for self-hosted users who haven't opted in.
-	const logsEnabled = !!tags?.team_id;
 
 	return new SentryErrorReporter({
 		dsn,
@@ -81,7 +85,6 @@ export function createErrorReporter(
 			tags,
 		}),
 		sampleRate: parseSampleRate(env.CYRUS_SENTRY_SAMPLE_RATE),
-		logsEnabled,
 		// Always scrub. Cyrus' logger.error sites pass arbitrary args (request
 		// bodies, configs, headers) that may carry tokens; we cannot trust call
 		// sites to redact, so we filter on the way out.

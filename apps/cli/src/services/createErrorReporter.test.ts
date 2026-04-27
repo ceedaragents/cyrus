@@ -34,9 +34,18 @@ describe("createErrorReporter", () => {
 		expect(Sentry.init).not.toHaveBeenCalled();
 	});
 
+	it("returns Noop when CYRUS_TEAM_ID is unset (gates both Issues and Logs)", () => {
+		const reporter = createErrorReporter({ env: {} });
+		expect(reporter).toBeInstanceOf(NoopErrorReporter);
+		expect(reporter.isEnabled).toBe(false);
+		expect(Sentry.init).not.toHaveBeenCalled();
+	});
+
 	it("falls back to the bundled DEFAULT_SENTRY_DSN when no env DSN is configured", async () => {
 		const { DEFAULT_SENTRY_DSN } = await import("./createErrorReporter.js");
-		const reporter = createErrorReporter({ env: {} });
+		const reporter = createErrorReporter({
+			env: { CYRUS_TEAM_ID: "team-42" },
+		});
 		if (DEFAULT_SENTRY_DSN) {
 			expect(reporter).toBeInstanceOf(SentryErrorReporter);
 		} else {
@@ -52,15 +61,19 @@ describe("createErrorReporter", () => {
 				env: {
 					CYRUS_SENTRY_DISABLED: value,
 					CYRUS_SENTRY_DSN: "https://x@y/1",
+					CYRUS_TEAM_ID: "team-42",
 				},
 			});
 			expect(reporter.isEnabled).toBe(false);
 		},
 	);
 
-	it("returns a SentryErrorReporter when a DSN is provided via env", () => {
+	it("returns a SentryErrorReporter when a DSN and CYRUS_TEAM_ID are provided", () => {
 		const reporter = createErrorReporter({
-			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
 			release: "1.2.3",
 		});
 		expect(reporter).toBeInstanceOf(SentryErrorReporter);
@@ -119,21 +132,11 @@ describe("createErrorReporter", () => {
 		});
 	});
 
-	it("leaves initialScope undefined when no team_id / workspace / deployment is configured", () => {
-		createErrorReporter({
-			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
-		});
-		expect(Sentry.init).toHaveBeenCalledWith(
-			expect.objectContaining({
-				initialScope: undefined,
-			}),
-		);
-	});
-
 	it("forwards CYRUS_SENTRY_ENVIRONMENT", () => {
 		createErrorReporter({
 			env: {
 				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
 				CYRUS_SENTRY_ENVIRONMENT: "staging",
 			},
 		});
@@ -146,6 +149,7 @@ describe("createErrorReporter", () => {
 		createErrorReporter({
 			env: {
 				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
 				CYRUS_SENTRY_SAMPLE_RATE: "0.25",
 			},
 		});
@@ -160,6 +164,7 @@ describe("createErrorReporter", () => {
 			createErrorReporter({
 				env: {
 					CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+					CYRUS_TEAM_ID: "team-42",
 					CYRUS_SENTRY_SAMPLE_RATE: value,
 				},
 			});
@@ -169,16 +174,7 @@ describe("createErrorReporter", () => {
 		},
 	);
 
-	it("disables Sentry Logs when CYRUS_TEAM_ID is unset", () => {
-		createErrorReporter({
-			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
-		});
-		expect(Sentry.init).toHaveBeenCalledWith(
-			expect.objectContaining({ enableLogs: false }),
-		);
-	});
-
-	it("enables Sentry Logs only when CYRUS_TEAM_ID is set", () => {
+	it("enables Sentry Logs whenever the reporter is constructed (gate is upstream)", () => {
 		createErrorReporter({
 			env: {
 				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
@@ -190,13 +186,13 @@ describe("createErrorReporter", () => {
 		);
 	});
 
-	it("Issue capture stays enabled even without CYRUS_TEAM_ID", () => {
+	it("does not capture Issues when CYRUS_TEAM_ID is unset", () => {
 		const reporter = createErrorReporter({
 			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
 		});
-		expect(reporter.isEnabled).toBe(true);
+		expect(reporter.isEnabled).toBe(false);
 		reporter.captureException(new Error("boom"));
-		expect(Sentry.captureException).toHaveBeenCalled();
+		expect(Sentry.captureException).not.toHaveBeenCalled();
 	});
 
 	it("does not forward logs when CYRUS_TEAM_ID is unset", () => {
@@ -229,7 +225,10 @@ describe("createErrorReporter", () => {
 
 	it("installs the scrub hook as beforeSend", () => {
 		createErrorReporter({
-			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
 		});
 		const call = (Sentry.init as unknown as { mock: { calls: unknown[][] } })
 			.mock.calls[0]?.[0] as { beforeSend?: (e: unknown) => unknown };
@@ -243,7 +242,10 @@ describe("createErrorReporter", () => {
 
 	it("installs the log scrub hook as beforeSendLog", () => {
 		createErrorReporter({
-			env: { CYRUS_SENTRY_DSN: "https://abc@sentry.io/1" },
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
 		});
 		const call = (Sentry.init as unknown as { mock: { calls: unknown[][] } })
 			.mock.calls[0]?.[0] as { beforeSendLog?: (l: unknown) => unknown };
