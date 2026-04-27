@@ -50,55 +50,12 @@ export class AbortError extends Error {
 }
 
 /**
- * Substring patterns (lowercased) that mark a key as sensitive when serialising
- * Claude query options. The query payload spreads `process.env` into
- * `options.env`, so without redaction the JSON would carry every PAT, OAuth
- * token, and webhook secret in the host environment — and Sentry's server-side
- * data scrubbing would then replace the *entire* options string with
- * `[Filtered]`, costing us the rest of the diagnostic payload.
- *
- * Mirrors the patterns in `apps/cli/src/services/sentryScrubber.ts`. Kept
- * local to this package so claude-runner has no upward dependency on the CLI
- * app's scrubber module.
- */
-const SENSITIVE_KEY_SUBSTRINGS = [
-	"token",
-	"secret",
-	"password",
-	"passwd",
-	"apikey",
-	"api_key",
-	"authorization",
-	"auth_header",
-	"cookie",
-	"private_key",
-	"privatekey",
-	"client_secret",
-	"refresh_token",
-	"access_token",
-	"bearer",
-	"dsn",
-	"webhook_secret",
-	"signing_secret",
-];
-
-function isSensitiveOptionsKey(key: string): boolean {
-	const lower = key.toLowerCase();
-	return SENSITIVE_KEY_SUBSTRINGS.some((p) => lower.includes(p));
-}
-
-/**
  * JSON.stringify replacer for Claude query options. The SDK's query options
  * include non-serializable members (AbortController, async iterables,
  * callbacks, pre-warmed sessions) — replace them with diagnostic placeholders
- * so debug logs remain valid JSON. Also redacts values for keys matching
- * sensitive substrings so credentials inherited from `process.env` (e.g.
- * `GITHUB_TOKEN`, `LINEAR_API_KEY`) don't leave the process.
+ * so debug logs remain valid JSON.
  */
-function serializeQueryOptionsReplacer(key: string, value: unknown): unknown {
-	if (key && isSensitiveOptionsKey(key)) {
-		return "[REDACTED]";
-	}
+function serializeQueryOptionsReplacer(_key: string, value: unknown): unknown {
 	if (typeof value === "function") {
 		return `[Function${value.name ? `: ${value.name}` : ""}]`;
 	}
@@ -113,6 +70,153 @@ function serializeQueryOptionsReplacer(key: string, value: unknown): unknown {
 		return "[AsyncIterable]";
 	}
 	return value;
+}
+
+/**
+ * Build a Sentry-safe projection of the resolved Claude query options.
+ *
+ * Why not just stringify the full object: Sentry's server-side data scrubbing
+ * pattern-matches the entire string value of an attribute. If any substring
+ * looks token-shaped (e.g. nested env vars, MCP server header values, system
+ * prompts that mention auth/token/password keywords), Sentry replaces the
+ * whole `options` field with `[Filtered]` — costing the entire diagnostic
+ * payload, not just the offending substring.
+ *
+ * The projection drops everything that ever holds opaque secrets or
+ * unbounded prose (env, mcpServers' inner config, the prompt, system prompt
+ * append text, hook scripts, additionalEnv) and keeps only the configuration
+ * surface useful for triaging "what was Claude invoked with":
+ *   - model / fallbackModel / maxTurns / outputFormat
+ *   - system prompt SHAPE (type/preset/has-append) — not the text
+ *   - tool allowlist/denylist (counts + first 50 entries)
+ *   - resumeSessionId, workingDirectory, allowedDirectories
+ *   - mcpServer NAMES only
+ *   - presence flags for hooks/plugins/canUseTool/sandbox
+ *   - env KEY NAMES only (no values)
+ *
+ * Local DEBUG logging still emits the full untruncated JSON so on-machine
+ * troubleshooting is unaffected.
+ */
+type SanitizedQueryOptions = Record<string, unknown>;
+
+function buildSanitizedQueryOptions(
+	queryOptions: Parameters<typeof query>[0],
+): SanitizedQueryOptions {
+	const o = (queryOptions.options ?? {}) as Record<string, unknown>;
+	const out: SanitizedQueryOptions = {};
+
+	if (typeof o.model === "string") out.model = o.model;
+	if (typeof o.fallbackModel === "string") out.fallbackModel = o.fallbackModel;
+	if (typeof o.maxTurns === "number") out.maxTurns = o.maxTurns;
+	if (typeof o.outputFormat === "string") out.outputFormat = o.outputFormat;
+	if (typeof o.cwd === "string") out.cwd = o.cwd;
+	if (Array.isArray(o.allowedDirectories)) {
+		out.allowedDirectoryCount = (o.allowedDirectories as unknown[]).length;
+	}
+	if (Array.isArray(o.settingSources)) {
+		out.settingSources = o.settingSources;
+	}
+	if (typeof o.resume === "string") {
+		out.resumeSessionId = o.resume;
+	}
+	if (typeof o.permissionMode === "string") {
+		out.permissionMode = o.permissionMode;
+	}
+
+	// System prompt — keep the shape, not the prose. Append text routinely
+	// contains long form documentation that may include token/auth keywords.
+	if (o.systemPrompt && typeof o.systemPrompt === "object") {
+		const sp = o.systemPrompt as Record<string, unknown>;
+		out.systemPrompt = {
+			type: sp.type,
+			preset: sp.preset,
+			hasAppend: typeof sp.append === "string" && sp.append.length > 0,
+			appendLength: typeof sp.append === "string" ? sp.append.length : 0,
+		};
+	}
+
+	// Tool allow/deny lists — bound the size so a 5000-entry list doesn't
+	// itself blow the attribute cap. Tool names like `Read(/abs/path/**)`
+	// are diagnostic gold and don't carry secrets.
+	const TOOL_LIST_PREVIEW = 50;
+	if (Array.isArray(o.allowedTools)) {
+		const arr = o.allowedTools as string[];
+		out.allowedToolsCount = arr.length;
+		out.allowedToolsPreview = arr.slice(0, TOOL_LIST_PREVIEW);
+	}
+	if (Array.isArray(o.disallowedTools)) {
+		const arr = o.disallowedTools as string[];
+		out.disallowedToolsCount = arr.length;
+		out.disallowedToolsPreview = arr.slice(0, TOOL_LIST_PREVIEW);
+	}
+
+	// MCP servers — names only. Inner config carries auth headers, URLs with
+	// tokens in query strings, etc.
+	if (o.mcpServers && typeof o.mcpServers === "object") {
+		out.mcpServerNames = Object.keys(o.mcpServers as object);
+	}
+
+	// Env — key names only, no values. Spreads `process.env`, so values are
+	// inherently sensitive.
+	if (o.env && typeof o.env === "object") {
+		const envKeys = Object.keys(o.env as object);
+		out.envKeyCount = envKeys.length;
+		// First 100 names is plenty to confirm what flowed through.
+		out.envKeyNamesPreview = envKeys.slice(0, 100);
+	}
+
+	// Presence flags rather than payload for opaque/large fields.
+	out.hasHooks = !!o.hooks;
+	out.hasPlugins =
+		Array.isArray(o.plugins) && (o.plugins as unknown[]).length > 0;
+	out.hasCanUseTool = typeof o.canUseTool === "function";
+	out.hasSandbox = !!o.sandbox;
+	out.hasExtraArgs = !!o.extraArgs;
+	out.hasPathToClaudeCodeExecutable =
+		typeof o.pathToClaudeCodeExecutable === "string";
+
+	return out;
+}
+
+/**
+ * Flatten the sanitized query options into a set of primitive Sentry Logs
+ * attributes. Sentry attribute values must be primitives, so arrays and
+ * nested objects are joined into newline-separated strings (preview values
+ * are already bounded). Each top-level datum gets its own attribute key so a
+ * stray match in any one field can't filter the whole payload — and short
+ * scalar values rarely trip Sentry's pattern matchers in the first place.
+ */
+function flattenSanitizedQueryOptions(
+	sanitized: SanitizedQueryOptions,
+): Record<string, string | number | boolean | null | undefined> {
+	const ATTR_PREFIX = "cqo.";
+	const out: Record<string, string | number | boolean | null | undefined> = {};
+	for (const [key, value] of Object.entries(sanitized)) {
+		const attrKey = `${ATTR_PREFIX}${key}`;
+		if (value === null || value === undefined) continue;
+		if (
+			typeof value === "string" ||
+			typeof value === "number" ||
+			typeof value === "boolean"
+		) {
+			out[attrKey] = value;
+			continue;
+		}
+		if (Array.isArray(value)) {
+			out[attrKey] = (value as unknown[]).map(String).join("\n");
+			continue;
+		}
+		if (typeof value === "object") {
+			// Nested object (e.g. systemPrompt summary). Stringify but keep it
+			// short — these summaries are intentionally tiny.
+			try {
+				out[attrKey] = JSON.stringify(value);
+			} catch {
+				out[attrKey] = "[unserialisable]";
+			}
+		}
+	}
+	return out;
 }
 
 export declare interface ClaudeRunner {
@@ -580,30 +684,29 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				},
 			};
 
-			// Always forward the resolved query options as a structured event so
-			// post-hoc Sentry investigation has the exact shape Claude was
-			// invoked with. Local console only prints it at DEBUG to keep
-			// terminals readable in production.
-			const serializedQueryOptions = JSON.stringify(
-				queryOptions,
-				serializeQueryOptionsReplacer,
-				2,
-			);
+			// Local DEBUG console keeps the full untruncated payload — useful
+			// when troubleshooting on the host machine where secrets aren't an
+			// issue.
 			if (isDebugLogging) {
+				const serializedQueryOptions = JSON.stringify(
+					queryOptions,
+					serializeQueryOptionsReplacer,
+					2,
+				);
 				this.logger.debug(`Claude query options: ${serializedQueryOptions}`);
 			}
-			// Sentry Logs cap attribute size; truncate so we don't lose the
-			// outer event when the merged env/MCP/system-prompt payload is huge.
-			const QUERY_OPTIONS_MAX_CHARS = 16_000;
-			const queryOptionsAttribute =
-				serializedQueryOptions.length > QUERY_OPTIONS_MAX_CHARS
-					? `${serializedQueryOptions.slice(0, QUERY_OPTIONS_MAX_CHARS)}…[truncated]`
-					: serializedQueryOptions;
-			this.logger.event("claude_query_options", {
-				options: queryOptionsAttribute,
-				model: this.config.model,
-				fallbackModel: this.config.fallbackModel,
-			});
+			// What ships to Sentry is a flattened set of primitive attributes,
+			// not a single nested-JSON string. A long JSON value attached
+			// under a single key (we tried `options`) gets pattern-matched by
+			// Sentry's server-side scrubber and replaced with `[Filtered]`,
+			// wiping the entire diagnostic payload. Sending each datum as its
+			// own short, primitive attribute avoids that — short non-credential
+			// values don't trip the matcher, and a per-key filter (if it ever
+			// fires) only loses one attribute, not the whole payload.
+			const flat = flattenSanitizedQueryOptions(
+				buildSanitizedQueryOptions(queryOptions),
+			);
+			this.logger.event("claude_query_options", flat);
 
 			// Process messages from the query
 			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost).
