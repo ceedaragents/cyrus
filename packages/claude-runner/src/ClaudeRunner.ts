@@ -50,12 +50,55 @@ export class AbortError extends Error {
 }
 
 /**
+ * Substring patterns (lowercased) that mark a key as sensitive when serialising
+ * Claude query options. The query payload spreads `process.env` into
+ * `options.env`, so without redaction the JSON would carry every PAT, OAuth
+ * token, and webhook secret in the host environment — and Sentry's server-side
+ * data scrubbing would then replace the *entire* options string with
+ * `[Filtered]`, costing us the rest of the diagnostic payload.
+ *
+ * Mirrors the patterns in `apps/cli/src/services/sentryScrubber.ts`. Kept
+ * local to this package so claude-runner has no upward dependency on the CLI
+ * app's scrubber module.
+ */
+const SENSITIVE_KEY_SUBSTRINGS = [
+	"token",
+	"secret",
+	"password",
+	"passwd",
+	"apikey",
+	"api_key",
+	"authorization",
+	"auth_header",
+	"cookie",
+	"private_key",
+	"privatekey",
+	"client_secret",
+	"refresh_token",
+	"access_token",
+	"bearer",
+	"dsn",
+	"webhook_secret",
+	"signing_secret",
+];
+
+function isSensitiveOptionsKey(key: string): boolean {
+	const lower = key.toLowerCase();
+	return SENSITIVE_KEY_SUBSTRINGS.some((p) => lower.includes(p));
+}
+
+/**
  * JSON.stringify replacer for Claude query options. The SDK's query options
  * include non-serializable members (AbortController, async iterables,
  * callbacks, pre-warmed sessions) — replace them with diagnostic placeholders
- * so debug logs remain valid JSON.
+ * so debug logs remain valid JSON. Also redacts values for keys matching
+ * sensitive substrings so credentials inherited from `process.env` (e.g.
+ * `GITHUB_TOKEN`, `LINEAR_API_KEY`) don't leave the process.
  */
-function serializeQueryOptionsReplacer(_key: string, value: unknown): unknown {
+function serializeQueryOptionsReplacer(key: string, value: unknown): unknown {
+	if (key && isSensitiveOptionsKey(key)) {
+		return "[REDACTED]";
+	}
 	if (typeof value === "function") {
 		return `[Function${value.name ? `: ${value.name}` : ""}]`;
 	}
