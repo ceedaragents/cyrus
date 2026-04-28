@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import {
 	type BaseBranchResolution,
 	type Comment,
-	type EdgeWorkerConfig,
 	type GuidanceRule,
 	type IIssueTrackerService,
 	type ILogger,
@@ -25,7 +24,6 @@ export interface PromptBuilderDeps {
 	repositories: Map<string, RepositoryConfig>;
 	issueTrackers: Map<string, IIssueTrackerService>;
 	gitService: GitService;
-	config: EdgeWorkerConfig;
 }
 
 /**
@@ -62,14 +60,12 @@ export class PromptBuilder {
 	private readonly repositories: Map<string, RepositoryConfig>;
 	private readonly issueTrackers: Map<string, IIssueTrackerService>;
 	private readonly gitService: GitService;
-	private readonly config: EdgeWorkerConfig;
 
 	constructor(deps: PromptBuilderDeps) {
 		this.logger = deps.logger;
 		this.repositories = deps.repositories;
 		this.issueTrackers = deps.issueTrackers;
 		this.gitService = deps.gitService;
-		this.config = deps.config;
 	}
 
 	// ========================================================================
@@ -758,6 +754,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
+		workspaceRepoPaths?: Record<string, string>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -871,9 +868,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				.replace(/{{comment_threads}}/g, commentThreads)
 				.replace(
 					/{{working_directory}}/g,
-					this.config.handlers?.createWorkspace
-						? "Will be created based on issue"
-						: repository.repositoryPath,
+					workspaceRepoPaths?.[repository.id] ?? repository.repositoryPath,
 				)
 				.replace(/{{base_branch}}/g, baseBranch)
 				.replace(
@@ -894,9 +889,8 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				const repoSections = repositories
 					.map((repo) => {
 						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
-						const workingDir = this.config.handlers?.createWorkspace
-							? "Will be created based on issue"
-							: repo.repositoryPath;
+						const workingDir =
+							workspaceRepoPaths?.[repo.id] ?? repo.repositoryPath;
 						return `  <repository name="${repo.name}">\n    <working_directory>${workingDir}</working_directory>\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
 					})
 					.join("\n");

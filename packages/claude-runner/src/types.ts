@@ -11,6 +11,8 @@ import type {
 	SDKSystemMessage,
 	SDKUserMessage,
 	SdkPluginConfig,
+	SessionStore,
+	WarmQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
 
@@ -63,6 +65,18 @@ export interface ClaudeRunnerConfig {
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;
+	/**
+	 * Pre-warmed session from startup() — when set, the first streaming query uses
+	 * this warm instance instead of spawning a cold process (~20x faster first turn).
+	 */
+	warmSession?: WarmQuery;
+	/**
+	 * Optional SessionStore that mirrors transcript entries to external storage.
+	 * Forwarded to the SDK's `query()` via `options.sessionStore`. Used to ship
+	 * session JSONL to the Cyrus hosted control plane so transcripts survive
+	 * the ephemeral worktree and can be resumed from any host.
+	 */
+	sessionStore?: SessionStore;
 }
 
 export interface ClaudeSessionInfo {
@@ -95,6 +109,9 @@ export type {
 	SDKSystemMessage,
 	SDKUserMessage,
 	SdkPluginConfig,
+	SessionKey,
+	SessionStore,
+	SessionStoreEntry,
 } from "@anthropic-ai/claude-agent-sdk";
 
 // Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']

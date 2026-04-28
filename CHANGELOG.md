@@ -6,6 +6,256 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Worktree teardown scripts** — New `global_teardown_script` config option runs a script before worktree deletion when an issue reaches a terminal state. Mirrors the existing `global_setup_script` pattern. Useful for cleaning up resources created by the setup script (e.g., dropping databases). ([#1066](https://github.com/ceedaragents/cyrus/pull/1066))
+- **Cyrus-authored PRs and MRs are now reliably tagged** — After every `gh pr create`/`gh pr edit`, `glab mr create`/`glab mr update`/`glab mr edit`, or `gt submit` command, Cyrus automatically appends a hidden `<!-- generated-by-cyrus -->` marker to the live PR/MR description if it isn't already there. This ensures the GitHub/GitLab webhook handlers can recognize Cyrus-authored PRs (so "Changes requested" events get forwarded back) even when the agent forgets to include the marker in the body it submits. ([CYPACK-1141](https://linear.app/ceedar/issue/CYPACK-1141), [#1162](https://github.com/cyrusagents/cyrus/pull/1162))
+- **PR guardrail when sessions try to stop with unshipped work** — When the agent attempts to end a session, Cyrus now inspects the worktree and blocks the first stop attempt if there are uncommitted changes or commits ahead of the upstream branch, prompting the agent to commit, push, and open a pull request. Sessions with no code changes (e.g. questions, research) stop normally. ([CYPACK-1140](https://linear.app/ceedar/issue/CYPACK-1140), [#1161](https://github.com/cyrusagents/cyrus/pull/1161))
+- **Remote Claude session transcripts** — When `CYRUS_APP_URL`, `CYRUS_API_KEY`, and `CYRUS_TEAM_ID` are all set, Cyrus now mirrors every Claude session transcript to the hosted Cyrus control plane (in addition to the local JSONL on disk). This lets sessions be inspected or resumed from any host, even after the ephemeral worktree is torn down. The transport speaks the Claude Agent SDK's `SessionStore` contract and passes the full 13-check behavioral conformance suite from the upstream SDK. Set `CYRUS_DISABLE_REMOTE_SESSION_STORE=1` to opt out and keep transcripts local-only. ([CYPACK-1121](https://linear.app/ceedar/issue/CYPACK-1121))
+- **Optional Sentry error tracking** — When both `CYRUS_SENTRY_DSN` and `CYRUS_TEAM_ID` are set (and `CYRUS_SENTRY_DISABLED` is not), all `logger.error(...)` calls across the codebase (Claude Code/runner errors, edge-worker failures, webhook transport errors, persistence errors, uncaught exceptions, unhandled rejections) are reported to Sentry as Issues, and `WARN`/`ERROR` logs plus major lifecycle events (session started/resumed/completed/stopped, Claude session ID assigned, message emitted, webhook received, Claude query options) are forwarded to [Sentry Logs](https://docs.sentry.io/product/explore/logs/) tagged with `team_id`, `component`, and active session/issue/Claude-session identifiers — debug/info logs stay local to keep volume bounded. `CYRUS_TEAM_ID` is the single gate for both Issues and Logs: installs without a tenant tag stay silent. Set `CYRUS_SENTRY_DISABLED=1` to opt out entirely (also disables the bundled default DSN once it ships). Override the environment tag with `CYRUS_SENTRY_ENVIRONMENT`, sample errors with `CYRUS_SENTRY_SAMPLE_RATE` (0.0–1.0). Every event is enriched with a structured `cyrus` context block alongside `linear_workspace`/`deployment_id` if those env vars are set. The Sentry SDK's own internal debug output is gated separately on `CYRUS_SENTRY_DEBUG` to avoid flooding the terminal. Outgoing events **and** logs are scrubbed for token-shaped strings and sensitive keys before transmission (including breadcrumbs from console output), and grouped by a stable fingerprint so log messages with embedded IDs/paths don't fragment into one issue per occurrence. No telemetry is sent unless both env vars are present. ([CYPACK-1142](https://linear.app/ceedar/issue/CYPACK-1142))
+- **New `/linear-webhook` endpoint for Linear webhooks** — The Linear webhook URL in your OAuth application can now be set to `<CYRUS_BASE_URL>/linear-webhook`. The legacy `/webhook` path continues to work for backward compatibility but is deprecated and will log a warning on first use. ([CYPACK-1119](https://linear.app/ceedar/issue/CYPACK-1119), [#1142](https://github.com/ceedaragents/cyrus/pull/1142))
+- **Base branch update notifications** - When your base branch receives new commits while Cyrus is working, the active session is automatically notified to rebase, helping avoid merge conflicts. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+- **Blocked-by dependency deferral** - Issues with unresolved `blocked_by` relationships are now automatically deferred instead of starting immediately. Cyrus posts an acknowledgment and starts work automatically when all blocking issues are resolved. User re-prompts also re-check blocking status. ([CYPACK-978](https://linear.app/ceedar/issue/CYPACK-978), [#1004](https://github.com/ceedaragents/cyrus/pull/1004))
+
+### Changed
+- **Warm Claude sessions are now opt-in** — On startup, Cyrus no longer pre-spawns Claude Code subprocesses for the 30 most recent sessions by default. To restore the previous near-zero cold-start latency on the first message after a restart, set `CYRUS_ENABLE_WARM_SESSIONS=1` in the environment. ([CYPACK-1116](https://linear.app/ceedar/issue/CYPACK-1116))
+- **Claude SDK subprocesses now exit at turn end unless warm mode is enabled** — When `CYRUS_ENABLE_WARM_SESSIONS` is unset, the streaming prompt is completed when the SDK emits a `result` message, which lets the underlying Claude Code subprocess actually exit and free its memory at the end of a turn (restores the pre-warm-sessions behavior). When `CYRUS_ENABLE_WARM_SESSIONS=1`, the streaming prompt stays open and the subprocess is kept alive so follow-up messages reuse the warm session.
+
+### Fixed
+- **Stop signals no longer trigger "Request was aborted" errors on non-warm sessions** — Previously, every stop signal called the SDK's `query.interrupt()` regardless of whether the session was warm, which surfaced an `Error: Request was aborted` from non-warm sessions. Stop signals now branch on session state: non-warm sessions are stopped immediately on the first signal, while warm sessions retain the existing two-step interrupt-then-stop UX (interrupt on first stop, full terminate on a second stop within 10s). ([CYPACK-1145](https://linear.app/ceedar/issue/CYPACK-1145), [#1165](https://github.com/ceedaragents/cyrus/pull/1165))
+- **Chat-platform replies (Slack/GitHub) are now posted when warm sessions are enabled** — Previously, `ChatSessionHandler` waited for `runner.startStreaming()` to resolve before calling the adapter's `postReply`. With `CYRUS_ENABLE_WARM_SESSIONS=1` the streaming prompt stays open across turns, so `startStreaming` never resolved and no reply was ever posted. Reply posting is now driven by `result` messages on the runner's message stream, decoupled from session termination. A FIFO queue of pending events per session ensures each turn (initial prompt, resume, or injected follow-up) is paired with its corresponding reply.
+- **Improved `ToolSearch` presentation in Linear activities** — `ToolSearch` calls now post as a regular action entry (with an expandable result) instead of a bare thought. The parameter reads like "Loading tool schemas: `TaskCreate`, `TaskUpdate`" or "Searching tools for: `+linear get_issue`", and the expanded result shows the tools that were loaded (e.g. "Loaded tools: `TaskCreate`, `TaskUpdate`"). ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112), [#1134](https://github.com/ceedaragents/cyrus/pull/1134))
+
+### Fixed
+- **Fixed garbled activity labels for parallel deferred-tool calls** — When Claude issued multiple `ToolSearch` (or other local deferred-tool) calls in quick succession, Linear sometimes displayed the result under a generic "Tool" label with a raw list of tool names (e.g. `Tool / mcp__digitalocean-droplets__droplet-create / ...`) instead of the proper `ToolSearch` action with a formatted result. Internal message processing is now serialized per session so the tool-use handler always registers before its matching tool-result is formatted. ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112), [#1134](https://github.com/ceedaragents/cyrus/pull/1134))
+- **Eliminated spurious blank lines in the Linear activity log** — Empty/whitespace-only assistant turns no longer produce blank "thought" activities, which previously appeared as an extra empty line between the "Using model: ..." notification and the first real tool call. ([CYPACK-1112](https://linear.app/ceedar/issue/CYPACK-1112), [#1134](https://github.com/ceedaragents/cyrus/pull/1134))
+
+### Security
+- **Tightened sandbox and tool permission defaults** — Claude sessions now run with stricter out-of-the-box restrictions: the OS-level sandbox enforces `denyRead: ["~/"]` + `allowRead: ["."]` (home directory blocked, worktree allowed) and `allowWrite` scoped to the session worktree only. On the tool permission side, `Read`, `Edit`, and `Write` are now narrowed to `Read(**)`, `Edit(**)`, and `Write(**)` to prevent unintended matches. Home directory files (SSH keys, credentials, etc.) are explicitly enumerated and added to `disallowedTools` at session start, working around the fact that `Read(~/**)` does not match in Claude Code's permission layer. ([#1123](https://github.com/ceedaragents/cyrus/pull/1123))
+- **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
+
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.117** — Bumps the bundled Claude Code binary from v2.1.116 to v2.1.117 (parity release with no tool-list changes). Also fixes `scripts/extract-claude-tools.sh` to work with the new native binary structure introduced in SDK v0.2.113 (now resolves the platform-specific optional dependency instead of the removed `cli.js`). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1120](https://linear.app/ceedar/issue/CYPACK-1120), [#1143](https://github.com/ceedaragents/cyrus/pull/1143))
+- **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
+## [0.2.49] - 2026-04-22
+
+Hotfix released from the `cypack-1123` branch and forward-ported to `main`.
+
+### Fixed
+- **Claude sessions inherit the parent process environment again** — `@anthropic-ai/claude-agent-sdk` v0.2.113 reverted to no longer overlaying `process.env` onto the env passed to spawned sessions, which left Cyrus-launched Claude processes without `HOME` (and other inherited vars). That broke GPG-signed commits, `gh` CLI authentication, and any other tool that relies on a real home directory or the user's shell environment. Cyrus now spreads `process.env` explicitly when invoking the SDK so these tools work as expected. ([#1150](https://github.com/cyrusagents/cyrus/pull/1150))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.49
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.49
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.49
+
+#### cyrus-core
+- cyrus-core@0.2.49
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.49
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.49
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.49
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.49
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.49
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.49
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.49
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.49
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.49
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.49
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.49
+
+## [0.2.48] - 2026-04-20
+
+### Changed
+- **Claude Code subprocess env scrubbing is disabled** — `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is no longer set on Claude sessions while undesirable side effects from the Linux bubblewrap sandbox are investigated. The Linux sandbox requirements precheck (added in 0.2.46) still runs and logs guidance so it can be re-enabled quickly once the side effects are resolved. ([CYPACK-1108](https://linear.app/ceedar/issue/CYPACK-1108), [#1131](https://github.com/ceedaragents/cyrus/pull/1131))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.48
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.48
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.48
+
+#### cyrus-core
+- cyrus-core@0.2.48
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.48
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.48
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.48
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.48
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.48
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.48
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.48
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.48
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.48
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.48
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.48
+
+## [0.2.47] - 2026-04-20
+
+### Fixed
+- **Runtime switches no longer require restarting Cyrus** — When `cyrus auth` rotates credentials (for example, after switching between cloud and self-host runtimes), incoming config updates from the Cyrus web app now succeed immediately instead of failing with `401 Unauthorized` until the next process restart. ([CYHOST-798](https://linear.app/ceedar/issue/CYHOST-798), [#1127](https://github.com/ceedaragents/cyrus/pull/1127))
+
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.114** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1096](https://linear.app/ceedar/issue/CYPACK-1096), [#1124](https://github.com/ceedaragents/cyrus/pull/1124))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.112** — Bumps the Claude Agent SDK to the latest version. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1093](https://linear.app/ceedar/issue/CYPACK-1093), [#1121](https://github.com/ceedaragents/cyrus/pull/1121))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.47
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.47
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.47
+
+#### cyrus-core
+- cyrus-core@0.2.47
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.47
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.47
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.47
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.47
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.47
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.47
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.47
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.47
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.47
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.47
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.47
+
+## [0.2.46] - 2026-04-16
+
+### Added
+- **Linux sandbox requirements precheck** — On Linux hosts, Cyrus now verifies that `socat`, `bubblewrap`, and the kernel/AppArmor configuration needed to create an unprivileged user namespace are all in place before enabling Claude Code's subprocess credential scrubbing. When a requirement is missing, the session continues but sandbox mode (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`) is left unset and resolution guidance is printed to stdout. These requirements are documented by Anthropic [here](https://code.claude.com/docs/en/sandboxing#prerequisites). The source-code of Antrhopic's sandbox runtime can be found [here](https://github.com/anthropic-experimental/sandbox-runtime). ([CYPACK-1091](https://linear.app/ceedar/issue/CYPACK-1091), [#1115](https://github.com/ceedaragents/cyrus/pull/1115))
+
+### Changed
+- **Claude Opus 4.7 is now the default model** — The `opus` model alias now resolves to `claude-opus-4-7`. No configuration change needed — existing setups using `"opus"` (the default) automatically use Opus 4.7. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.111 and `@anthropic-ai/sdk` to v0.90.0** — Refreshed both Anthropic SDK dependencies to their latest versions. Also updated tool allowance lists to match the new SDK: adds `LSP`, `ToolSearch`, and `PushNotification`. See the [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. ([CYPACK-1090](https://linear.app/ceedar/issue/CYPACK-1090), [#1113](https://github.com/ceedaragents/cyrus/pull/1113))
+
+### Fixed
+- **Cloud runtime provisioning no longer fails on first repository** — Fixed a race condition where the edge worker tried to initialize a new repository before Linear workspace tokens were available, causing "No Linear workspace config found" errors during cloud runtime provisioning. ([CYPACK-1089](https://linear.app/ceedar/issue/CYPACK-1089), [#1112](https://github.com/ceedaragents/cyrus/pull/1112))
+- **Working directory context now shows actual path** — The `<working_directory>` in agent session prompts previously showed "Will be created based on issue" instead of the actual worktree path. It now correctly displays the real workspace directory. ([CYPACK-1088](https://linear.app/ceedar/issue/CYPACK-1088), [#1110](https://github.com/ceedaragents/cyrus/pull/1110))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.46
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.46
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.46
+
+#### cyrus-core
+- cyrus-core@0.2.46
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.46
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.46
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.46
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.46
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.46
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.46
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.46
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.46
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.46
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.46
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.46
 
 ## [0.2.45] - 2026-04-15
 

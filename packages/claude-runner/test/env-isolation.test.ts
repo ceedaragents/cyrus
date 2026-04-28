@@ -5,6 +5,18 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 	query: vi.fn(),
 }));
 
+// Mock the sandbox-requirements module so tests can control whether the
+// Linux sandbox precheck reports the host as supported.
+vi.mock("../src/sandbox-requirements", () => ({
+	checkLinuxSandboxRequirements: vi.fn(() => ({
+		supported: true,
+		platform: "linux",
+		failures: [],
+	})),
+	logSandboxRequirementFailures: vi.fn(),
+	resetSandboxRequirementsCacheForTesting: vi.fn(),
+}));
+
 // Track readFileSync calls per path so we can change .env contents between sessions
 const envFileContents = new Map<string, string>();
 
@@ -38,6 +50,10 @@ vi.mock("os", () => ({
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeRunner } from "../src/ClaudeRunner";
+import {
+	checkLinuxSandboxRequirements,
+	logSandboxRequirementFailures,
+} from "../src/sandbox-requirements";
 import type { ClaudeRunnerConfig } from "../src/types";
 
 describe("Environment variable isolation", () => {
@@ -188,13 +204,39 @@ describe("Environment variable isolation", () => {
 		expect(envB.OTHER).toBe("only-in-b");
 	});
 
-	it("should set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to prevent auth token leakage", async () => {
+	it("should never set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB (disabled pending CYPACK-1108)", async () => {
 		mockSuccessfulQuery();
 		const runner = new ClaudeRunner(makeConfig("/repo-a"));
 		await runner.start("test");
 
 		const env = getQueryEnv();
-		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBeUndefined();
+	});
+
+	it("should log sandbox requirement guidance when the Linux sandbox precheck fails", async () => {
+		vi.mocked(checkLinuxSandboxRequirements).mockReturnValueOnce({
+			supported: false,
+			platform: "linux",
+			failures: [
+				{
+					check: "bwrap-sandbox",
+					message:
+						"bubblewrap cannot create an unprivileged user namespace: Permission denied",
+					resolution: "Enable unprivileged user namespaces.",
+				},
+			],
+		});
+
+		mockSuccessfulQuery();
+		const runner = new ClaudeRunner(makeConfig("/repo-a"));
+		await runner.start("test");
+
+		const env = getQueryEnv();
+		expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBeUndefined();
+		expect(logSandboxRequirementFailures).toHaveBeenCalledWith(
+			expect.objectContaining({ supported: false }),
+			expect.anything(),
+		);
 	});
 
 	it("should let repositoryEnv and additionalEnv override process.env", async () => {

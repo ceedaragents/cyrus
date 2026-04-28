@@ -67,10 +67,20 @@ export class AgentSessionManager extends EventEmitter {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private lastAssistantBodyBySession: Map<string, string> = new Map(); // Buffer: last assistant text per session for posting as response on result
+	private bufferedAssistantEntryBySession: Map<string, CyrusAgentSessionEntry> =
+		new Map(); // One-behind buffer: holds last assistant entry until next message or result
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	// Per-session serialization queue for handleClaudeMessage. The EdgeWorker's
+	// onMessage callback is fire-and-forget, so without serialization the async
+	// handlers can interleave — causing tool_result to be processed before its
+	// matching tool_use registers in toolCallsByToolUseId (seen with parallel
+	// deferred tools like ToolSearch, where a tool_use and its tool_result can
+	// arrive back-to-back in the same microtask batch).
+	private messageProcessingQueues: Map<string, Promise<void>> = new Map();
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -429,9 +439,37 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Handle streaming Claude messages and route to appropriate methods
+	 * Handle streaming Claude messages and route to appropriate methods.
+	 *
+	 * Serializes processing per session so concurrent onMessage callbacks from
+	 * the runner (which is fire-and-forget) do not interleave their async work.
+	 * Without this serialization, a tool_result message could run its handler
+	 * ahead of the matching tool_use registration in toolCallsByToolUseId,
+	 * producing a fallback action="Tool" activity in Linear (seen with parallel
+	 * deferred tools like ToolSearch).
 	 */
 	async handleClaudeMessage(
+		sessionId: string,
+		message: SDKMessage,
+	): Promise<void> {
+		const prev =
+			this.messageProcessingQueues.get(sessionId) ?? Promise.resolve();
+		const next = prev.then(() => this.processClaudeMessage(sessionId, message));
+		// Swallow errors in the chained promise so one failure does not block
+		// future messages for this session. The concrete handler already logs
+		// errors internally.
+		this.messageProcessingQueues.set(
+			sessionId,
+			next.catch(() => undefined),
+		);
+		return next;
+	}
+
+	/**
+	 * Actual message dispatch. Invoked only via the per-session queue in
+	 * handleClaudeMessage so at most one instance runs for a given session.
+	 */
+	private async processClaudeMessage(
 		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
@@ -473,11 +511,40 @@ export class AgentSessionManager extends EventEmitter {
 						sessionId,
 						message as SDKAssistantMessage,
 					);
-					await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					// Buffer the text content so addResultEntry can post it as the response
+					if (assistantEntry.content) {
+						this.lastAssistantBodyBySession.set(
+							sessionId,
+							assistantEntry.content,
+						);
+					}
+					if (assistantEntry.metadata?.toolUseId) {
+						// Tool-use message: flush any buffered text first (preserves ordering),
+						// then post immediately for real-time "in progress" display
+						await this.flushBufferedAssistant(sessionId);
+						await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					} else {
+						// Text-only message: buffer it so the LAST one can be posted as "response"
+						// Flush any previous buffered text first (posts as thought)
+						await this.flushBufferedAssistant(sessionId);
+						// Skip empty/whitespace-only text turns — otherwise they post as
+						// blank thoughts in Linear, showing up as an extra blank line
+						// between activities (e.g. between "Using model: ..." and the
+						// first real assistant turn).
+						if (assistantEntry.content?.trim()) {
+							this.bufferedAssistantEntryBySession.set(
+								sessionId,
+								assistantEntry,
+							);
+						}
+					}
 					break;
 				}
 
 				case "result":
+					// Result arrived: discard buffered entry (addResultEntry uses lastAssistantBodyBySession
+					// to post the content as a response activity)
+					this.bufferedAssistantEntryBySession.delete(sessionId);
 					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
@@ -493,6 +560,21 @@ export class AgentSessionManager extends EventEmitter {
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
+	}
+
+	/**
+	 * Flush the buffered assistant entry as thought/action (non-result flush).
+	 * Called when a new message arrives before result, to post the previous
+	 * assistant message as a thought/action activity.
+	 */
+	private async flushBufferedAssistant(sessionId: string): Promise<void> {
+		const buffered = this.bufferedAssistantEntryBySession.get(sessionId);
+		if (!buffered) return;
+		this.bufferedAssistantEntryBySession.delete(sessionId);
+		// Defensive guard: never post a blank thought — it would appear as an
+		// empty line between real activities in Linear.
+		if (!buffered.content?.trim()) return;
+		await this.syncEntryToActivitySink(buffered, sessionId);
 	}
 
 	/**
@@ -561,15 +643,26 @@ export class AgentSessionManager extends EventEmitter {
 						: "claude";
 
 		// For error results, content may be in errors[] rather than result
-		const content =
-			"result" in resultMessage && typeof resultMessage.result === "string"
-				? resultMessage.result
-				: resultMessage.is_error &&
-						"errors" in resultMessage &&
-						Array.isArray(resultMessage.errors) &&
-						resultMessage.errors.length > 0
+		// For success results from Claude, prefer the buffered last assistant message
+		// (structured content) over result.result (plain-text duplicate).
+		const bufferedAssistant = this.lastAssistantBodyBySession.get(sessionId);
+		this.lastAssistantBodyBySession.delete(sessionId);
+		const content = (
+			resultMessage.is_error
+				? resultMessage.is_error &&
+					"errors" in resultMessage &&
+					Array.isArray(resultMessage.errors) &&
+					resultMessage.errors.length > 0
 					? resultMessage.errors.join("\n")
-					: "";
+					: "result" in resultMessage &&
+							typeof resultMessage.result === "string"
+						? resultMessage.result
+						: ""
+				: (bufferedAssistant ??
+					("result" in resultMessage && typeof resultMessage.result === "string"
+						? resultMessage.result
+						: ""))
+		).trim();
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
@@ -628,8 +721,21 @@ export class AgentSessionManager extends EventEmitter {
 						}
 						if (Array.isArray(block.content)) {
 							return block.content
-								.filter((contentBlock: any) => contentBlock.type === "text")
-								.map((contentBlock: any) => contentBlock.text)
+								.map((contentBlock: any) => {
+									if (contentBlock.type === "text") {
+										return contentBlock.text;
+									}
+									// ToolSearch emits tool_reference blocks; preserve the tool name
+									// so the formatter can render "Loaded tools: `X`, `Y`".
+									if (
+										contentBlock.type === "tool_reference" &&
+										contentBlock.tool_name
+									) {
+										return contentBlock.tool_name;
+									}
+									return "";
+								})
+								.filter(Boolean)
 								.join("\n");
 						}
 						return "";
@@ -839,7 +945,6 @@ export class AgentSessionManager extends EventEmitter {
 
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
 							// Skip TaskCreate/TaskList results since they already created a non-ephemeral thought
-							// Skip ToolSearch results since they already created a non-ephemeral thought
 							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
 								toolName === "TodoWrite" ||
@@ -849,8 +954,6 @@ export class AgentSessionManager extends EventEmitter {
 								toolName === "↪ TaskCreate" ||
 								toolName === "TaskList" ||
 								toolName === "↪ TaskList" ||
-								toolName === "ToolSearch" ||
-								toolName === "↪ ToolSearch" ||
 								toolName === "AskUserQuestion" ||
 								toolName === "↪ AskUserQuestion"
 							) {
@@ -978,26 +1081,6 @@ export class AgentSessionManager extends EventEmitter {
 							// Skip posting at tool_use time — defer to tool_result time
 							// so we can enrich with subject from result or cache
 							return;
-						} else if (toolName === "ToolSearch") {
-							// Get formatter from runner
-							const formatter = session.agentRunner?.getFormatter();
-							if (!formatter) {
-								log.warn(`No formatter available for session ${sessionId}`);
-								return;
-							}
-
-							// Special handling for ToolSearch - format as thought instead of action
-							const toolInput = entry.metadata.toolInput || entry.content;
-							const formattedParam = formatter.formatToolParameter(
-								toolName,
-								toolInput,
-							);
-							content = {
-								type: "thought",
-								body: formattedParam,
-							};
-							// ToolSearch is not ephemeral
-							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
@@ -1254,6 +1337,25 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Get active sessions tracking a given base branch for a specific repository.
+	 * Used by GitHub push webhook handling to notify agents when their base branch receives new commits.
+	 */
+	getSessionsByBaseBranch(
+		baseBranchName: string,
+		repositoryId: string,
+	): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) =>
+				session.status === AgentSessionStatus.Active &&
+				session.repositories.some(
+					(r) =>
+						r.repositoryId === repositoryId &&
+						r.baseBranchName === baseBranchName,
+				),
+		);
+	}
+
+	/**
 	 * Find an active multi-repo session that includes the given repository.
 	 * Used by GitHub webhook handling to resolve the correct sub-worktree
 	 * when a @ mention targets a specific repo within a multi-repo workspace.
@@ -1456,6 +1558,9 @@ export class AgentSessionManager extends EventEmitter {
 		this.activeTasksBySession.delete(sessionId);
 		this.activeStatusActivitiesBySession.delete(sessionId);
 		this.stopRequestedSessions.delete(sessionId);
+		this.lastAssistantBodyBySession.delete(sessionId);
+		this.bufferedAssistantEntryBySession.delete(sessionId);
+		this.messageProcessingQueues.delete(sessionId);
 		log.debug("Removed session");
 	}
 

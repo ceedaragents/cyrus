@@ -1,11 +1,22 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type { SDKMessage } from "cyrus-claude-runner";
-import { ClaudeRunner } from "cyrus-claude-runner";
+import type {
+	McpServerConfig,
+	SDKMessage,
+	SessionStore,
+	WarmQuery,
+} from "cyrus-claude-runner";
+import {
+	buildBaseSessionEnv,
+	ClaudeRunner,
+	HttpSessionStore,
+	normalizeMcpHttpTransport,
+} from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
@@ -53,6 +64,7 @@ import {
 	isIssueNewCommentWebhook,
 	isIssueStateChangeMessage,
 	isIssueStateChangeWebhook,
+	isIssueStateIdUpdateWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	isSessionStartMessage,
@@ -81,7 +93,9 @@ import {
 	extractSessionKey,
 	GitHubAppTokenProvider,
 	GitHubCommentService,
+	type GitHubCommentWebhookEvent,
 	GitHubEventTransport,
+	type GitHubPushPayload,
 	type GitHubWebhookEvent,
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
@@ -182,8 +196,10 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
-	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
+	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps Linear workspace ID to activity sink (one per workspace, mirrors issueTrackers)
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
+	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
+	private warmInstances: Map<string, WarmQuery> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -237,11 +253,38 @@ export class EdgeWorker extends EventEmitter {
 	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
 	private egressCaCertPath: string | null = null;
 	/**
+	 * Remote SessionStore that mirrors Claude SDK transcripts to the Cyrus
+	 * hosted control plane. Enabled when all three of `CYRUS_APP_URL`,
+	 * `CYRUS_API_KEY`, and `CYRUS_TEAM_ID` are set — used by any Claude
+	 * runner spawned from this worker so transcripts survive ephemeral
+	 * worktrees and are resumable from any host.
+	 */
+	private claudeSessionStore: SessionStore | null = null;
+	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
 	 * Key format: `${createdAt}:${issueId}`
 	 */
 	private processedIssueUpdateKeys = new Set<string>();
+
+	/**
+	 * Sessions parked due to blocked-by dependencies.
+	 * Key: Linear issue ID (the blocked issue)
+	 * Value: All data needed to replay initializeAgentRunner when unblocked
+	 */
+	private parkedSessions = new Map<
+		string,
+		{
+			agentSession: AgentSessionCreatedWebhook["agentSession"];
+			repositories: RepositoryConfig[];
+			linearWorkspaceId: string;
+			guidance?: AgentSessionCreatedWebhook["guidance"];
+			commentBody?: string | null;
+			baseBranchOverrides?: Map<string, string>;
+			routingMethod?: string;
+			blockingIssueIds: string[];
+		}
+	>();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -251,6 +294,43 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Mirror Claude SDK session transcripts to the hosted control plane
+		// when CYRUS_APP_URL (destination), CYRUS_API_KEY (proof of team
+		// ownership), and CYRUS_TEAM_ID (which team the transcripts belong to)
+		// are all configured. If any is missing the store stays null and the
+		// SDK falls back to local JSONL only. Operators can also opt out
+		// explicitly by setting CYRUS_DISABLE_REMOTE_SESSION_STORE=1, which
+		// keeps transcripts local even when the three vars above are present.
+		const sessionStoreBaseUrl = process.env.CYRUS_APP_URL;
+		const sessionStoreApiKey = process.env.CYRUS_API_KEY;
+		const sessionStoreTeamId = process.env.CYRUS_TEAM_ID;
+		const sessionStoreDisabled = this.isRemoteSessionStoreDisabled();
+		if (
+			!sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
+			this.claudeSessionStore = new HttpSessionStore({
+				baseUrl: sessionStoreBaseUrl,
+				apiKey: sessionStoreApiKey,
+				teamId: sessionStoreTeamId,
+				logger: this.logger,
+			});
+			this.logger.info(
+				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl} for team ${sessionStoreTeamId}`,
+			);
+		} else if (
+			sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
+			this.logger.info(
+				"[SessionStore] Remote session store disabled via CYRUS_DISABLE_REMOTE_SESSION_STORE; transcripts will stay local.",
+			);
+		}
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
 		this.gitHubCommentService = new GitHubCommentService();
@@ -413,17 +493,12 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Create activity sinks for each repository (uses workspace issue tracker)
-		for (const [repoId, repo] of this.repositories) {
-			if (!repo.linearWorkspaceId) continue;
-			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
-			if (issueTracker) {
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				this.activitySinks.set(repoId, activitySink);
-			}
+		// Create activity sinks per workspace (one per workspace, mirrors issueTrackers)
+		for (const [workspaceId, issueTracker] of this.issueTrackers) {
+			this.activitySinks.set(
+				workspaceId,
+				new LinearActivitySink(issueTracker, workspaceId),
+			);
 		}
 
 		// Initialize user access control with global and per-repository configs
@@ -486,7 +561,6 @@ export class EdgeWorker extends EventEmitter {
 			repositories: this.repositories,
 			issueTrackers: this.issueTrackers,
 			gitService: this.gitService,
-			config: this.config,
 		});
 		this.defaultSkillsDeployer = new DefaultSkillsDeployer(
 			this.cyrusHome,
@@ -513,15 +587,23 @@ export class EdgeWorker extends EventEmitter {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
+		// Pre-warm the 30 most recent Claude sessions in the background
+		// so their first query after restart has near-zero cold-start latency.
+		// Disabled by default; opt in with CYRUS_ENABLE_WARM_SESSIONS=1.
+		if (this.isWarmSessionsEnabled()) {
+			this.warmupRecentSessions(30).catch((err) => {
+				this.logger.warn("Session warmup failed (non-fatal):", err);
+			});
+		}
+
 		// Start config file watcher via ConfigManager
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
+				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
-				// Detect and apply workspace token changes before overwriting config
-				this.updateLinearWorkspaceTokens(changes.newConfig);
 				// Live-update sandbox / egress proxy settings
 				await this.applySandboxConfigChanges(changes.newConfig);
 				this.config = changes.newConfig;
@@ -593,7 +675,20 @@ export class EdgeWorker extends EventEmitter {
 	private async initializeComponents(): Promise<void> {
 		// 1. Platform-specific initialization
 		if (this.config.platform === "cli") {
-			// CLI mode: find any available CLIIssueTrackerService
+			// CLI mode: ensure a CLIIssueTrackerService exists for each repo workspace.
+			// Repos from config.repositories don't go through linearWorkspaces init,
+			// so we create trackers here if missing.
+			for (const [repoId, repo] of this.repositories) {
+				const wsId = repo.linearWorkspaceId;
+				if (wsId && !this.issueTrackers.has(wsId)) {
+					const service = new CLIIssueTrackerService();
+					service.seedDefaultData();
+					this.issueTrackers.set(wsId, service);
+					const activitySink = new LinearActivitySink(service, wsId);
+					this.activitySinks.set(repoId, activitySink);
+				}
+			}
+
 			const firstCliTracker = Array.from(this.issueTrackers.values()).find(
 				(tracker): tracker is CLIIssueTrackerService =>
 					tracker instanceof CLIIssueTrackerService,
@@ -674,7 +769,7 @@ export class EdgeWorker extends EventEmitter {
 				this.handleError(error);
 			});
 
-			// Register the /webhook endpoint
+			// Register the /linear-webhook endpoint (with /webhook retained as a deprecated alias)
 			this.linearEventTransport.register();
 
 			this.logger.info(
@@ -696,7 +791,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || "",
+			() => process.env.CYRUS_API_KEY || "",
 		);
 
 		// Register config update routes
@@ -785,12 +880,26 @@ export class EdgeWorker extends EventEmitter {
 
 		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
 		this.gitHubEventTransport.on("event", (event: GitHubWebhookEvent) => {
-			this.handleGitHubWebhook(event).catch((error) => {
-				this.logger.error(
-					"Failed to handle GitHub webhook",
-					error instanceof Error ? error : new Error(String(error)),
+			// Route push events to the base branch notification handler
+			if (event.eventType === "push") {
+				this.handleGitHubPushWebhook(event.payload as GitHubPushPayload).catch(
+					(error) => {
+						this.logger.error(
+							"Failed to handle GitHub push webhook",
+							error instanceof Error ? error : new Error(String(error)),
+						);
+					},
 				);
-			});
+				return;
+			}
+			this.handleGitHubWebhook(event as GitHubCommentWebhookEvent).catch(
+				(error) => {
+					this.logger.error(
+						"Failed to handle GitHub webhook",
+						error instanceof Error ? error : new Error(String(error)),
+					);
+				},
+			);
 		});
 
 		// Listen for unified internal messages (new message bus)
@@ -1006,7 +1115,9 @@ export class EdgeWorker extends EventEmitter {
 		return process.env.GITHUB_TOKEN;
 	}
 
-	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {
+	private async handleGitHubWebhook(
+		event: GitHubCommentWebhookEvent,
+	): Promise<void> {
 		this.activeWebhookCount++;
 
 		try {
@@ -1221,7 +1332,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Register session-to-repo mapping and activity sink
 			this.sessionRepositories.set(githubSessionId, repository.id);
-			const activitySink = this.activitySinks.get(repository.id);
+			const activitySink = this.getActivitySinkForRepo(repository.id);
 			if (activitySink) {
 				agentSessionManager.setActivitySink(githubSessionId, activitySink);
 			}
@@ -1321,6 +1432,98 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle GitHub push webhook events.
+	 * When a base branch receives new commits, find active sessions tracking that
+	 * branch and stream a rebase notification to the running agent.
+	 */
+	private async handleGitHubPushWebhook(
+		payload: GitHubPushPayload,
+	): Promise<void> {
+		// Only handle branch pushes (refs/heads/*), not tags
+		if (!payload.ref.startsWith("refs/heads/")) {
+			return;
+		}
+
+		// Ignore branch deletions
+		if (payload.deleted) {
+			return;
+		}
+
+		const branchName = payload.ref.replace("refs/heads/", "");
+		const repoFullName = payload.repository.full_name;
+
+		// Find the matching repository config
+		const repository = this.findRepositoryByGitHubUrl(repoFullName);
+		if (!repository) {
+			this.logger.debug(
+				`No repository configured for GitHub push from ${repoFullName}`,
+			);
+			return;
+		}
+
+		// Find active sessions tracking this branch as their base branch
+		const sessions = this.agentSessionManager.getSessionsByBaseBranch(
+			branchName,
+			repository.id,
+		);
+
+		if (sessions.length === 0) {
+			this.logger.debug(
+				`No active sessions tracking base branch ${branchName} for ${repository.name}`,
+			);
+			return;
+		}
+
+		// Build a notification prompt with commit summary
+		const commitCount = payload.commits.length;
+		const commitSummary = payload.commits
+			.slice(0, 5)
+			.map((c) => `- ${c.message.split("\n")[0]}`)
+			.join("\n");
+		const moreCommits =
+			commitCount > 5 ? `\n- ... and ${commitCount - 5} more` : "";
+
+		const notification = `<base_branch_update>
+<branch>${branchName}</branch>
+<repository>${repoFullName}</repository>
+<commit_count>${commitCount}</commit_count>
+<compare_url>${payload.compare}</compare_url>
+<commits>
+${commitSummary}${moreCommits}
+</commits>
+<guidance>
+Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Consider rebasing your working branch onto the updated base to avoid merge conflicts. You can do this with: \`git fetch origin && git rebase origin/${branchName}\`
+</guidance>
+</base_branch_update>`;
+
+		this.logger.info(
+			`Base branch ${branchName} updated (${commitCount} commits) — notifying ${sessions.length} active session(s)`,
+		);
+
+		// Stream notification to the first running session that supports streaming
+		const sortedSessions = [...sessions].sort(
+			(a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+		);
+
+		for (const session of sortedSessions) {
+			const existingRunner = session.agentRunner;
+			const isRunning = existingRunner?.isRunning() || false;
+
+			if (
+				isRunning &&
+				existingRunner?.supportsStreamingInput &&
+				existingRunner.addStreamMessage
+			) {
+				existingRunner.addStreamMessage(notification);
+				this.logger.debug(
+					`[base-branch-update] Streamed notification to session ${session.id} for branch ${branchName}`,
+				);
+				break;
+			}
+		}
+	}
+
+	/**
 	 * Find a repository configuration that matches a GitHub repository URL.
 	 * Matches against the githubUrl field in repository config.
 	 */
@@ -1346,7 +1549,7 @@ export class EdgeWorker extends EventEmitter {
 	 * and must be fetched from the GitHub API.
 	 */
 	private async fetchPRBranchRefs(
-		event: GitHubWebhookEvent,
+		event: GitHubCommentWebhookEvent,
 		_repository: RepositoryConfig,
 	): Promise<{ headRef: string; baseRef: string } | null> {
 		if (!isIssueCommentPayload(event.payload)) return null;
@@ -1460,7 +1663,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Build a system prompt for a GitHub PR comment session.
 	 */
 	private buildGitHubSystemPrompt(
-		event: GitHubWebhookEvent,
+		event: GitHubCommentWebhookEvent,
 		branchRef: string,
 		taskInstructions: string,
 	): string {
@@ -1493,7 +1696,7 @@ ${taskInstructions}
 	 * Build a system prompt for a GitHub PR change request review session.
 	 */
 	private buildGitHubChangeRequestSystemPrompt(
-		event: GitHubWebhookEvent,
+		event: GitHubCommentWebhookEvent,
 		branchRef: string,
 		reviewBody: string,
 	): string {
@@ -1539,7 +1742,7 @@ ${taskSection}`;
 	 * Post a reply back to the GitHub PR comment after the session completes.
 	 */
 	private async postGitHubReply(
-		event: GitHubWebhookEvent,
+		event: GitHubCommentWebhookEvent,
 		runner: IAgentRunner,
 		_repository: RepositoryConfig,
 	): Promise<void> {
@@ -1792,7 +1995,7 @@ ${taskSection}`;
 
 			// Register session-to-repo mapping and activity sink
 			this.sessionRepositories.set(gitlabSessionId, repository.id);
-			const activitySink = this.activitySinks.get(repository.id);
+			const activitySink = this.getActivitySinkForRepo(repository.id);
 			if (activitySink) {
 				agentSessionManager.setActivitySink(gitlabSessionId, activitySink);
 			}
@@ -2501,12 +2704,16 @@ ${taskSection}`;
 					`🔑 Updated Linear token for workspace ${workspaceId}`,
 				);
 			} else if (this.config.platform !== "cli") {
-				// Workspace is new — create a tracker for it
+				// Workspace is new — create a tracker and activity sink for it
 				const newIssueTracker = new LinearIssueTrackerService(
 					new LinearClient({ accessToken: newToken }),
 					this.buildOAuthConfig(workspaceId),
 				);
 				this.issueTrackers.set(workspaceId, newIssueTracker);
+				this.activitySinks.set(
+					workspaceId,
+					new LinearActivitySink(newIssueTracker, workspaceId),
+				);
 				this.logger.info(
 					`🔑 Created issue tracker for new workspace ${workspaceId}`,
 				);
@@ -2550,37 +2757,6 @@ ${taskSection}`;
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker for this workspace if not already present
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					const linearToken = this.getLinearTokenForWorkspace(
-						requireLinearWorkspaceId(repo),
-					);
-					const issueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: linearToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
-				}
-
-				// Create activity sink for this repository
-				const issueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(repo),
-				)!;
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					requireLinearWorkspaceId(repo),
-				);
-				this.activitySinks.set(repo.id, activitySink);
-
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
 				this.logger.error(`❌ Failed to add repository ${repo.name}:`, error);
@@ -2623,43 +2799,6 @@ ${taskSection}`;
 
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
-
-				// If workspace changed or token was updated, ensure issue tracker is current
-				const currentToken = this.getLinearTokenForWorkspace(
-					requireLinearWorkspaceId(repo),
-				);
-				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
-					this.logger.info(
-						`  🔑 Creating issue tracker for workspace ${requireLinearWorkspaceId(repo)}`,
-					);
-					const newIssueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: currentToken,
-									}),
-									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
-								);
-					this.issueTrackers.set(
-						requireLinearWorkspaceId(repo),
-						newIssueTracker,
-					);
-				} else {
-					// Update token on existing issue tracker if it changed
-					const issueTracker = this.issueTrackers.get(
-						requireLinearWorkspaceId(repo),
-					);
-					if (issueTracker && currentToken) {
-						(issueTracker as LinearIssueTrackerService).setAccessToken(
-							currentToken,
-						);
-					}
-				}
 
 				// If active status changed
 				if (oldRepo.isActive !== repo.isActive) {
@@ -2748,17 +2887,13 @@ ${taskSection}`;
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository from the repositories map.
+				// Note: we intentionally do NOT remove workspace-level issue trackers
+				// or activity sinks here. They are keyed by workspace ID and may be
+				// needed by other repositories in the same workspace, or by new
+				// repositories about to be added in the same configChanged cycle.
+				// They will be naturally replaced when workspace tokens are updated.
 				this.repositories.delete(repo.id);
-				this.activitySinks.delete(repo.id);
-
-				// Only remove workspace issue tracker if no other repos use this workspace
-				const workspaceStillInUse = Array.from(this.repositories.values()).some(
-					(r) => r.linearWorkspaceId === requireLinearWorkspaceId(repo),
-				);
-				if (!workspaceStillInUse) {
-					this.issueTrackers.delete(requireLinearWorkspaceId(repo));
-				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -2807,6 +2942,15 @@ ${taskSection}`;
 		// Track active webhook processing for status endpoint
 		this.activeWebhookCount++;
 
+		const webhookAction = (webhook as { action?: string }).action;
+		const webhookType = (webhook as { type?: string }).type;
+		this.logger.event("webhook_received", {
+			source: "linear",
+			action: webhookAction,
+			type: webhookType,
+			repoCount: repos.length,
+		});
+
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			this.logger.debug(
@@ -2842,6 +2986,9 @@ ${taskSection}`;
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
 				// Handle issue title/description/attachments updates - feed changes into active session
 				await this.handleIssueContentUpdate(webhook);
+			} else if (isIssueStateIdUpdateWebhook(webhook)) {
+				// Handle issue state changes — wake up parked sessions when blocking issues complete
+				await this.handleIssueStateChange(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					this.logger.debug(
@@ -3343,6 +3490,263 @@ ${taskSection}`;
 	 * and includes guidance for the agent to evaluate whether these changes affect
 	 * its current implementation or action plan.
 	 */
+	/**
+	 * Check if an issue has unresolved blocked-by dependencies.
+	 * Fetches the issue from Linear and checks its inverse relations for blocking issues
+	 * that haven't been completed or canceled.
+	 */
+	private async checkBlockedByDependencies(
+		agentSession: AgentSessionCreatedWebhook["agentSession"],
+		linearWorkspaceId: string,
+	): Promise<{
+		blocked: boolean;
+		blockingIssueIds: string[];
+		blockingIdentifiers: string[];
+	}> {
+		const issue = agentSession.issue;
+		if (!issue) {
+			return { blocked: false, blockingIssueIds: [], blockingIdentifiers: [] };
+		}
+
+		try {
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				linearWorkspaceId,
+			);
+			if (!fullIssue) {
+				return {
+					blocked: false,
+					blockingIssueIds: [],
+					blockingIdentifiers: [],
+				};
+			}
+
+			const blockingIssues =
+				await this.promptBuilder.fetchBlockingIssues(fullIssue);
+			if (blockingIssues.length === 0) {
+				return {
+					blocked: false,
+					blockingIssueIds: [],
+					blockingIdentifiers: [],
+				};
+			}
+
+			// Filter to only unresolved blockers (not completed or canceled)
+			const unresolvedBlockers: Array<{
+				id: string;
+				identifier: string;
+			}> = [];
+			for (const blocker of blockingIssues) {
+				try {
+					const state = await blocker.state;
+					if (
+						state &&
+						state.type !== "completed" &&
+						state.type !== "canceled"
+					) {
+						unresolvedBlockers.push({
+							id: blocker.id,
+							identifier: blocker.identifier,
+						});
+					}
+				} catch {
+					// If we can't resolve the state, assume it's unresolved
+					unresolvedBlockers.push({
+						id: blocker.id,
+						identifier: blocker.identifier,
+					});
+				}
+			}
+
+			if (unresolvedBlockers.length === 0) {
+				return {
+					blocked: false,
+					blockingIssueIds: [],
+					blockingIdentifiers: [],
+				};
+			}
+
+			return {
+				blocked: true,
+				blockingIssueIds: unresolvedBlockers.map((b) => b.id),
+				blockingIdentifiers: unresolvedBlockers.map((b) => b.identifier),
+			};
+		} catch (error) {
+			this.logger.error(
+				`Failed to check blocked-by dependencies for ${issue.identifier}:`,
+				error,
+			);
+			// On error, don't block — proceed with normal flow
+			return { blocked: false, blockingIssueIds: [], blockingIdentifiers: [] };
+		}
+	}
+
+	/**
+	 * Handle issue state change webhooks.
+	 * When a blocking issue is completed, wake up any parked sessions that were waiting on it.
+	 */
+	private async handleIssueStateChange(
+		webhook: IssueUpdateWebhook,
+	): Promise<void> {
+		const issueData = webhook.data;
+		const completedIssueId = issueData.id;
+		const issueIdentifier = issueData.identifier;
+
+		// Only care about transitions TO completed or canceled states
+		// The IssueWebhookPayload has a stateId field — resolve the state
+		// via the issue tracker to check if it's a completion state
+		const stateId = issueData.stateId;
+		if (!stateId) {
+			return;
+		}
+
+		// Find workspace for this webhook to resolve state type
+		const linearWorkspaceId = webhook.organizationId;
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
+		if (!issueTracker) {
+			return;
+		}
+
+		// Fetch the issue to check its current state type
+		let stateType: string | undefined;
+		try {
+			const fullIssue = await issueTracker.fetchIssue(completedIssueId);
+			const state = await fullIssue.state;
+			stateType = state?.type;
+		} catch {
+			// Can't resolve state — skip
+			return;
+		}
+
+		if (stateType !== "completed" && stateType !== "canceled") {
+			return;
+		}
+
+		this.logger.debug(
+			`Issue ${issueIdentifier} moved to ${stateType} — checking for parked sessions to wake`,
+		);
+
+		// Find parked sessions that were blocked by this issue
+		const sessionsToWake: string[] = [];
+		for (const [blockedIssueId, parked] of this.parkedSessions.entries()) {
+			if (parked.blockingIssueIds.includes(completedIssueId)) {
+				// Remove this blocker from the list
+				parked.blockingIssueIds = parked.blockingIssueIds.filter(
+					(id) => id !== completedIssueId,
+				);
+
+				// If no more blockers, wake the session
+				if (parked.blockingIssueIds.length === 0) {
+					sessionsToWake.push(blockedIssueId);
+				} else {
+					this.logger.debug(
+						`Parked session for issue ${blockedIssueId} still has ${parked.blockingIssueIds.length} remaining blocker(s)`,
+					);
+				}
+			}
+		}
+
+		// Wake up unblocked sessions
+		for (const blockedIssueId of sessionsToWake) {
+			const parked = this.parkedSessions.get(blockedIssueId);
+			if (!parked) continue;
+
+			this.parkedSessions.delete(blockedIssueId);
+
+			this.logger.info(
+				`Waking parked session for issue ${parked.agentSession.issue?.identifier} — all blockers resolved`,
+			);
+
+			// Post activity about waking up
+			await this.activityPoster.postThoughtActivity(
+				parked.agentSession.id,
+				parked.linearWorkspaceId,
+				`All blocking dependencies are now resolved — starting work.`,
+			);
+
+			// Replay the normal initializeAgentRunner flow
+			try {
+				await this.initializeAgentRunner(
+					parked.agentSession,
+					parked.repositories,
+					parked.linearWorkspaceId,
+					parked.guidance,
+					parked.commentBody,
+					parked.baseBranchOverrides,
+					parked.routingMethod,
+				);
+			} catch (error) {
+				this.logger.error(
+					`Failed to wake parked session for issue ${blockedIssueId}:`,
+					error,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Handle a user re-prompt on a parked (blocked-by) session.
+	 * Re-checks blocking status: if clear, wakes the session; if still blocked, re-posts status.
+	 */
+	private async handleParkedSessionReprompt(
+		_webhook: AgentSessionPromptedWebhook,
+		issueId: string,
+	): Promise<void> {
+		const parked = this.parkedSessions.get(issueId);
+		if (!parked) return;
+
+		const blockResult = await this.checkBlockedByDependencies(
+			parked.agentSession,
+			parked.linearWorkspaceId,
+		);
+
+		if (blockResult.blocked) {
+			// Still blocked — update the parked entry and re-post status
+			parked.blockingIssueIds = blockResult.blockingIssueIds;
+			const blockerList = blockResult.blockingIdentifiers
+				.map((id) => `**${id}**`)
+				.join(", ");
+			await this.activityPoster.postThoughtActivity(
+				parked.agentSession.id,
+				parked.linearWorkspaceId,
+				`Still blocked by ${blockerList}. Will start automatically when resolved.`,
+			);
+			this.logger.info(
+				`Re-prompt on parked session for ${parked.agentSession.issue?.identifier}: still blocked by ${blockResult.blockingIdentifiers.join(", ")}`,
+			);
+			return;
+		}
+
+		// Blockers resolved — wake the session
+		this.parkedSessions.delete(issueId);
+		this.logger.info(
+			`Re-prompt cleared blockers for ${parked.agentSession.issue?.identifier} — waking session`,
+		);
+
+		await this.activityPoster.postThoughtActivity(
+			parked.agentSession.id,
+			parked.linearWorkspaceId,
+			`Blocking dependencies are now resolved — starting work.`,
+		);
+
+		try {
+			await this.initializeAgentRunner(
+				parked.agentSession,
+				parked.repositories,
+				parked.linearWorkspaceId,
+				parked.guidance,
+				parked.commentBody,
+				parked.baseBranchOverrides,
+				parked.routingMethod,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to wake parked session for issue ${issueId} on re-prompt:`,
+				error,
+			);
+		}
+	}
+
 	private buildIssueUpdatePrompt(
 		issueIdentifier: string,
 		issueData: {
@@ -3373,15 +3777,21 @@ ${taskSection}`;
 	}
 
 	/**
+	 * Get the activity sink for a repository by looking up its workspace.
+	 */
+	private getActivitySinkForRepo(repoId: string): IActivitySink | undefined {
+		const repo = this.repositories.get(repoId);
+		if (!repo?.linearWorkspaceId) return undefined;
+		return this.activitySinks.get(repo.linearWorkspaceId);
+	}
+
+	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
-	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
+	private getLinearTokenForWorkspace(linearWorkspaceId: string): string | null {
 		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig) {
-			throw new Error(
-				`No Linear workspace config found for workspace ${linearWorkspaceId}. ` +
-					`Ensure linearWorkspaces.${linearWorkspaceId} is configured.`,
-			);
+			return null; // CLI platform or unconfigured workspace
 		}
 		return workspaceConfig.linearToken;
 	}
@@ -3462,7 +3872,7 @@ ${taskSection}`;
 
 		// Register session-to-repo mapping and activity sink (use primary repo)
 		this.sessionRepositories.set(sessionId, primaryRepo.id);
-		const activitySink = this.activitySinks.get(primaryRepo.id);
+		const activitySink = this.getActivitySinkForRepo(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
@@ -3669,6 +4079,41 @@ ${taskSection}`;
 		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
+
+		// Check for blocked-by dependencies before starting work
+		const blockResult = await this.checkBlockedByDependencies(
+			agentSession,
+			linearWorkspaceId,
+		);
+		if (blockResult.blocked) {
+			// Park the session — don't create worktree or runner
+			const parkedIssueId = agentSession.issue!.id;
+			this.parkedSessions.set(parkedIssueId, {
+				agentSession,
+				repositories,
+				linearWorkspaceId,
+				guidance,
+				commentBody,
+				baseBranchOverrides,
+				routingMethod,
+				blockingIssueIds: blockResult.blockingIssueIds,
+			});
+
+			// Post acknowledgment to the Linear agent session
+			const blockerList = blockResult.blockingIdentifiers
+				.map((id) => `**${id}**`)
+				.join(", ");
+			await this.activityPoster.postThoughtActivity(
+				agentSession.id,
+				linearWorkspaceId,
+				`Blocked by ${blockerList} — will start automatically when ${blockResult.blockingIdentifiers.length === 1 ? "it is" : "they are"} resolved.`,
+			);
+
+			log.info(
+				`Session parked: issue ${agentSession.issue!.identifier} is blocked by ${blockResult.blockingIdentifiers.join(", ")}`,
+			);
+			return;
+		}
 
 		// Initialize agent runner using shared logic (pass full repositories array)
 		await this.initializeAgentRunner(
@@ -3959,24 +4404,53 @@ ${taskSection}`;
 			return;
 		}
 
-		// Stop the existing runner if it's active
+		// Double-stop detection: two stop signals within 10s → full abort
+		const now = Date.now();
+		const lastStop = this.lastStopTimeBySession.get(agentSessionId);
+		const isDoubleStop = lastStop !== undefined && now - lastStop < 10_000;
+		this.lastStopTimeBySession.set(agentSessionId, now);
+
 		const existingRunner = foundSession.agentRunner;
-		this.agentSessionManager.requestSessionStop(agentSessionId);
-		if (existingRunner) {
-			existingRunner.stop();
+		const issueTitle = issue?.title || "this issue";
+		const senderName = webhook.agentSession.creator?.name || "user";
+
+		// Only warm sessions can be safely interrupted without killing the
+		// underlying request. Non-warm sessions get a single-shot full stop —
+		// calling interrupt() on them surfaces a "Request was aborted" error
+		// from the SDK (see CYPACK-1145).
+		const supportsInterrupt = Boolean(
+			existingRunner?.interrupt && existingRunner?.isWarm?.(),
+		);
+
+		if (isDoubleStop || !supportsInterrupt) {
+			// Either a second stop within window, or a non-warm runner — full kill
+			this.agentSessionManager.requestSessionStop(agentSessionId);
+			if (existingRunner) {
+				existingRunner.stop();
+				log.info(
+					isDoubleStop
+						? `Double-stop: fully aborted session ${agentSessionId}`
+						: `Stopped session ${agentSessionId} (interrupt not supported)`,
+				);
+			}
+			this.lastStopTimeBySession.delete(agentSessionId);
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				isDoubleStop
+					? `I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`
+					: `I've stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Action Taken:** Session terminated`,
+			);
+		} else {
+			// First stop on a warm session — interrupt current turn, keep session warm
+			await existingRunner!.interrupt!();
 			log.info(
-				`Stopped agent session for agent activity session ${agentSessionId}`,
+				`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
+			);
+			await this.agentSessionManager.createResponseActivity(
+				agentSessionId,
+				`Interrupted by ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
 			);
 		}
-
-		// Post confirmation
-		const issueTitle = issue?.title || "this issue";
-		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
-
-		await this.agentSessionManager.createResponseActivity(
-			agentSessionId,
-			stopConfirmation,
-		);
 	}
 
 	/**
@@ -4330,6 +4804,18 @@ ${taskSection}`;
 			return;
 		}
 
+		// Branch 1.5: Handle re-prompt for parked (blocked-by) sessions
+		// When a user re-prompts and the session is parked, re-check blocking status.
+		// If blockers are resolved, wake the session immediately.
+		const issueIdForParkedCheck = webhook.agentSession?.issue?.id;
+		if (
+			issueIdForParkedCheck &&
+			this.parkedSessions.has(issueIdForParkedCheck)
+		) {
+			await this.handleParkedSessionReprompt(webhook, issueIdForParkedCheck);
+			return;
+		}
+
 		// Branch 2: Handle repository selection response
 		// This is the first Claude runner initialization after user selects a repository.
 		// The selection handler extracts the choice from the response (or uses fallback)
@@ -4541,8 +5027,14 @@ ${taskSection}`;
 		config: AgentRunnerConfig,
 	): IAgentRunner {
 		switch (runnerType) {
-			case "claude":
-				return new ClaudeRunner(config);
+			case "claude": {
+				// Inject the hosted SessionStore at the last moment so it only
+				// attaches to Claude runners (the field is Claude-specific).
+				const claudeConfig = this.claudeSessionStore
+					? { ...config, sessionStore: this.claudeSessionStore }
+					: config;
+				return new ClaudeRunner(claudeConfig, this.isWarmSessionsEnabled());
+			}
 			case "gemini":
 				return new GeminiRunner(config);
 			case "codex":
@@ -4818,7 +5310,7 @@ ${taskSection}`;
 	private async downloadCommentAttachments(
 		commentBody: string,
 		attachmentsDir: string,
-		linearToken: string,
+		linearToken: string | null,
 		existingAttachmentCount: number,
 	): Promise<{
 		newAttachmentMap: Record<string, string>;
@@ -5260,6 +5752,14 @@ ${taskSection}`;
 			input,
 			!!labelBasedSystemPrompt,
 		);
+		// Build workspace repo paths map for prompt context.
+		// For multi-repo sessions, workspace.repoPaths maps each repo ID to its worktree.
+		// For single-repo sessions, use workspace.path as the worktree for the primary repo.
+		const workspaceRepoPaths =
+			input.session.workspace.repoPaths ??
+			(repositories.length === 1
+				? { [repositories[0]!.id]: input.session.workspace.path }
+				: undefined);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
 			repositories,
@@ -5268,6 +5768,7 @@ ${taskSection}`;
 			input.guidance,
 			input.agentSession,
 			input.resolvedBaseBranches,
+			workspaceRepoPaths,
 		);
 
 		parts.push(issueContext.prompt);
@@ -5412,6 +5913,7 @@ ${input.userComment}
 		guidance?: GuidanceRule[],
 		agentSession?: WebhookAgentSession,
 		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
+		workspaceRepoPaths?: Record<string, string>,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
@@ -5447,6 +5949,7 @@ ${input.userComment}
 			attachmentManifest,
 			guidance,
 			resolvedBaseBranches,
+			workspaceRepoPaths,
 		);
 	}
 
@@ -5474,17 +5977,14 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): Promise<{
-		config: AgentRunnerConfig;
-		runnerType: RunnerType;
-	}> {
+	): Promise<{ config: AgentRunnerConfig; runnerType: RunnerType }> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
-		return this.runnerConfigBuilder.buildIssueConfig({
+		const result = this.runnerConfigBuilder.buildIssueConfig({
 			session,
 			repository,
 			sessionId,
@@ -5511,6 +6011,21 @@ ${input.userComment}
 				this.createAskUserQuestionCallback(sid, wid)!,
 			requireLinearWorkspaceId,
 		});
+
+		// Attach pre-warmed session if available (only for Claude runner).
+		// Skipped entirely when warm sessions are not enabled.
+		if (result.runnerType === "claude" && this.isWarmSessionsEnabled()) {
+			const warmSession = this.warmInstances.get(sessionId);
+			if (warmSession) {
+				this.warmInstances.delete(sessionId);
+				(
+					result.config as AgentRunnerConfig & { warmSession?: WarmQuery }
+				).warmSession = warmSession;
+				log.debug("Attaching pre-warmed session to runner config");
+			}
+		}
+
+		return result;
 	}
 
 	/**
@@ -5683,6 +6198,155 @@ ${input.userComment}
 	}
 
 	/**
+	 * Whether the warm-session feature is enabled.
+	 *
+	 * Warm sessions are an opt-in optimization that pre-spawns Claude Code
+	 * subprocesses on startup so the first query after a restart skips the
+	 * cold-start cost. Disabled by default; opt in by setting
+	 * `CYRUS_ENABLE_WARM_SESSIONS=1` (or `=true`).
+	 */
+	private isWarmSessionsEnabled(): boolean {
+		const raw = process.env.CYRUS_ENABLE_WARM_SESSIONS;
+		if (!raw) return false;
+		const v = raw.toLowerCase().trim();
+		return v === "1" || v === "true";
+	}
+
+	/**
+	 * Whether the remote Claude session store is explicitly disabled.
+	 *
+	 * The remote store mirrors SDK transcripts to the Cyrus hosted control
+	 * plane and is on by default whenever `CYRUS_APP_URL`, `CYRUS_API_KEY`,
+	 * and `CYRUS_TEAM_ID` are all set. Operators can opt out — without
+	 * unsetting those vars (which other features depend on) — by setting
+	 * `CYRUS_DISABLE_REMOTE_SESSION_STORE=1` (or `=true`).
+	 */
+	private isRemoteSessionStoreDisabled(): boolean {
+		const raw = process.env.CYRUS_DISABLE_REMOTE_SESSION_STORE;
+		if (!raw) return false;
+		const v = raw.toLowerCase().trim();
+		return v === "1" || v === "true";
+	}
+
+	/**
+	 * Pre-warm the N most recently updated Claude sessions so the first query
+	 * after a CLI restart has near-zero cold-start latency (~20x faster).
+	 *
+	 * Uses startup() from @anthropic-ai/claude-agent-sdk with MCP_CONNECTION_NONBLOCKING=true
+	 * so the warm instances are ready in ~500ms rather than ~4s.
+	 * Warm instances are stored in this.warmInstances keyed by agentSessionId and
+	 * consumed by buildAgentRunnerConfig() when the first message arrives.
+	 *
+	 * Gated by `isWarmSessionsEnabled()` — callers should check before invoking.
+	 */
+	private async warmupRecentSessions(count = 30): Promise<void> {
+		const allSessions = this.agentSessionManager.getAllSessions();
+
+		// Only warm Claude sessions that have a persisted session ID and a workspace path
+		const candidates = allSessions
+			.filter((s) => s.claudeSessionId && s.workspace?.path)
+			.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+			.slice(0, count);
+
+		if (candidates.length === 0) {
+			this.logger.debug("No Claude sessions to pre-warm");
+			return;
+		}
+
+		this.logger.info(
+			`Pre-warming ${candidates.length} most recent Claude sessions...`,
+		);
+
+		const { startup } = await import("@anthropic-ai/claude-agent-sdk");
+
+		await Promise.all(
+			candidates.map(async (session) => {
+				try {
+					const repoId = this.sessionRepositories.get(session.id);
+					const repo = repoId ? this.repositories.get(repoId) : undefined;
+					if (!repo) {
+						this.logger.debug(
+							`No repo for session ${session.id}, skipping warmup`,
+						);
+						return;
+					}
+
+					// Build MCP config for this session (same as the live runner would use)
+					const linearWorkspaceId = requireLinearWorkspaceId(repo);
+					const mcpConfig = this.mcpConfigService.buildMcpConfig(
+						repo.id,
+						linearWorkspaceId,
+						session.id,
+					);
+
+					// Merge any file-based MCP configs (reuses shared normalization)
+					const mcpConfigPath =
+						this.mcpConfigService.buildMergedMcpConfigPath(repo);
+					let mcpServers: Record<string, McpServerConfig> = { ...mcpConfig };
+					if (mcpConfigPath) {
+						const paths = Array.isArray(mcpConfigPath)
+							? mcpConfigPath
+							: [mcpConfigPath];
+						for (const filePath of paths) {
+							try {
+								if (existsSync(filePath)) {
+									const fileContent = JSON.parse(
+										readFileSync(filePath, "utf8"),
+									);
+									const servers = fileContent.mcpServers || {};
+									normalizeMcpHttpTransport(servers);
+									mcpServers = { ...mcpServers, ...servers };
+								}
+							} catch {
+								// Ignore unreadable MCP config files
+							}
+						}
+					}
+
+					const repoConfig = repo as unknown as Record<string, unknown>;
+					const model =
+						(session.metadata?.model as string | undefined) ||
+						(repoConfig.claudeDefaultModel as string | undefined) ||
+						(repoConfig.model as string | undefined) ||
+						"claude-opus-4-6";
+
+					// Build allowed/disallowed tools — same as what buildAgentRunnerConfig() uses.
+					// Without these, startup() inherits the user's defaultMode ("default"),
+					// which causes macOS permission prompts for file writes.
+					const allowedTools = this.buildAllowedTools(repo);
+					const disallowedTools = this.buildDisallowedTools(repo);
+
+					const warm = await startup({
+						options: {
+							resume: session.claudeSessionId,
+							model,
+							cwd: session.workspace.path,
+							...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+							...(allowedTools.length > 0 && { allowedTools }),
+							...(disallowedTools.length > 0 && { disallowedTools }),
+							settingSources: ["user", "project", "local"],
+							// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not set here;
+							// see CYPACK-1108 and ClaudeRunner.start() for context.
+							env: buildBaseSessionEnv(),
+						},
+					});
+
+					this.warmInstances.set(session.id, warm);
+					this.logger.info(
+						`Pre-warmed session ${session.id} (${session.issueContext?.issueIdentifier ?? "unknown"})`,
+					);
+				} catch (err) {
+					this.logger.debug(`Failed to pre-warm session ${session.id}:`, err);
+				}
+			}),
+		);
+
+		this.logger.info(
+			`Session pre-warm complete: ${this.warmInstances.size} sessions ready`,
+		);
+	}
+
+	/**
 	 * Save current EdgeWorker state for all repositories
 	 */
 	private async savePersistedState(): Promise<void> {
@@ -5747,7 +6411,7 @@ ${input.userComment}
 						if (repoId) {
 							this.sessionRepositories.set(sessionId, repoId);
 							// Also register the activity sink for this restored session
-							const activitySink = this.activitySinks.get(repoId);
+							const activitySink = this.getActivitySinkForRepo(repoId);
 							if (activitySink) {
 								this.agentSessionManager.setActivitySink(
 									sessionId,
