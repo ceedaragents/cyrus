@@ -8,11 +8,13 @@ import { LinearClient } from "@linear/sdk";
 import type {
 	McpServerConfig,
 	SDKMessage,
+	SessionStore,
 	WarmQuery,
 } from "cyrus-claude-runner";
 import {
 	buildBaseSessionEnv,
 	ClaudeRunner,
+	HttpSessionStore,
 	normalizeMcpHttpTransport,
 } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
@@ -259,6 +261,14 @@ export class EdgeWorker extends EventEmitter {
 	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
 	private egressCaCertPath: string | null = null;
 	/**
+	 * Remote SessionStore that mirrors Claude SDK transcripts to the Cyrus
+	 * hosted control plane. Enabled when all three of `CYRUS_APP_URL`,
+	 * `CYRUS_API_KEY`, and `CYRUS_TEAM_ID` are set — used by any Claude
+	 * runner spawned from this worker so transcripts survive ephemeral
+	 * worktrees and are resumable from any host.
+	 */
+	private claudeSessionStore: SessionStore | null = null;
+	/**
 	 * Tracks recently processed issue-update webhook keys to prevent
 	 * duplicate deliveries from Linear's at-least-once delivery.
 	 * Key format: `${createdAt}:${issueId}`
@@ -292,6 +302,43 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Mirror Claude SDK session transcripts to the hosted control plane
+		// when CYRUS_APP_URL (destination), CYRUS_API_KEY (proof of team
+		// ownership), and CYRUS_TEAM_ID (which team the transcripts belong to)
+		// are all configured. If any is missing the store stays null and the
+		// SDK falls back to local JSONL only. Operators can also opt out
+		// explicitly by setting CYRUS_DISABLE_REMOTE_SESSION_STORE=1, which
+		// keeps transcripts local even when the three vars above are present.
+		const sessionStoreBaseUrl = process.env.CYRUS_APP_URL;
+		const sessionStoreApiKey = process.env.CYRUS_API_KEY;
+		const sessionStoreTeamId = process.env.CYRUS_TEAM_ID;
+		const sessionStoreDisabled = this.isRemoteSessionStoreDisabled();
+		if (
+			!sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
+			this.claudeSessionStore = new HttpSessionStore({
+				baseUrl: sessionStoreBaseUrl,
+				apiKey: sessionStoreApiKey,
+				teamId: sessionStoreTeamId,
+				logger: this.logger,
+			});
+			this.logger.info(
+				`[SessionStore] Mirroring Claude sessions to ${sessionStoreBaseUrl} for team ${sessionStoreTeamId}`,
+			);
+		} else if (
+			sessionStoreDisabled &&
+			sessionStoreBaseUrl &&
+			sessionStoreApiKey &&
+			sessionStoreTeamId
+		) {
+			this.logger.info(
+				"[SessionStore] Remote session store disabled via CYRUS_DISABLE_REMOTE_SESSION_STORE; transcripts will stay local.",
+			);
+		}
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
 		this.gitHubCommentService = new GitHubCommentService();
@@ -2903,6 +2950,15 @@ ${taskSection}`;
 		// Track active webhook processing for status endpoint
 		this.activeWebhookCount++;
 
+		const webhookAction = (webhook as { action?: string }).action;
+		const webhookType = (webhook as { type?: string }).type;
+		this.logger.event("webhook_received", {
+			source: "linear",
+			action: webhookAction,
+			type: webhookType,
+			repoCount: repos.length,
+		});
+
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			this.logger.debug(
@@ -4479,31 +4535,38 @@ ${taskSection}`;
 		const issueTitle = issue?.title || "this issue";
 		const senderName = webhook.agentSession.creator?.name || "user";
 
-		if (isDoubleStop) {
-			// Second stop within window — full kill
+		// Only warm sessions can be safely interrupted without killing the
+		// underlying request. Non-warm sessions get a single-shot full stop —
+		// calling interrupt() on them surfaces a "Request was aborted" error
+		// from the SDK (see CYPACK-1145).
+		const supportsInterrupt = Boolean(
+			existingRunner?.interrupt && existingRunner?.isWarm?.(),
+		);
+
+		if (isDoubleStop || !supportsInterrupt) {
+			// Either a second stop within window, or a non-warm runner — full kill
 			this.agentSessionManager.requestSessionStop(agentSessionId);
 			if (existingRunner) {
 				existingRunner.stop();
-				log.info(`Double-stop: fully aborted session ${agentSessionId}`);
+				log.info(
+					isDoubleStop
+						? `Double-stop: fully aborted session ${agentSessionId}`
+						: `Stopped session ${agentSessionId} (interrupt not supported)`,
+				);
 			}
 			this.lastStopTimeBySession.delete(agentSessionId);
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
-				`I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`,
+				isDoubleStop
+					? `I've fully stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName} (second stop)\n**Action Taken:** Session terminated`
+					: `I've stopped working on ${issueTitle}.\n\n**Stop Signal:** Received from ${senderName}\n**Action Taken:** Session terminated`,
 			);
 		} else {
-			// First stop — interrupt current turn, keep session warm
-			if (existingRunner?.interrupt) {
-				await existingRunner.interrupt();
-				log.info(
-					`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
-				);
-			} else if (existingRunner) {
-				// Runner doesn't support interrupt — fall back to full stop
-				this.agentSessionManager.requestSessionStop(agentSessionId);
-				existingRunner.stop();
-				log.info(`Stopped session ${agentSessionId} (no interrupt support)`);
-			}
+			// First stop on a warm session — interrupt current turn, keep session warm
+			await existingRunner!.interrupt!();
+			log.info(
+				`Interrupted current turn for session ${agentSessionId} (send stop again within 10s to fully terminate)`,
+			);
 			await this.agentSessionManager.createResponseActivity(
 				agentSessionId,
 				`Interrupted by ${senderName}\n**Tip:** Type and send "stop" within 10 seconds to fully terminate the session.`,
@@ -5244,8 +5307,14 @@ ${taskSection}`;
 		config: AgentRunnerConfig,
 	): IAgentRunner {
 		switch (runnerType) {
-			case "claude":
-				return new ClaudeRunner(config, this.isWarmSessionsEnabled());
+			case "claude": {
+				// Inject the hosted SessionStore at the last moment so it only
+				// attaches to Claude runners (the field is Claude-specific).
+				const claudeConfig = this.claudeSessionStore
+					? { ...config, sessionStore: this.claudeSessionStore }
+					: config;
+				return new ClaudeRunner(claudeConfig, this.isWarmSessionsEnabled());
+			}
 			case "gemini":
 				return new GeminiRunner(config);
 			case "codex":
@@ -6448,6 +6517,22 @@ ${input.userComment}
 	 */
 	private isWarmSessionsEnabled(): boolean {
 		const raw = process.env.CYRUS_ENABLE_WARM_SESSIONS;
+		if (!raw) return false;
+		const v = raw.toLowerCase().trim();
+		return v === "1" || v === "true";
+	}
+
+	/**
+	 * Whether the remote Claude session store is explicitly disabled.
+	 *
+	 * The remote store mirrors SDK transcripts to the Cyrus hosted control
+	 * plane and is on by default whenever `CYRUS_APP_URL`, `CYRUS_API_KEY`,
+	 * and `CYRUS_TEAM_ID` are all set. Operators can opt out — without
+	 * unsetting those vars (which other features depend on) — by setting
+	 * `CYRUS_DISABLE_REMOTE_SESSION_STORE=1` (or `=true`).
+	 */
+	private isRemoteSessionStoreDisabled(): boolean {
+		const raw = process.env.CYRUS_DISABLE_REMOTE_SESSION_STORE;
 		if (!raw) return false;
 		const v = raw.toLowerCase().trim();
 		return v === "1" || v === "true";
