@@ -321,19 +321,12 @@ export class RunnerConfigBuilder {
 			onError: input.onError,
 		};
 
-		// Cursor runner-specific wiring for offline/headless harness
+		// Cursor runner uses @cursor/sdk; only API key + sandbox passthrough.
+		// `sandbox` is currently a no-op pending @cursor/sdk exposing
+		// configureSandboxPrereqs (CYPACK-1149 bug filed with Cursor team).
 		if (runnerType === "cursor") {
-			const approvalPolicy = (process.env.CYRUS_APPROVAL_POLICY || "never") as
-				| "never"
-				| "on-request"
-				| "on-failure"
-				| "untrusted";
-			config.cursorPath =
-				process.env.CURSOR_AGENT_PATH || process.env.CURSOR_PATH || undefined;
 			config.cursorApiKey = process.env.CURSOR_API_KEY || undefined;
-			config.askForApproval = approvalPolicy;
-			config.approveMcps = true;
-			config.sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
+			config.sandbox = (process.env.CYRUS_SANDBOX || "disabled") as
 				| "enabled"
 				| "disabled";
 		}
