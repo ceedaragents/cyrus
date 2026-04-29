@@ -162,12 +162,30 @@ function createUserToolResultMessage(
 	return { role: "user", content: contentBlocks };
 }
 
-function createResultUsage(): SDKResultMessage["usage"] {
+interface CursorTokenTotals {
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+}
+
+function toFiniteNumber(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function createResultUsage(
+	totals?: CursorTokenTotals,
+): SDKResultMessage["usage"] {
 	return {
-		input_tokens: 0,
-		output_tokens: 0,
-		cache_creation_input_tokens: 0,
-		cache_read_input_tokens: 0,
+		input_tokens: totals?.inputTokens ?? 0,
+		output_tokens: totals?.outputTokens ?? 0,
+		// Cursor's `turn-ended` delta exposes `cacheWriteTokens` as a single
+		// counter that maps onto Anthropic's `cache_creation_input_tokens`. The
+		// SDK does not split ephemeral 1h vs 5m — we report 0 for both buckets
+		// and put the full count in the parent field (which is what Cyrus
+		// formatters and Linear's cost display read first).
+		cache_creation_input_tokens: totals?.cacheWriteTokens ?? 0,
+		cache_read_input_tokens: totals?.cacheReadTokens ?? 0,
 		cache_creation: {
 			ephemeral_1h_input_tokens: 0,
 			ephemeral_5m_input_tokens: 0,
@@ -384,6 +402,12 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private hasInitMessage = false;
 	private lastAssistantText: string | null = null;
 	private assistantTextBuffer = "";
+	private tokenTotals: CursorTokenTotals = {
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+	};
 	private wasStopped = false;
 	private startTimestampMs = 0;
 	private errorMessages: string[] = [];
@@ -419,6 +443,12 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.hasInitMessage = false;
 		this.lastAssistantText = null;
 		this.assistantTextBuffer = "";
+		this.tokenTotals = {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+		};
 		this.wasStopped = false;
 		this.startTimestampMs = Date.now();
 		this.errorMessages = [];
@@ -486,7 +516,35 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 			let caughtError: unknown;
 			try {
-				const run = await agent.send(prompt);
+				const run = await agent.send(prompt, {
+					onDelta: ({ update }) => {
+						// `turn-ended` is the only delta carrying token totals.
+						// Each fire is a per-turn snapshot — accumulate across
+						// turns so the final result reports the run total.
+						if (
+							update &&
+							typeof update === "object" &&
+							(update as { type?: string }).type === "turn-ended"
+						) {
+							const usage = (update as { usage?: Partial<CursorTokenTotals> })
+								.usage;
+							if (usage) {
+								this.tokenTotals.inputTokens += toFiniteNumber(
+									usage.inputTokens,
+								);
+								this.tokenTotals.outputTokens += toFiniteNumber(
+									usage.outputTokens,
+								);
+								this.tokenTotals.cacheReadTokens += toFiniteNumber(
+									usage.cacheReadTokens,
+								);
+								this.tokenTotals.cacheWriteTokens += toFiniteNumber(
+									usage.cacheWriteTokens,
+								);
+							}
+						}
+					},
+				});
 				this.currentRun = run;
 				for await (const event of run.stream()) {
 					if (this.wasStopped) break;
@@ -891,7 +949,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			result,
 			stop_reason: null,
 			total_cost_usd: 0,
-			usage: createResultUsage(),
+			usage: createResultUsage(this.tokenTotals),
 			modelUsage: {},
 			permission_denials: [],
 			uuid: crypto.randomUUID(),
@@ -911,7 +969,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			errors: [errorMessage],
 			stop_reason: null,
 			total_cost_usd: 0,
-			usage: createResultUsage(),
+			usage: createResultUsage(this.tokenTotals),
 			modelUsage: {},
 			permission_denials: [],
 			uuid: crypto.randomUUID(),

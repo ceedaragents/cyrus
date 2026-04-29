@@ -15,9 +15,15 @@ const sdkMock = vi.hoisted(() => {
 		__install(opts: {
 			agentId?: string;
 			events: any[];
+			deltas?: any[];
 			throwOnSend?: Error | undefined;
 		}) {
-			const { agentId = "agent-test-1", events, throwOnSend } = opts;
+			const {
+				agentId = "agent-test-1",
+				events,
+				deltas = [],
+				throwOnSend,
+			} = opts;
 			const stubAgent = {
 				agentId,
 				model: undefined,
@@ -26,8 +32,13 @@ const sdkMock = vi.hoisted(() => {
 				listArtifacts: vi.fn(),
 				downloadArtifact: vi.fn(),
 				[Symbol.asyncDispose]: vi.fn(),
-				send: vi.fn().mockImplementation(async () => {
+				send: vi.fn().mockImplementation(async (_msg, options) => {
 					if (throwOnSend) throw throwOnSend;
+					if (options?.onDelta) {
+						for (const update of deltas) {
+							await options.onDelta({ update });
+						}
+					}
 					const stubRun = {
 						id: "run-1",
 						agentId,
@@ -181,6 +192,66 @@ describe("CursorRunner (SDK adapter)", () => {
 		expect(assistant).toBeDefined();
 		const result = messages[messages.length - 1];
 		expect(result?.type).toBe("result");
+	});
+
+	it("accumulates token usage from turn-ended deltas into the result message", async () => {
+		const workspace = tempWorkspace();
+		const cyrusHome = tempWorkspace();
+		sdkMock.__install({
+			agentId: "agent-tokens",
+			events: [
+				{
+					type: "system",
+					subtype: "init",
+					agent_id: "agent-tokens",
+					run_id: "r",
+				},
+				{
+					type: "status",
+					agent_id: "agent-tokens",
+					run_id: "r",
+					status: "FINISHED",
+				},
+			],
+			deltas: [
+				{
+					type: "turn-ended",
+					usage: {
+						inputTokens: 100,
+						outputTokens: 50,
+						cacheReadTokens: 10,
+						cacheWriteTokens: 5,
+					},
+				},
+				{
+					type: "turn-ended",
+					usage: {
+						inputTokens: 200,
+						outputTokens: 75,
+						cacheReadTokens: 20,
+						cacheWriteTokens: 0,
+					},
+				},
+				// Non-token-bearing delta should not affect totals.
+				{ type: "text-delta", text: "hello" },
+			],
+		});
+
+		const runner = new CursorRunner({
+			cyrusHome,
+			workingDirectory: workspace,
+		});
+		await runner.start("hi");
+
+		const resultMessage = runner.getMessages().find((m) => m.type === "result");
+		expect(resultMessage).toBeDefined();
+		const usage = (
+			resultMessage as unknown as { usage: Record<string, number> }
+		).usage;
+		expect(usage.input_tokens).toBe(300);
+		expect(usage.output_tokens).toBe(125);
+		expect(usage.cache_read_input_tokens).toBe(30);
+		expect(usage.cache_creation_input_tokens).toBe(5);
 	});
 
 	it("coalesces consecutive assistant text deltas into a single message", async () => {
