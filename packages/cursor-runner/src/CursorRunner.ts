@@ -377,6 +377,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private pendingResultMessage: SDKResultMessage | null = null;
 	private hasInitMessage = false;
 	private lastAssistantText: string | null = null;
+	private assistantTextBuffer = "";
 	private wasStopped = false;
 	private startTimestampMs = 0;
 	private errorMessages: string[] = [];
@@ -411,6 +412,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.pendingResultMessage = null;
 		this.hasInitMessage = false;
 		this.lastAssistantText = null;
+		this.assistantTextBuffer = "";
 		this.wasStopped = false;
 		this.startTimestampMs = Date.now();
 		this.errorMessages = [];
@@ -550,15 +552,19 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 				this.handleAssistantEvent(event);
 				return;
 			case "user":
+				this.flushAssistantTextBuffer();
 				this.handleUserEvent(event);
 				return;
 			case "tool_call":
+				this.flushAssistantTextBuffer();
 				this.handleToolCallEvent(event);
 				return;
 			case "thinking":
+				this.flushAssistantTextBuffer();
 				this.handleThinkingEvent(event);
 				return;
 			case "status":
+				this.flushAssistantTextBuffer();
 				this.handleStatusEvent(event);
 				return;
 			default:
@@ -572,10 +578,14 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		for (const block of content) {
 			if (!block || typeof block !== "object") continue;
 			if (block.type === "text" && typeof block.text === "string") {
-				if (block.text.trim().length === 0) continue;
-				this.lastAssistantText = block.text;
-				this.pushAssistantText(block.text);
+				if (block.text.length === 0) continue;
+				// Coalesce consecutive text deltas into one assistant message —
+				// the SDK streams partial text across multiple `assistant` events
+				// per turn. We flush before any non-text block (tool_use below or
+				// non-assistant event in handleSdkEvent) and at end of stream.
+				this.assistantTextBuffer += block.text;
 			} else if (block.type === "tool_use") {
+				this.flushAssistantTextBuffer();
 				const rawName = String(block.name || "Tool");
 				const lowered = rawName.toLowerCase();
 				let toolName = rawName;
@@ -829,6 +839,14 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.pushMessage(message);
 	}
 
+	private flushAssistantTextBuffer(): void {
+		const text = this.assistantTextBuffer;
+		this.assistantTextBuffer = "";
+		if (text.trim().length === 0) return;
+		this.lastAssistantText = text;
+		this.pushAssistantText(text);
+	}
+
 	private emitInitMessage(): void {
 		if (this.hasInitMessage) return;
 		this.hasInitMessage = true;
@@ -920,6 +938,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		if (!this.sessionInfo) return;
 
 		this.emitInitMessage();
+		this.flushAssistantTextBuffer();
 		this.sessionInfo.isRunning = false;
 		this.uninstallPermissionsArtifacts();
 

@@ -183,6 +183,110 @@ describe("CursorRunner (SDK adapter)", () => {
 		expect(result?.type).toBe("result");
 	});
 
+	it("coalesces consecutive assistant text deltas into a single message", async () => {
+		const workspace = tempWorkspace();
+		const cyrusHome = tempWorkspace();
+		sdkMock.__install({
+			agentId: "agent-coalesce",
+			events: [
+				{
+					type: "system",
+					subtype: "init",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+				},
+				{
+					type: "assistant",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Expl" }],
+					},
+				},
+				{
+					type: "assistant",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "oring " }],
+					},
+				},
+				{
+					type: "assistant",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "the codebase." }],
+					},
+				},
+				{
+					type: "tool_call",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					call_id: "tc-1",
+					name: "shell",
+					status: "completed",
+					args: { command: "ls" },
+					result: "ok",
+				},
+				{
+					type: "assistant",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Found " }],
+					},
+				},
+				{
+					type: "assistant",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "the file." }],
+					},
+				},
+				{
+					type: "status",
+					agent_id: "agent-coalesce",
+					run_id: "r",
+					status: "FINISHED",
+				},
+			],
+		});
+
+		const runner = new CursorRunner({
+			cyrusHome,
+			workingDirectory: workspace,
+		});
+		await runner.start("hi");
+		type Block = { type: string; text?: string };
+		const assistantTexts: string[] = [];
+		for (const m of runner.getMessages() as Array<{
+			type: string;
+			message?: { content?: unknown };
+		}>) {
+			if (m.type !== "assistant") continue;
+			const content = m.message?.content;
+			if (!Array.isArray(content)) continue;
+			const text = (content as Block[])
+				.filter((b) => b?.type === "text")
+				.map((b) => b.text ?? "")
+				.join("");
+			if (text.length > 0) assistantTexts.push(text);
+		}
+
+		// Two assistant turns separated by a tool_use should produce exactly two
+		// coalesced messages, not seven (one per delta).
+		expect(assistantTexts).toHaveLength(2);
+		expect(assistantTexts[0]).toBe("Exploring the codebase.");
+		expect(assistantTexts[1]).toBe("Found the file.");
+	});
+
 	it("maps tool_call events with status=completed into tool_use + tool_result", async () => {
 		const workspace = tempWorkspace();
 		const cyrusHome = tempWorkspace();
