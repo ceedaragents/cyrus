@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { SDKResultMessage } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted mock for @cursor/sdk so we can drive Agent.create / Agent.resume
@@ -243,11 +244,11 @@ describe("CursorRunner (SDK adapter)", () => {
 		});
 		await runner.start("hi");
 
-		const resultMessage = runner.getMessages().find((m) => m.type === "result");
+		const resultMessage = runner
+			.getMessages()
+			.find((m): m is SDKResultMessage => m.type === "result");
 		expect(resultMessage).toBeDefined();
-		const usage = (
-			resultMessage as unknown as { usage: Record<string, number> }
-		).usage;
+		const usage = resultMessage!.usage;
 		expect(usage.input_tokens).toBe(300);
 		expect(usage.output_tokens).toBe(125);
 		expect(usage.cache_read_input_tokens).toBe(30);
