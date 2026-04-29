@@ -73,8 +73,11 @@ function normalizeError(error: unknown): string {
 
 function normalizeCursorModel(model?: string): string | undefined {
 	if (!model) return model;
-	// Preserve backward compatibility for legacy aliases that the SDK rejects.
-	if (model.toLowerCase() === "gpt-5") return "auto";
+	// Map legacy CLI aliases to SDK model IDs. The SDK rejects `auto` and bare
+	// `gpt-5`; use `default` (server-side resolution) as a forward-compatible
+	// fallback for both. Discover real ids via `Cursor.models.list()`.
+	const lowered = model.toLowerCase();
+	if (lowered === "gpt-5" || lowered === "auto") return "default";
 	return model;
 }
 
