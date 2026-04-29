@@ -25,7 +25,13 @@ import type {
 	Run,
 	SDKAgent,
 } from "@cursor/sdk";
-import { Agent } from "@cursor/sdk";
+// `@cursor/sdk` is loaded lazily inside `start()` rather than at module top
+// level. Its transitive deps (`@connectrpc/connect-node` -> `undici@7.x`,
+// `sqlite3@5.x`) crash at import time on Node 18 (no global `File`) and on
+// Node versions without prebuilt sqlite3 bindings. Lazy-loading lets edge-
+// worker tests that mock the cursor runner load on every supported Node
+// version, and only pays the import cost when a Cursor session actually
+// starts.
 import type {
 	IAgentRunner,
 	IMessageFormatter,
@@ -454,6 +460,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 				...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
 			};
 
+			const { Agent } = await import("@cursor/sdk");
 			let agent: SDKAgent;
 			if (this.config.resumeSessionId) {
 				console.log(
