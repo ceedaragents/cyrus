@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **GitHub credential brokering now picks up `gh auth token` automatically** — When sandbox credential brokering is enabled and no GitHub App is configured, Cyrus now falls through to `gh auth token` (cached for 60s) before resorting to the `GITHUB_TOKEN` env var. Self-hosted users who already authed with `gh auth login` no longer need to also export `GITHUB_TOKEN` for the egress proxy to inject credentials into sandboxed sessions. ([CYPACK-1128](https://linear.app/ceedar/issue/CYPACK-1128))
+
 ## [0.2.51] - 2026-04-30
 
 ### Changed

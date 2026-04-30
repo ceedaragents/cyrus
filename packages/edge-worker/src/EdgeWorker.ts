@@ -145,6 +145,7 @@ import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { EgressProxy } from "./EgressProxy.js";
+import { GhCliTokenResolver } from "./GhCliTokenResolver.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
@@ -207,6 +208,7 @@ export class EdgeWorker extends EventEmitter {
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private gitHubAppTokenProvider: GitHubAppTokenProvider | null = null; // Self-hosted GitHub App token minting
+	private ghCliTokenResolver: GhCliTokenResolver = new GhCliTokenResolver(); // Falls through to `gh auth token` between App and env tiers
 	private gitLabEventTransport: GitLabEventTransport | null = null; // GitLab event transport for forwarded GitLab webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
 	private chatSessionHandler: ChatSessionHandler<SlackWebhookEvent> | null =
@@ -1139,7 +1141,8 @@ export class EdgeWorker extends EventEmitter {
 	 * Resolve a GitHub API token from (in priority order):
 	 * 1. Forwarded installation token from CYHOST (cloud/proxy mode)
 	 * 2. Self-minted installation token from GitHub App credentials (self-hosted)
-	 * 3. Personal access token from GITHUB_TOKEN env var (fallback)
+	 * 3. `gh auth token` (cached, picks up `gh auth login` credentials)
+	 * 4. Personal access token from GITHUB_TOKEN env var (fallback)
 	 */
 	private async resolveGitHubToken(
 		event: GitHubWebhookEvent,
@@ -1149,12 +1152,19 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Workspace-scoped GitHub token resolution: App-installation token (via
-	 * GitHubAppTokenProvider's cache + auto-refresh) → `GITHUB_TOKEN` env
-	 * fallback. Unlike `resolveGitHubToken(event)`, this does NOT consult
-	 * the per-event installationToken tier — it's used by paths that need
-	 * a stable workspace-wide token (notably credential brokering), not
-	 * one tied to a specific webhook delivery.
+	 * Workspace-scoped GitHub token resolution. In priority order:
+	 *   1. App-installation token (via GitHubAppTokenProvider's cache +
+	 *      auto-refresh) — preferred when a GitHub App is configured
+	 *      because installation tokens are more narrowly scoped than PATs.
+	 *   2. `gh auth token` (cached for 60s) — picks up whatever the operator
+	 *      authed `gh` with. Avoids the need to also export `GITHUB_TOKEN`
+	 *      when `gh auth login` already wrote a credential to disk.
+	 *   3. `GITHUB_TOKEN` env var — last-resort PAT fallback.
+	 *
+	 * Unlike `resolveGitHubToken(event)`, this does NOT consult the per-event
+	 * installationToken tier — it's used by paths that need a stable
+	 * workspace-wide token (notably credential brokering), not one tied to a
+	 * specific webhook delivery.
 	 */
 	private async resolveStableGitHubToken(): Promise<string | undefined> {
 		if (this.gitHubAppTokenProvider) {
@@ -1162,11 +1172,13 @@ export class EdgeWorker extends EventEmitter {
 				return await this.gitHubAppTokenProvider.getToken();
 			} catch (error) {
 				this.logger.warn(
-					"Failed to mint GitHub App installation token, falling back to GITHUB_TOKEN",
+					"Failed to mint GitHub App installation token, falling back to gh CLI / GITHUB_TOKEN",
 					error instanceof Error ? error : new Error(String(error)),
 				);
 			}
 		}
+		const ghToken = await this.ghCliTokenResolver.getToken();
+		if (ghToken) return ghToken;
 		return process.env.GITHUB_TOKEN;
 	}
 
