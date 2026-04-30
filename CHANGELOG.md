@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.51] - 2026-04-30
+
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.123 and `@anthropic-ai/sdk` to `^0.91.0`** — Bumps the bundled Claude Code binary to v2.1.123 and the Anthropic TypeScript SDK to `^0.91.0`. This resolves a session-breaking bug where, after a parallel `Bash` tool call was cancelled following a non-zero exit on a sibling call, every subsequent `Bash` invocation in the same session would fail with `/bin/bash: line 4: /proc/self/fd/3: Permission denied` (exit 126) until the session was restarted. Other tools (`Read`, `Edit`, `Glob`, `Grep`, MCP) were unaffected. Also removes `LSP` from the `availableTools` list in `config.ts` — `LSP` is no longer shipped in Claude Code SDK v0.2.123. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1152](https://linear.app/ceedar/issue/CYPACK-1152), [#1172](https://github.com/cyrusagents/cyrus/pull/1172))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.51
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.51
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.51
+
+#### cyrus-core
+- cyrus-core@0.2.51
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.51
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.51
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.51
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.51
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.51
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.51
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.51
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.51
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.51
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.51
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.51
+
+## [0.2.50] - 2026-04-30
+
 ### Added
 - **Cyrus-authored PRs and MRs are now reliably tagged** — After every `gh pr create`/`gh pr edit`, `glab mr create`/`glab mr update`/`glab mr edit`, or `gt submit` command, Cyrus automatically appends a hidden `<!-- generated-by-cyrus -->` marker to the live PR/MR description if it isn't already there. This ensures the GitHub/GitLab webhook handlers can recognize Cyrus-authored PRs (so "Changes requested" events get forwarded back) even when the agent forgets to include the marker in the body it submits. ([CYPACK-1141](https://linear.app/ceedar/issue/CYPACK-1141), [#1162](https://github.com/cyrusagents/cyrus/pull/1162))
 - **PR guardrail when sessions try to stop with unshipped work** — When the agent attempts to end a session, Cyrus now inspects the worktree and blocks the first stop attempt if there are uncommitted changes or commits ahead of the upstream branch, prompting the agent to commit, push, and open a pull request. Sessions with no code changes (e.g. questions, research) stop normally. ([CYPACK-1140](https://linear.app/ceedar/issue/CYPACK-1140), [#1161](https://github.com/cyrusagents/cyrus/pull/1161))
@@ -35,9 +89,55 @@ All notable changes to this project will be documented in this file.
 - **Addressed open security advisories** — Refreshed `pnpm-lock.yaml` so vulnerable transitive dependencies resolve to their patched versions (`protobufjs`, `path-to-regexp`, `picomatch`, `flatted`, `brace-expansion`, `yaml`, `follow-redirects`, `vite`, `hono`, `@hono/node-server`) through their existing direct-dep paths, without introducing new `pnpm.overrides` entries. ([CYPACK-1101](https://linear.app/ceedar/issue/CYPACK-1101), [#1128](https://github.com/ceedaragents/cyrus/pull/1128))
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.123 and `@anthropic-ai/sdk` to `^0.91.0`** — Bumps the bundled Claude Code binary to v2.1.123 and the Anthropic TypeScript SDK to `^0.91.0`. Removes `LSP` from the `availableTools` list in `config.ts` — `LSP` is no longer shipped in Claude Code SDK v0.2.123. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1152](https://linear.app/ceedar/issue/CYPACK-1152), [#1172](https://github.com/cyrusagents/cyrus/pull/1172))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.117** — Bumps the bundled Claude Code binary from v2.1.116 to v2.1.117 (parity release with no tool-list changes). Also fixes `scripts/extract-claude-tools.sh` to work with the new native binary structure introduced in SDK v0.2.113 (now resolves the platform-specific optional dependency instead of the removed `cli.js`). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1120](https://linear.app/ceedar/issue/CYPACK-1120), [#1143](https://github.com/ceedaragents/cyrus/pull/1143))
 - **Update `@anthropic-ai/claude-agent-sdk` to v0.2.116** — Bumps the bundled Claude Code binary from v2.1.114 to v2.1.116 (parity releases with no tool-list changes). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1111](https://linear.app/ceedar/issue/CYPACK-1111), [#1133](https://github.com/ceedaragents/cyrus/pull/1133))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.50
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.50
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.50
+
+#### cyrus-core
+- cyrus-core@0.2.50
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.50
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.50
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.50
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.50
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.50
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.50
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.50
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.50
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.50
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.50
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.50
 
 ## [0.2.49] - 2026-04-22
 
