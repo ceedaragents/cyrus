@@ -102,12 +102,12 @@ describe("GitLabMrMarkerProvider.matches", () => {
 		expect(provider.matches(cmd)).toBe(true);
 	});
 
-	it.each(["glab issue create", "gh mr create"])(
-		"rejects unrelated command: %s",
-		(cmd) => {
-			expect(provider.matches(cmd)).toBe(false);
-		},
-	);
+	it.each([
+		"glab issue create",
+		"gh mr create",
+	])("rejects unrelated command: %s", (cmd) => {
+		expect(provider.matches(cmd)).toBe(false);
+	});
 });
 
 describe("buildPrMarkerHook", () => {

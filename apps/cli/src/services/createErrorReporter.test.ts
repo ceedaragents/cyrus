@@ -54,19 +54,22 @@ describe("createErrorReporter", () => {
 		}
 	});
 
-	it.each(["true", "yes", "on", "TRUE", "1"])(
-		"treats CYRUS_SENTRY_DISABLED=%s as opt-out",
-		(value) => {
-			const reporter = createErrorReporter({
-				env: {
-					CYRUS_SENTRY_DISABLED: value,
-					CYRUS_SENTRY_DSN: "https://x@y/1",
-					CYRUS_TEAM_ID: "team-42",
-				},
-			});
-			expect(reporter.isEnabled).toBe(false);
-		},
-	);
+	it.each([
+		"true",
+		"yes",
+		"on",
+		"TRUE",
+		"1",
+	])("treats CYRUS_SENTRY_DISABLED=%s as opt-out", (value) => {
+		const reporter = createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DISABLED: value,
+				CYRUS_SENTRY_DSN: "https://x@y/1",
+				CYRUS_TEAM_ID: "team-42",
+			},
+		});
+		expect(reporter.isEnabled).toBe(false);
+	});
 
 	it("returns a SentryErrorReporter when a DSN and CYRUS_TEAM_ID are provided", () => {
 		const reporter = createErrorReporter({
@@ -158,21 +161,23 @@ describe("createErrorReporter", () => {
 		);
 	});
 
-	it.each(["foo", "-1", "2", ""])(
-		"falls back to default sampleRate when CYRUS_SENTRY_SAMPLE_RATE=%s is invalid",
-		(value) => {
-			createErrorReporter({
-				env: {
-					CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
-					CYRUS_TEAM_ID: "team-42",
-					CYRUS_SENTRY_SAMPLE_RATE: value,
-				},
-			});
-			expect(Sentry.init).toHaveBeenCalledWith(
-				expect.objectContaining({ sampleRate: 1 }),
-			);
-		},
-	);
+	it.each([
+		"foo",
+		"-1",
+		"2",
+		"",
+	])("falls back to default sampleRate when CYRUS_SENTRY_SAMPLE_RATE=%s is invalid", (value) => {
+		createErrorReporter({
+			env: {
+				CYRUS_SENTRY_DSN: "https://abc@sentry.io/1",
+				CYRUS_TEAM_ID: "team-42",
+				CYRUS_SENTRY_SAMPLE_RATE: value,
+			},
+		});
+		expect(Sentry.init).toHaveBeenCalledWith(
+			expect.objectContaining({ sampleRate: 1 }),
+		);
+	});
 
 	it("enables Sentry Logs whenever the reporter is constructed (gate is upstream)", () => {
 		createErrorReporter({
