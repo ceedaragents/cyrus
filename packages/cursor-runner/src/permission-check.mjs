@@ -91,6 +91,20 @@ function patternMatches(pattern, candidate) {
 	return globToRegex(arg).test(candidate.value);
 }
 
+function lookupMcpServerName(p) {
+	const servers = Array.isArray(cfg.mcpServers) ? cfg.mcpServers : [];
+	if (servers.length === 0) return null;
+	if (typeof p.url === "string" && p.url) {
+		const m = servers.find((s) => s.url === p.url);
+		if (m) return m.name;
+	}
+	if (typeof p.command === "string" && p.command) {
+		const m = servers.find((s) => s.commandLine === p.command);
+		if (m) return m.name;
+	}
+	return null;
+}
+
 function getCandidates(p) {
 	const out = [];
 	if (eventName === "preToolUse") {
@@ -105,8 +119,15 @@ function getCandidates(p) {
 	} else if (eventName === "beforeReadFile") {
 		out.push({ kind: "Read", value: normalizePath(p.file_path) });
 	} else if (eventName === "beforeMCPExecution") {
-		// tool_name in this event is `<server>:<tool>` per SDK docs
-		out.push({ kind: "Mcp", value: p.tool_name ?? "" });
+		// SDK payload only carries the bare tool_name (e.g. "save_comment") and
+		// the underlying transport (`command` or `url`) — never a logical
+		// server name. We map the transport back to the configured server
+		// name via cfg.mcpServers so server-scoped patterns like
+		// `Mcp(linear:save_comment)` and `Mcp(linear:*)` can match.
+		const tool = p.tool_name ?? "";
+		const server = lookupMcpServerName(p);
+		if (server) out.push({ kind: "Mcp", value: `${server}:${tool}` });
+		out.push({ kind: "Mcp", value: tool });
 	}
 	return out;
 }

@@ -752,11 +752,17 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		const cursorDir = join(workspace, ".cursor");
 		mkdirSync(cursorDir, { recursive: true });
 
-		// 1. Permissions config (auto-deny is merged in by the helper)
+		// 1. Permissions config (auto-deny is merged in by the helper). Pass
+		// the SDK-shaped MCP server map so the helper can derive a logical
+		// server name (e.g. "linear") from the command/url that the
+		// `beforeMCPExecution` payload exposes — patterns like
+		// `Mcp(linear:save_comment)` only match when we provide that lookup.
+		const sdkMcpServers = mapCyrusMcpToSdk(this.config.mcpConfig);
 		const cfg: CyrusPermissionsConfig = buildCyrusPermissionsConfig({
 			workspace,
 			allowedTools: this.config.allowedTools,
 			disallowedTools: this.config.disallowedTools,
+			mcpServers: sdkMcpServers,
 		});
 		writeFileSync(
 			join(cursorDir, "cyrus-permissions.json"),

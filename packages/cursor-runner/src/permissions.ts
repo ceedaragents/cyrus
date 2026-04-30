@@ -20,6 +20,22 @@ export interface CyrusPermissionsConfig {
 	workspace: string;
 	allow: string[];
 	deny: string[];
+	/**
+	 * Lookup table the hook helper uses to derive the logical MCP server name
+	 * (e.g. "linear") from the `beforeMCPExecution` payload, which only carries
+	 * the `command`/`url` of the underlying transport — not the server name.
+	 * Without this, server-scoped patterns like `Mcp(linear:*)` cannot match
+	 * because we never see "linear" in the payload.
+	 */
+	mcpServers?: CyrusPermissionsMcpServer[];
+}
+
+export interface CyrusPermissionsMcpServer {
+	name: string;
+	/** stdio: full reconstructed command line `${command} ${args.join(' ')}`. */
+	commandLine?: string;
+	/** http/sse: the URL string. */
+	url?: string;
 }
 
 interface ParsedPattern {
@@ -274,8 +290,17 @@ export function buildCyrusPermissionsConfig(args: {
 	workspace: string;
 	allowedTools?: string[];
 	disallowedTools?: string[];
+	mcpServers?: Record<
+		string,
+		{ command?: string; args?: string[]; url?: string }
+	>;
 }): CyrusPermissionsConfig {
-	const { workspace, allowedTools = [], disallowedTools = [] } = args;
+	const {
+		workspace,
+		allowedTools = [],
+		disallowedTools = [],
+		mcpServers: mcpServersIn = {},
+	} = args;
 
 	const allow = new Set<string>();
 	for (const pattern of allowedTools) {
@@ -294,9 +319,22 @@ export function buildCyrusPermissionsConfig(args: {
 		deny.add(pattern);
 	}
 
+	const mcpServers: CyrusPermissionsMcpServer[] = [];
+	for (const [name, server] of Object.entries(mcpServersIn)) {
+		if (!server || typeof server !== "object") continue;
+		if (typeof server.url === "string" && server.url) {
+			mcpServers.push({ name, url: server.url });
+		} else if (typeof server.command === "string" && server.command) {
+			const argv = Array.isArray(server.args) ? server.args : [];
+			const commandLine = [server.command, ...argv].join(" ").trim();
+			mcpServers.push({ name, commandLine });
+		}
+	}
+
 	return {
 		workspace: resolve(workspace),
 		allow: [...allow],
 		deny: [...deny],
+		mcpServers,
 	};
 }

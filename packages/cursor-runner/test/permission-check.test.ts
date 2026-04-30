@@ -11,6 +11,7 @@ const HELPER = join(HERE, "..", "src", "permission-check.mjs");
 interface RunArgs {
 	allow?: string[];
 	deny?: string[];
+	mcpServers?: Array<{ name: string; commandLine?: string; url?: string }>;
 	payload: Record<string, unknown>;
 }
 
@@ -35,6 +36,7 @@ function runHelper(args: RunArgs): { decision: any; stderr: string } {
 			workspace: dir,
 			allow: args.allow ?? [],
 			deny: args.deny ?? [],
+			mcpServers: args.mcpServers ?? [],
 		}),
 	);
 
@@ -103,14 +105,69 @@ describe("permission-check helper", () => {
 		expect(decision.permission).toBe("deny");
 	});
 
-	it("denies an MCP call by Mcp() pattern", () => {
+	it("denies an MCP call by exact Mcp(server:tool) pattern", () => {
 		const { decision } = runHelper({
 			deny: ["Mcp(linear:delete_issue)"],
+			mcpServers: [
+				{ name: "linear", commandLine: "node /path/to/linear-mcp.mjs" },
+			],
 			payload: {
 				hook_event_name: "beforeMCPExecution",
-				tool_name: "linear:delete_issue",
+				// SDK puts the bare tool name here — NOT "linear:delete_issue".
+				tool_name: "delete_issue",
+				command: "node /path/to/linear-mcp.mjs",
 			},
 		});
+		expect(decision.permission).toBe("deny");
+	});
+
+	// Regression for CYPACK-1151: production allow lists like
+	// `Mcp(linear:save_comment)` or `Mcp(linear:*)` must match even though
+	// the SDK's beforeMCPExecution payload only carries `tool_name=save_comment`
+	// and the underlying transport (`command`/`url`), never the logical server.
+	// We rely on cfg.mcpServers as a transport→name lookup table.
+	it("matches Mcp(server:*) by looking up server from command", () => {
+		const { decision } = runHelper({
+			allow: ["Mcp(linear:*)"],
+			mcpServers: [
+				{ name: "linear", commandLine: "node /path/to/linear-mcp.mjs" },
+			],
+			payload: {
+				hook_event_name: "beforeMCPExecution",
+				tool_name: "save_comment",
+				command: "node /path/to/linear-mcp.mjs",
+			},
+		});
+		expect(decision.permission).toBe("allow");
+	});
+
+	it("matches Mcp(server:tool) for HTTP MCP servers via url lookup", () => {
+		const { decision } = runHelper({
+			allow: ["Mcp(remote:read_doc)"],
+			mcpServers: [{ name: "remote", url: "https://example.com/mcp" }],
+			payload: {
+				hook_event_name: "beforeMCPExecution",
+				tool_name: "read_doc",
+				url: "https://example.com/mcp",
+			},
+		});
+		expect(decision.permission).toBe("allow");
+	});
+
+	it("denies server-scoped MCP calls when no server lookup matches", () => {
+		const { decision } = runHelper({
+			allow: ["Mcp(linear:*)"],
+			mcpServers: [
+				{ name: "linear", commandLine: "node /path/to/linear-mcp.mjs" },
+			],
+			payload: {
+				hook_event_name: "beforeMCPExecution",
+				tool_name: "delete_database",
+				command: "node /path/to/UNKNOWN-mcp.mjs",
+			},
+		});
+		// No server match => candidate is just `Mcp(delete_database)`,
+		// which does not satisfy the `Mcp(linear:*)` allow.
 		expect(decision.permission).toBe("deny");
 	});
 
