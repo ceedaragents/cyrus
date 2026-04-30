@@ -130,6 +130,62 @@ export interface IssueRunnerConfigInput {
 }
 
 /**
+ * Per-session CA env vars for the egress proxy's TLS interception cert.
+ *
+ * The egress proxy generates its own CA at `~/.cyrus/certs/cyrus-egress-ca.pem`
+ * and uses it to MITM HTTPS for transformed domains (header injection /
+ * credentials brokering). For tools running inside a sandboxed Bash command
+ * to verify the proxy's fake server certs, they need to trust that CA. There
+ * are two paths:
+ *
+ *  1. **Per-session env vars** (default) — this function. Each tool family
+ *     reads its CA bundle path from a different env var, so we set them all
+ *     to the same proxy CA path. The proxy lifts the trust boundary only
+ *     for that session's children.
+ *
+ *  2. **System-wide trust** — set `sandbox.systemWideCert: true` in
+ *     config.json AFTER copying the cert into the OS trust store. On
+ *     Ubuntu/Debian:
+ *       sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem \\
+ *               /usr/local/share/ca-certificates/cyrus-egress-ca.crt
+ *       sudo update-ca-certificates
+ *     With that flag set, EdgeWorker passes `egressCaCertPath: null` to this
+ *     function and the env vars stay empty — the OS cert store handles it.
+ *
+ * **Tools that ignore env vars regardless** (require system-wide trust):
+ * Bun (own opaque TLS stack), .NET/nuget (OS keychain), curl on macOS
+ * (compiled against SecureTransport).
+ *
+ * **Don't set these in Cyrus's own parent process env** — they would break
+ * Cyrus's own outbound git/HTTPS because the parent doesn't go through the
+ * egress proxy. Setting them here only affects child sessions.
+ */
+export function buildEgressCaEnv(
+	egressCaCertPath: string | null | undefined,
+): Record<string, string> {
+	if (!egressCaCertPath) return {};
+	return {
+		// Node.js (SDK, npm, etc.)
+		NODE_EXTRA_CA_CERTS: egressCaCertPath,
+		// OpenSSL-based tools (general fallback — also covers Ruby)
+		SSL_CERT_FILE: egressCaCertPath,
+		// Git HTTPS operations
+		GIT_SSL_CAINFO: egressCaCertPath,
+		// Python requests/pip
+		REQUESTS_CA_BUNDLE: egressCaCertPath,
+		PIP_CERT: egressCaCertPath,
+		// curl (when compiled against OpenSSL, not SecureTransport)
+		CURL_CA_BUNDLE: egressCaCertPath,
+		// Rust/Cargo
+		CARGO_HTTP_CAINFO: egressCaCertPath,
+		// AWS CLI / boto3
+		AWS_CA_BUNDLE: egressCaCertPath,
+		// Deno
+		DENO_CERT: egressCaCertPath,
+	};
+}
+
+/**
  * Default home-directory allowances for node-based package managers and
  * related developer tooling. Without these, `npm install`, `pnpm install`,
  * `yarn`, and `bun install` all fail inside the sandbox because they read
@@ -596,27 +652,10 @@ export class RunnerConfigBuilder {
 		// over TMPDIR for Bun, so this is the reliable hook.
 		const additionalEnv: Record<string, string> = {
 			BUN_TMPDIR: tmpDir,
+			// CA-trust env vars (empty when systemWideCert is true and
+			// EdgeWorker passes egressCaCertPath: null).
+			...buildEgressCaEnv(input.egressCaCertPath),
 		};
-
-		if (input.egressCaCertPath) {
-			// Node.js (SDK, npm, etc.)
-			additionalEnv.NODE_EXTRA_CA_CERTS = input.egressCaCertPath;
-			// OpenSSL-based tools (general fallback — also covers Ruby)
-			additionalEnv.SSL_CERT_FILE = input.egressCaCertPath;
-			// Git HTTPS operations
-			additionalEnv.GIT_SSL_CAINFO = input.egressCaCertPath;
-			// Python requests/pip
-			additionalEnv.REQUESTS_CA_BUNDLE = input.egressCaCertPath;
-			additionalEnv.PIP_CERT = input.egressCaCertPath;
-			// curl (when compiled against OpenSSL, not SecureTransport)
-			additionalEnv.CURL_CA_BUNDLE = input.egressCaCertPath;
-			// Rust/Cargo
-			additionalEnv.CARGO_HTTP_CAINFO = input.egressCaCertPath;
-			// AWS CLI / boto3
-			additionalEnv.AWS_CA_BUNDLE = input.egressCaCertPath;
-			// Deno
-			additionalEnv.DENO_CERT = input.egressCaCertPath;
-		}
 
 		result.additionalEnv = additionalEnv;
 
