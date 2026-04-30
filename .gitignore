@@ -44,3 +44,6 @@ workspaces
 .edge-config.json
 
 CLAUDE.local.md
+
+# Claude Code harness runtime artifacts
+.claude/scheduled_tasks.lock
