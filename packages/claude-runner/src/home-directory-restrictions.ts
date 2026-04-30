@@ -22,6 +22,36 @@ import { join, relative, resolve } from "node:path";
  *
  * Claude Code requires an extra leading / for absolute paths in tool patterns.
  * See: https://docs.anthropic.com/en/docs/claude-code/settings#read-edit
+ *
+ * IMPORTANT — relationship to `buildPackageManagerHomeAllowances()`:
+ * This denylist and the OS-level sandbox `allowRead` list built in
+ * `packages/edge-worker/src/RunnerConfigBuilder.ts` are INTENTIONALLY
+ * INDEPENDENT. They serve different consumers:
+ *   - This list feeds the SDK's `disallowedTools` (Claude's tool-permission
+ *     layer). It controls what Claude's own `Read`/`Edit` tool calls may
+ *     touch.
+ *   - `buildPackageManagerHomeAllowances()` feeds `sandbox.filesystem.allowRead`
+ *     (OS-level). It controls what unsandboxed children like `npm`, `git`,
+ *     and `gh` may touch when they execute on Claude's behalf.
+ * The same path can legitimately appear in both: e.g. `~/.gitconfig` is in
+ * the OS allow-list (so `git` can read it) AND denied here (so Claude's
+ * `Read` tool cannot). That is the point — defense-in-depth.
+ * If you change one, do not assume the other tracks it. See CLAUDE.md § 6.
+ *
+ * KNOWN SDK LIMITATION — Glob/Grep enumeration leak:
+ * The SDK only honors `Read(...)` patterns in `disallowedTools`; it does NOT
+ * honor `Glob(...)` or `Grep(...)` patterns. The SDK does check Glob/Grep's
+ * input `path` arg against `Read(...)` denies, but it does NOT apply those
+ * denies to the entries Glob returns from its recursive walk. So when
+ * `additionalAllowedPaths` includes a path whose parent has denied siblings
+ * (e.g. allowing `~/cyrus-app/cyrus` makes `~/cyrus-app` a "passthrough"
+ * parent that this function leaves un-denied — see the algorithm below),
+ * `Glob(path="~/cyrus-app", pattern="**")` will return entries from
+ * `~/cyrus-app/cyrus-hosted/`, `~/cyrus-app/documentation/`, etc. The
+ * downstream `Read` of any leaked path is still denied — but file/directory
+ * NAMES leak. Adding `Glob(...)`/`Grep(...)` patterns here is a no-op; the
+ * realistic mitigation is workspace layout (avoid passthrough parents with
+ * denied siblings).
  */
 export function buildHomeDirectoryDisallowedTools(
 	cwd: string,
