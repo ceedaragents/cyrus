@@ -19,6 +19,7 @@ import type {
 	RepositoryConfig,
 	RunnerType,
 } from "cyrus-core";
+import { buildBashWedgeDetectorHook } from "./hooks/BashWedgeDetectorHook.js";
 import { buildPrMarkerHook } from "./hooks/PrMarkerHook.js";
 
 /**
@@ -138,6 +139,22 @@ export interface IssueRunnerConfigInput {
  * https://code.claude.com/docs/en/settings#sandbox-path-prefixes). Entries
  * for both macOS and Linux layouts are included — irrelevant paths on a
  * given OS are harmless no-ops.
+ *
+ * IMPORTANT — relationship to `buildHomeDirectoryDisallowedTools()`:
+ * This list and the tool-permission home-directory denylist in
+ * `packages/claude-runner/src/home-directory-restrictions.ts` are
+ * INTENTIONALLY INDEPENDENT. They serve different consumers:
+ *   - This list feeds `sandbox.filesystem.allowRead` (OS-level), so
+ *     unsandboxed children like `npm`, `git`, and `gh` can read host
+ *     configs they need to function.
+ *   - `buildHomeDirectoryDisallowedTools()` feeds the SDK's
+ *     `disallowedTools` (Claude's tool-permission layer), enumerating
+ *     `~/` and denying everything that isn't on the path to the
+ *     worktree or an allowed dir.
+ * The same path can legitimately appear in both: e.g. `~/.gitconfig`
+ * is in this list (so `git` can read it) AND in the tool-deny list (so
+ * Claude's `Read` tool cannot). That is the point — defense-in-depth.
+ * If you change one, do not assume the other tracks it. See CLAUDE.md § 6.
  */
 export function buildPackageManagerHomeAllowances(): {
 	read: string[];
@@ -159,6 +176,18 @@ export function buildPackageManagerHomeAllowances(): {
 		"~/.npmrc",
 		"~/.yarnrc",
 		"~/.yarnrc.yml",
+		// Claude Code SDK shell snapshots. The SDK wraps every Bash tool call
+		// as `bash -c "source ~/.claude/shell-snapshots/snapshot-bash-XXX.sh
+		// 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && eval
+		// 'CMD'"`. The snapshot captures the host shell's exported functions,
+		// aliases, and shopts so Claude's bash subprocesses behave like the
+		// user's normal shell. Without this entry the source fails silently
+		// inside the sandbox (the wrapper suppresses stderr with `|| true`)
+		// and any function/alias the user expects Claude's commands to inherit
+		// is missing — symptom is "the command did the wrong thing", with no
+		// error to diagnose. Read-only is sufficient; the SDK regenerates
+		// these files itself in unsandboxed parent-process context.
+		"~/.claude/shell-snapshots",
 	];
 
 	// Package manager caches, stores, and global install dirs. These need
@@ -288,16 +317,19 @@ export class RunnerConfigBuilder {
 	} {
 		const log = input.logger;
 
-		// Configure hooks: PostToolUse for screenshot tools + PR-marker enforcement,
-		// plus the Stop hook that blocks the session when work is unshipped.
+		// Configure hooks: PostToolUse for screenshot tools + PR-marker enforcement
+		// + bash FD-3 wedge detection, plus the Stop hook that blocks the session
+		// when work is unshipped.
 		const screenshotHooks = this.buildScreenshotHooks(log);
 		const prMarkerHook = buildPrMarkerHook(log);
+		const bashWedgeDetectorHook = buildBashWedgeDetectorHook(log);
 		const stopHook = this.buildStopHook(log);
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			...stopHook,
 			PostToolUse: [
 				...(screenshotHooks.PostToolUse ?? []),
 				...(prMarkerHook.PostToolUse ?? []),
+				...(bashWedgeDetectorHook.PostToolUse ?? []),
 			],
 		};
 
@@ -494,11 +526,17 @@ export class RunnerConfigBuilder {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
 				allowUnsandboxedCommands: false,
-				// Required for Go-based tools (gh, gcloud, terraform) to verify TLS certs
-				// when using httpProxyPort with a MITM proxy and custom CA. macOS only —
-				// opens access to com.apple.trustd.agent, which is a potential data
-				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
-				enableWeakerNetworkIsolation: true,
+				// `enableWeakerNetworkIsolation` is a macOS-only knob: it opens
+				// access to `com.apple.trustd.agent` so Go-based tools (gh,
+				// gcloud, terraform) can verify TLS certs when using
+				// httpProxyPort with a MITM proxy and custom CA. The flag does
+				// nothing on Linux, but on macOS it is also a potential data
+				// exfiltration path — so we only enable it where it actually
+				// buys us something. See:
+				// https://code.claude.com/docs/en/settings#sandbox-settings
+				...(process.platform === "darwin" && {
+					enableWeakerNetworkIsolation: true,
+				}),
 				// Run node-based package managers outside the sandbox. They spawn
 				// lifecycle scripts, compile native addons, and touch a long tail of
 				// paths that are impractical to fully enumerate. The egress proxy still

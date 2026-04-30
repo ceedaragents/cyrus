@@ -8,6 +8,14 @@ describe("buildPackageManagerHomeAllowances", () => {
 		expect(read).toContain("~/.config/gh/hosts.yml");
 	});
 
+	it("includes the Claude SDK shell-snapshots dir so the bash wrapper can source it", () => {
+		const { read, write } = buildPackageManagerHomeAllowances();
+		expect(read).toContain("~/.claude/shell-snapshots");
+		// Read-only — the SDK regenerates snapshots in the unsandboxed parent
+		// process, so sandboxed children never need write access.
+		expect(write).not.toContain("~/.claude/shell-snapshots");
+	});
+
 	it("covers caches/stores for every major node package manager", () => {
 		const { read, write } = buildPackageManagerHomeAllowances();
 
