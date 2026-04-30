@@ -82,11 +82,18 @@ function mapToolPatternToHookPatterns(pattern: string): string[] {
 	const name = parsed.name.toLowerCase();
 	const arg = parsed.argument;
 
-	// Bare tool names with no argument map to a Tool(...) gate.
+	// Bare tool names (no parentheses) mean "allow this tool unrestricted" in
+	// Claude SDK semantics. We must emit BOTH the preToolUse gate (`Tool(...)`)
+	// AND the path/command-level gate (`Read(**)`, `Write(**)`, `Shell(*)`),
+	// otherwise the SDK passes preToolUse but stops the actual file/shell
+	// hook because nothing in the allow list matches the path/command.
 	if (!arg) {
-		if (name === "bash" || name === "shell") return ["Tool(Shell)"];
-		if (name === "read" || name === "glob" || name === "grep")
-			return ["Tool(Read)"];
+		if (name === "bash" || name === "shell") {
+			return ["Tool(Shell)", "Shell(*)"];
+		}
+		if (name === "read" || name === "glob" || name === "grep") {
+			return ["Tool(Read)", "Read(**)"];
+		}
 		if (
 			name === "edit" ||
 			name === "write" ||
@@ -94,9 +101,10 @@ function mapToolPatternToHookPatterns(pattern: string): string[] {
 			name === "notebookedit" ||
 			name === "todowrite"
 		) {
-			return ["Tool(Write)"];
+			return ["Tool(Write)", "Write(**)"];
 		}
-		// Pass-through for unrecognized bare names.
+		// Pass-through for unrecognized bare names — only the preToolUse gate
+		// applies; SDK does not have a path-level hook for these.
 		const cap = parsed.name.charAt(0).toUpperCase() + parsed.name.slice(1);
 		return [`Tool(${cap})`];
 	}

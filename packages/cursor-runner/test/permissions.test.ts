@@ -43,7 +43,11 @@ describe("buildCyrusPermissionsConfig", () => {
 				"Write(src/**)",
 				"Shell(git)",
 				"Shell(git:*)",
+				// Bare `Bash` allow expands to BOTH the preToolUse gate
+				// (`Tool(Shell)`) AND the command-level gate (`Shell(*)`),
+				// so a hook on beforeShellExecution finds an allow match.
 				"Tool(Shell)",
+				"Shell(*)",
 				"Mcp(trigger:search_docs)",
 				"Mcp(linear:*)",
 			]),
@@ -65,7 +69,12 @@ describe("buildCyrusPermissionsConfig", () => {
 			allowedTools: ["Read", "Edit", "Write"],
 		});
 		expect(cfg.allow).toEqual(
-			expect.arrayContaining(["Tool(Read)", "Tool(Write)"]),
+			expect.arrayContaining([
+				"Tool(Read)",
+				"Read(**)",
+				"Tool(Write)",
+				"Write(**)",
+			]),
 		);
 		expect(cfg.deny).toEqual(
 			expect.arrayContaining(["Read(/etc/**)", "Write(/etc/**)"]),
@@ -95,5 +104,36 @@ describe("buildCyrusPermissionsConfig", () => {
 		expect(
 			buildAutoDenyPatterns({ workspace: ws, allowedTools: ["Read(src/**)"] }),
 		).toEqual([]);
+	});
+
+	// Regression for CYPACK-1150: a real production config of bare `Read` and
+	// `Bash` (no parens) was leaving the path-level hook (`beforeReadFile` and
+	// `beforeShellExecution`) without any allow match, so the SDK denied
+	// every file read and shell command after passing the preToolUse gate.
+	it("expands bare Read/Write/Bash to both Tool(...) and path-level allows", () => {
+		const ws = tempWorkspace();
+		const cfg = buildCyrusPermissionsConfig({
+			workspace: ws,
+			allowedTools: [
+				"Read",
+				"Write",
+				"Edit",
+				"Bash",
+				"Glob",
+				"Grep",
+				"TodoWrite",
+			],
+		});
+		// Every bare path-bearing name needs the path-level allow too.
+		expect(cfg.allow).toEqual(
+			expect.arrayContaining([
+				"Tool(Read)",
+				"Read(**)",
+				"Tool(Write)",
+				"Write(**)",
+				"Tool(Shell)",
+				"Shell(*)",
+			]),
+		);
 	});
 });
