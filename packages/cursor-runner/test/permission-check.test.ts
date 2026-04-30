@@ -105,6 +105,31 @@ describe("permission-check helper", () => {
 		expect(decision.permission).toBe("deny");
 	});
 
+	// Regression for CYPACK-1154/1155: the SDK fires preToolUse for MCP tools
+	// with `tool_name="MCP:<bare-tool>"` and NO command/url field — which
+	// means we cannot identify the logical server yet. Helper must defer
+	// to the subsequent beforeMCPExecution event (where command/url is
+	// present) instead of denying based on `Tool("MCP:get_issue")` against
+	// a `Tool(Read)` / `Tool(Bash)` allow list.
+	it("allows preToolUse for an MCP tool when allow list scopes via Mcp(server:*)", () => {
+		const { decision } = runHelper({
+			allow: [
+				"Tool(Read)",
+				"Tool(Bash)",
+				"Mcp(linear:*)", // the actual server-scoped allow comes from the user
+			],
+			mcpServers: [
+				{ name: "linear", commandLine: "node /path/to/linear-mcp.mjs" },
+			],
+			payload: {
+				hook_event_name: "preToolUse",
+				tool_name: "MCP:get_issue",
+				tool_input: { id: "CYPACK-1155" },
+			},
+		});
+		expect(decision.permission).toBe("allow");
+	});
+
 	it("denies an MCP call by exact Mcp(server:tool) pattern", () => {
 		const { decision } = runHelper({
 			deny: ["Mcp(linear:delete_issue)"],

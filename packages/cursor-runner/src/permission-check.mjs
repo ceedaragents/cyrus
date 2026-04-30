@@ -108,7 +108,16 @@ function lookupMcpServerName(p) {
 function getCandidates(p) {
 	const out = [];
 	if (eventName === "preToolUse") {
-		out.push({ kind: "Tool", value: p.tool_name ?? "" });
+		// The SDK fires `preToolUse` for MCP tools with `tool_name` prefixed
+		// `MCP:<bare-tool>` (e.g. `MCP:get_issue`) and NO `command`/`url`
+		// field — there is no way to identify the logical server yet. The
+		// subsequent `beforeMCPExecution` event has both the bare tool name
+		// AND the transport (`command`/`url`) which our server lookup uses
+		// to evaluate `Mcp(<server>:<tool>)` patterns. Defer to that stage
+		// here by returning no candidates (== allow).
+		const toolName = typeof p.tool_name === "string" ? p.tool_name : "";
+		if (toolName.startsWith("MCP:")) return [];
+		out.push({ kind: "Tool", value: toolName });
 	} else if (eventName === "beforeShellExecution") {
 		const cmd = p.command ?? "";
 		const trimmed = cmd.trim();
