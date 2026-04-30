@@ -321,14 +321,20 @@ export class RunnerConfigBuilder {
 			onError: input.onError,
 		};
 
-		// Cursor runner uses @cursor/sdk; only API key + sandbox passthrough.
-		// `sandbox` is currently a no-op pending @cursor/sdk exposing
-		// configureSandboxPrereqs (CYPACK-1149 bug filed with Cursor team).
+		// Cursor runner uses @cursor/sdk. Pass through API key, the same
+		// sandboxSettings shape Claude consumes (the runner translates it to
+		// Cursor's `.cursor/sandbox.json` schema), and the egress CA bundle
+		// path for MITM TLS trust in sandboxed children. SDK ≥1.0.11
+		// auto-discovers the bundled `cursorsandbox` helper from the
+		// platform-specific optionalDependency.
 		if (runnerType === "cursor") {
 			config.cursorApiKey = process.env.CURSOR_API_KEY || undefined;
-			config.sandbox = (process.env.CYRUS_SANDBOX || "disabled") as
-				| "enabled"
-				| "disabled";
+			if (input.sandboxSettings) {
+				config.sandboxSettings = input.sandboxSettings;
+			}
+			if (input.egressCaCertPath) {
+				config.egressCaCertPath = input.egressCaCertPath;
+			}
 		}
 
 		if (input.resumeSessionId) {

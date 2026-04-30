@@ -582,4 +582,143 @@ describe("CursorRunner (SDK adapter)", () => {
 			expect.arrayContaining(["Shell(rm)", "Shell(rm:*)"]),
 		);
 	});
+
+	it("writes .cursor/sandbox.json and passes sandboxOptions when sandbox enabled", async () => {
+		const workspace = tempWorkspace();
+		const cyrusHome = tempWorkspace();
+		let capturedAgentOpts: any = null;
+		const realCreate = sdkMock.create.getMockImplementation();
+		sdkMock.create.mockImplementationOnce(async (opts: any) => {
+			capturedAgentOpts = opts;
+			// Snapshot the sandbox.json that the runner just wrote (the SDK
+			// would read it during startup).
+			const fs = require("node:fs");
+			const path = require("node:path");
+			const sbPath = path.join(workspace, ".cursor", "sandbox.json");
+			const sandboxJson = fs.existsSync(sbPath)
+				? JSON.parse(fs.readFileSync(sbPath, "utf8"))
+				: null;
+			return realCreate
+				? realCreate(opts)
+				: {
+						agentId: "agent-sandbox",
+						model: undefined,
+						send: async () => ({
+							id: "r",
+							agentId: "agent-sandbox",
+							supports: () => true,
+							unsupportedReason: () => undefined,
+							stream: async function* () {},
+							conversation: async () => [],
+							wait: async () => ({ id: "r", status: "finished" as const }),
+							cancel: async () => {},
+							status: "finished" as const,
+							onDidChangeStatus: () => () => {},
+							result: undefined,
+							model: undefined,
+							durationMs: 0,
+							git: undefined,
+							createdAt: 0,
+						}),
+						close: () => {},
+						reload: async () => {},
+						listArtifacts: async () => [],
+						downloadArtifact: async () => Buffer.alloc(0),
+						[Symbol.asyncDispose]: async () => {},
+						_sandboxJson: sandboxJson,
+					};
+		});
+		sdkMock.__install({
+			agentId: "agent-sandbox",
+			events: [
+				{
+					type: "system",
+					subtype: "init",
+					agent_id: "agent-sandbox",
+					run_id: "r",
+				},
+				{
+					type: "status",
+					agent_id: "agent-sandbox",
+					run_id: "r",
+					status: "FINISHED",
+				},
+			],
+		});
+
+		const runner = new CursorRunner({
+			cyrusHome,
+			workingDirectory: workspace,
+			sandboxSettings: {
+				enabled: true,
+				network: {
+					allowedDomains: ["api.linear.app"],
+					httpProxyPort: 9876,
+				},
+				filesystem: {
+					allowWrite: [workspace, "/tmp/extra-write"],
+				},
+			},
+			egressCaCertPath: "/abs/ca.pem",
+		});
+
+		const prevHttpProxy = process.env.HTTP_PROXY;
+		const prevNodeCa = process.env.NODE_EXTRA_CA_CERTS;
+		try {
+			await runner.start("hi");
+		} finally {
+			// Confirm env was restored after session
+			expect(process.env.HTTP_PROXY).toBe(prevHttpProxy);
+			expect(process.env.NODE_EXTRA_CA_CERTS).toBe(prevNodeCa);
+		}
+
+		expect(capturedAgentOpts.local.sandboxOptions).toEqual({ enabled: true });
+
+		const fs = require("node:fs");
+		const path = require("node:path");
+		// sandbox.json should be removed at session end
+		expect(fs.existsSync(path.join(workspace, ".cursor", "sandbox.json"))).toBe(
+			false,
+		);
+	});
+
+	it("does not pass sandboxOptions.enabled=true when sandbox is disabled", async () => {
+		const workspace = tempWorkspace();
+		const cyrusHome = tempWorkspace();
+		let capturedAgentOpts: any = null;
+		sdkMock.create.mockImplementationOnce(async (opts: any) => {
+			capturedAgentOpts = opts;
+			return {
+				agentId: "agent-no-sb",
+				model: undefined,
+				send: async () => ({
+					id: "r",
+					agentId: "agent-no-sb",
+					supports: () => true,
+					unsupportedReason: () => undefined,
+					stream: async function* () {},
+					conversation: async () => [],
+					wait: async () => ({ id: "r", status: "finished" as const }),
+					cancel: async () => {},
+					status: "finished" as const,
+					onDidChangeStatus: () => () => {},
+					result: undefined,
+					model: undefined,
+					durationMs: 0,
+					git: undefined,
+					createdAt: 0,
+				}),
+				close: () => {},
+				reload: async () => {},
+				listArtifacts: async () => [],
+				downloadArtifact: async () => Buffer.alloc(0),
+				[Symbol.asyncDispose]: async () => {},
+			};
+		});
+
+		const runner = new CursorRunner({ cyrusHome, workingDirectory: workspace });
+		await runner.start("hi");
+
+		expect(capturedAgentOpts.local.sandboxOptions).toEqual({ enabled: false });
+	});
 });

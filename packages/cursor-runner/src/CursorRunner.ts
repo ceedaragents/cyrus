@@ -45,6 +45,7 @@ import {
 	buildCyrusPermissionsConfig,
 	type CyrusPermissionsConfig,
 } from "./permissions.js";
+import { buildCursorSandboxJson, buildSandboxEnv } from "./sandbox.js";
 import type {
 	CursorRunnerConfig,
 	CursorRunnerEvents,
@@ -60,6 +61,11 @@ type SDKSystemInitMessage = Extract<
 
 interface CursorHooksRestoreState {
 	hooksPath: string;
+	backupPath: string | null;
+}
+
+interface CursorSandboxRestoreState {
+	sandboxPath: string;
 	backupPath: string | null;
 }
 
@@ -414,6 +420,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private emittedToolUseIds = new Set<string>();
 	private logStream: WriteStream | null = null;
 	private hooksRestoreState: CursorHooksRestoreState | null = null;
+	private sandboxRestoreState: CursorSandboxRestoreState | null = null;
+	private sandboxEnvRestoreState: Map<string, string | undefined> | null = null;
 	private permissionsArtifactsInstalled = false;
 
 	constructor(config: CursorRunnerConfig) {
@@ -475,6 +483,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			const normalizedModel = normalizeCursorModel(this.config.model);
 			const mcpServers = mapCyrusMcpToSdk(this.config.mcpConfig);
 
+			const sandboxEnabled = Boolean(this.config.sandboxSettings?.enabled);
 			const baseAgentOptions = {
 				apiKey,
 				...(normalizedModel ? { model: { id: normalizedModel } } : {}),
@@ -483,9 +492,13 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 					// types accept `string | string[]`.
 					cwd: [workspace],
 					settingSources: ["project" as const],
-					// TODO(CYPACK-1149): re-enable sandbox once @cursor/sdk exports
-					// configureSandboxPrereqs — bug filed with the Cursor team.
-					// sandboxOptions: { enabled: this.config.sandbox === "enabled" },
+					// SDK ≥1.0.11 auto-discovers the bundled `cursorsandbox`
+					// helper from the platform-specific optionalDependency
+					// (e.g. `@cursor/sdk-darwin-arm64`). The corresponding
+					// `.cursor/sandbox.json` policy is written by
+					// `installPermissionsArtifacts` so it is in place before
+					// the SDK reads it during agent startup.
+					sandboxOptions: { enabled: sandboxEnabled },
 				},
 				...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
 			};
@@ -815,6 +828,86 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		console.log(
 			`[CursorRunner] Installed Cyrus permission hooks at ${hooksPath} (allow=${cfg.allow.length}, deny=${cfg.deny.length}, backup=${backupPath ? "yes" : "no"})`,
 		);
+
+		// 4. Sandbox policy file (only when sandbox is enabled). Cursor's
+		// `local.sandboxOptions.enabled: true` engages Apple Seatbelt /
+		// Linux Landlock; the policy below extends the default
+		// `workspace_readwrite` profile with allow/deny lists translated
+		// from the Cyrus / Claude SandboxSettings shape.
+		this.installSandboxArtifacts(workspace);
+	}
+
+	private installSandboxArtifacts(workspace: string): void {
+		const sandboxJson = buildCursorSandboxJson({
+			workspace,
+			sandboxSettings: this.config.sandboxSettings,
+			egressCaCertPath: this.config.egressCaCertPath,
+			additionalReadwritePaths: this.config.allowedDirectories ?? [],
+		});
+		if (!sandboxJson) return;
+
+		const cursorDir = join(workspace, ".cursor");
+		const sandboxPath = join(cursorDir, "sandbox.json");
+		const existed = existsSync(sandboxPath);
+		const backupPath = existed
+			? `${sandboxPath}.cyrus-backup-${Date.now()}-${process.pid}`
+			: null;
+		if (existed && backupPath) {
+			renameSync(sandboxPath, backupPath);
+		}
+		writeFileSync(
+			sandboxPath,
+			`${JSON.stringify(sandboxJson, null, "\t")}\n`,
+			"utf8",
+		);
+		this.sandboxRestoreState = { sandboxPath, backupPath };
+
+		// Apply env vars on `process.env` so any child shell process spawned
+		// by the SDK inherits them. We snapshot the previous values and
+		// restore them in `uninstallSandboxArtifacts`.
+		const env = buildSandboxEnv({
+			sandboxSettings: this.config.sandboxSettings,
+			egressCaCertPath: this.config.egressCaCertPath,
+		});
+		const restore = new Map<string, string | undefined>();
+		for (const k of Object.keys(env)) {
+			restore.set(k, process.env[k]);
+			process.env[k] = env[k];
+		}
+		this.sandboxEnvRestoreState = restore;
+
+		console.log(
+			`[CursorRunner] Installed Cursor sandbox policy at ${sandboxPath} (allowReadwrite=${sandboxJson.additionalReadwritePaths.length}, allowReadonly=${sandboxJson.additionalReadonlyPaths.length}, networkAllow=${sandboxJson.networkPolicy.allow.length}, backup=${backupPath ? "yes" : "no"})`,
+		);
+	}
+
+	private uninstallSandboxArtifacts(): void {
+		const restore = this.sandboxRestoreState;
+		if (restore) {
+			try {
+				if (existsSync(restore.sandboxPath)) unlinkSync(restore.sandboxPath);
+				if (restore.backupPath && existsSync(restore.backupPath)) {
+					renameSync(restore.backupPath, restore.sandboxPath);
+				}
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				console.warn(
+					`[CursorRunner] Failed to restore sandbox.json at ${restore.sandboxPath}: ${detail}`,
+				);
+			}
+			this.sandboxRestoreState = null;
+		}
+		const envRestore = this.sandboxEnvRestoreState;
+		if (envRestore) {
+			for (const [k, v] of envRestore.entries()) {
+				if (v === undefined) {
+					delete process.env[k];
+				} else {
+					process.env[k] = v;
+				}
+			}
+			this.sandboxEnvRestoreState = null;
+		}
 	}
 
 	private locatePermissionCheckSource(): string {
@@ -834,6 +927,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private uninstallPermissionsArtifacts(): void {
+		this.uninstallSandboxArtifacts();
 		if (!this.permissionsArtifactsInstalled) return;
 		const workspace = resolve(this.config.workingDirectory || cwd());
 		const cursorDir = join(workspace, ".cursor");
