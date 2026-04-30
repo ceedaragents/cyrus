@@ -487,6 +487,46 @@ export class EgressProxy {
 	}
 
 	/**
+	 * Single source of truth for the proxy's outgoing-request header shape.
+	 *
+	 * Both the plain-HTTP path (handleHttpRequest) and the TLS-termination
+	 * path (handleTlsTermination) need to:
+	 *   1. Forward the client's headers verbatim — except
+	 *   2. Strip `proxy-connection` (a hop-by-hop header that must not leak
+	 *      to the upstream — RFC 7230 §6.1).
+	 *   3. Optionally rewrite `Host` (the TLS path needs this because it has
+	 *      no client-supplied request line; the HTTP path gets a correct
+	 *      Host from the absolute-URI request).
+	 *   4. Apply per-domain transform headers from the network policy. These
+	 *      OVERWRITE any client-supplied value at the same key — the proxy is
+	 *      authoritative for transformed domains so agents can't smuggle
+	 *      credentials past it.
+	 *
+	 * Keeping this in one method means transform/strip/override semantics
+	 * cannot drift between the two code paths. The end-to-end HTTP transform
+	 * tests in EgressProxy.transforms.test.ts also cover the TLS path
+	 * indirectly because the merge logic is shared.
+	 */
+	private buildOutgoingHeaders(
+		incomingHeaders: import("node:http").IncomingHttpHeaders,
+		hostname: string,
+		hostOverride?: string,
+	): import("node:http").OutgoingHttpHeaders {
+		const headers: import("node:http").OutgoingHttpHeaders = {
+			...incomingHeaders,
+		};
+		delete headers["proxy-connection"];
+		if (hostOverride !== undefined) {
+			headers.host = hostOverride;
+		}
+		const transforms = this.getTransformsForDomain(hostname);
+		if (transforms) {
+			Object.assign(headers, transforms.headers);
+		}
+		return headers;
+	}
+
+	/**
 	 * Check if a domain requires TLS termination (has transform rules).
 	 */
 	private requiresTlsTermination(hostname: string): boolean {
@@ -566,13 +606,7 @@ export class EgressProxy {
 			);
 		}
 
-		// Apply header transforms
-		const transforms = this.getTransformsForDomain(hostname);
-		const headers = { ...clientReq.headers };
-		delete headers["proxy-connection"];
-		if (transforms) {
-			Object.assign(headers, transforms.headers);
-		}
+		const headers = this.buildOutgoingHeaders(clientReq.headers, hostname);
 
 		const options = {
 			hostname: parsedUrl.hostname,
@@ -695,13 +729,11 @@ export class EgressProxy {
 					);
 				}
 
-				const headers = { ...req.headers };
-				delete headers["proxy-connection"];
-				headers.host = hostname + (port !== 443 ? `:${port}` : "");
-
-				if (transforms) {
-					Object.assign(headers, transforms.headers);
-				}
+				const headers = this.buildOutgoingHeaders(
+					req.headers,
+					hostname,
+					hostname + (port !== 443 ? `:${port}` : ""),
+				);
 
 				const upstreamReq = httpsRequest(
 					{
@@ -764,7 +796,15 @@ export class EgressProxy {
 			clientSocket.on("error", () => bridge.destroy());
 			clientSocket.on("close", () => {
 				bridge.destroy();
+				// `close()` alone waits for idle keep-alive connections to time
+				// out (~5s+) before resolving. The MITM server is per-request
+				// and dies with the client tunnel — there's nothing legitimate
+				// to keep alive. closeAllConnections() (Node 18.2+) force-drops
+				// any idle sockets so resources are released immediately on
+				// tunnel teardown. Without this, EgressProxy.stop() blocks at
+				// shutdown and tests time out in afterEach.
 				localServer.close();
+				localServer.closeAllConnections();
 			});
 		});
 
