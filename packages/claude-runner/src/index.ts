@@ -9,7 +9,7 @@ export type {
 	StopHookInput,
 	WarmQuery,
 } from "@anthropic-ai/claude-agent-sdk";
-export { AbortError, ClaudeRunner } from "./ClaudeRunner.js";
+export { AbortError, ClaudeRunner, stripKeys } from "./ClaudeRunner.js";
 export {
 	availableTools,
 	getAllTools,

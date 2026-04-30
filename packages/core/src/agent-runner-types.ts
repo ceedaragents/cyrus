@@ -454,6 +454,18 @@ export interface AgentRunnerConfig {
 	onAskUserQuestion?: OnAskUserQuestion;
 	/** Logger instance for the runner */
 	logger?: ILogger;
+	/**
+	 * Env var names to strip from the inherited `repositoryEnv` (loaded from
+	 * the worktree's `.env` file) before merging into the child process env.
+	 *
+	 * Used by the GitHub credential brokering path to ensure real
+	 * `GITHUB_TOKEN` / `GH_TOKEN` values in a `.env` file never propagate to
+	 * the sandboxed agent — the proxy is the authoritative source of GitHub
+	 * credentials when brokering is on. Stripped keys CAN still be set via
+	 * the runner's `additionalEnv` (e.g. the brokered `GH_TOKEN` sentinel)
+	 * since the strip applies to `repositoryEnv` only.
+	 */
+	stripEnvKeys?: readonly string[];
 	/** Callback for each message received */
 	onMessage?: (message: AgentMessage) => void | Promise<void>;
 	/** Callback for errors */

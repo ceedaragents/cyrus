@@ -160,7 +160,10 @@ import {
 	RepositoryRouter,
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
-import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
+import {
+	RunnerConfigBuilder,
+	refreshGitHubBrokerPolicy,
+} from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SkillsPluginResolver } from "./SkillsPluginResolver.js";
@@ -252,6 +255,28 @@ export class EdgeWorker extends EventEmitter {
 		| null = null;
 	/** CA cert path for MITM TLS termination (passed per-session env, not process.env) */
 	private egressCaCertPath: string | null = null;
+	/**
+	 * Most-recently-resolved GitHub token used for credential brokering.
+	 * Tracked here so we can detect "no change" on refresh and skip pushing
+	 * an identical policy update — and so per-session config can decide
+	 * whether brokering is active without re-resolving the token. `null` =
+	 * brokering disabled or no token resolvable.
+	 */
+	private brokeredGitHubToken: string | null = null;
+	/**
+	 * Periodic timer that re-resolves the GitHub token and pushes an
+	 * updated policy when it changes. Cleared in `stop()` to avoid leaks.
+	 * App-installation tokens expire after ~1 hour; the refresh interval
+	 * (30 min) keeps the policy fresh well within that window.
+	 */
+	private brokerRefreshTimer: NodeJS.Timeout | null = null;
+	/**
+	 * One-shot guard for the "brokering enabled but no token resolvable"
+	 * WARN, so we don't spam the log on every refresh. Reset to false on
+	 * successful resolution so the warning fires again if the token later
+	 * disappears.
+	 */
+	private brokerWarningEmitted: boolean = false;
 	/**
 	 * Remote SessionStore that mirrors Claude SDK transcripts to the Cyrus
 	 * hosted control plane. Enabled when all three of `CYRUS_APP_URL`,
@@ -646,6 +671,24 @@ export class EdgeWorker extends EventEmitter {
 			if (!systemWideCert) {
 				this.egressCaCertPath = this.egressProxy.buildCACertBundle();
 			}
+
+			// GitHub credential brokering: resolve the workspace token, push a
+			// policy with Authorization-injecting transforms for api.github.com
+			// + github.com, and refresh every 30 min to stay ahead of the
+			// 1-hour App-token expiry. No-op when brokerGitHubCredentials is
+			// false or when no token is resolvable (WARN-once in that case).
+			await this.refreshBrokeredGitHubPolicy();
+			this.brokerRefreshTimer = setInterval(
+				() => {
+					this.refreshBrokeredGitHubPolicy().catch((error) => {
+						this.logger.error(
+							"🛡️  GitHub credential brokering: refresh failed",
+							error instanceof Error ? error : new Error(String(error)),
+						);
+					});
+				},
+				30 * 60 * 1000,
+			);
 		} else {
 			this.logger.info(
 				"🛡️  Sandbox egress proxy: disabled (set sandbox.enabled=true in config.json to enable)",
@@ -1102,6 +1145,18 @@ export class EdgeWorker extends EventEmitter {
 		event: GitHubWebhookEvent,
 	): Promise<string | undefined> {
 		if (event.installationToken) return event.installationToken;
+		return this.resolveStableGitHubToken();
+	}
+
+	/**
+	 * Workspace-scoped GitHub token resolution: App-installation token (via
+	 * GitHubAppTokenProvider's cache + auto-refresh) → `GITHUB_TOKEN` env
+	 * fallback. Unlike `resolveGitHubToken(event)`, this does NOT consult
+	 * the per-event installationToken tier — it's used by paths that need
+	 * a stable workspace-wide token (notably credential brokering), not
+	 * one tied to a specific webhook delivery.
+	 */
+	private async resolveStableGitHubToken(): Promise<string | undefined> {
 		if (this.gitHubAppTokenProvider) {
 			try {
 				return await this.gitHubAppTokenProvider.getToken();
@@ -1113,6 +1168,53 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 		return process.env.GITHUB_TOKEN;
+	}
+
+	/**
+	 * Resolve the current GitHub token and, if it changed, push a brokered
+	 * `NetworkPolicy` (api.github.com Bearer + github.com Basic) onto the
+	 * running egress proxy. Idempotent — returns early when the token
+	 * hasn't changed since the last push.
+	 *
+	 * No-op when:
+	 *   - the proxy isn't running (sandbox disabled, or proxy not yet started)
+	 *   - `sandbox.brokerGitHubCredentials` is explicitly false
+	 *   - no token is resolvable (logs WARN once, then proceeds without
+	 *     injecting — sessions that don't use GitHub still work)
+	 *
+	 * Called once after the proxy starts and again on a 30-min refresh
+	 * timer (well under the 1-hour App-token expiry).
+	 */
+	private async refreshBrokeredGitHubPolicy(): Promise<void> {
+		if (!this.egressProxy) return;
+
+		const result = await refreshGitHubBrokerPolicy({
+			brokerEnabled:
+				this.config.sandbox?.enabled === true &&
+				this.config.sandbox?.brokerGitHubCredentials !== false,
+			basePolicy: this.config.sandbox?.networkPolicy,
+			resolveToken: () => this.resolveStableGitHubToken(),
+			pushPolicy: (policy) => this.egressProxy!.updateNetworkPolicy(policy),
+			prevToken: this.brokeredGitHubToken,
+			warningEmittedAlready: this.brokerWarningEmitted,
+			emitWarning: () => {
+				this.logger.warn(
+					"🛡️  GitHub credential brokering is enabled but no token is " +
+						"resolvable (no GitHub App configured and GITHUB_TOKEN env is " +
+						"unset). Sandboxed gh/git calls to GitHub will fail. Configure " +
+						"a GitHub App or set GITHUB_TOKEN, OR set " +
+						"sandbox.brokerGitHubCredentials: false to silence this.",
+				);
+			},
+			emitInfo: () => {
+				this.logger.info(
+					"🛡️  GitHub credential brokering: policy refreshed (api.github.com Bearer + github.com Basic)",
+				);
+			},
+		});
+
+		this.brokeredGitHubToken = result.newToken;
+		this.brokerWarningEmitted = result.warningEmittedNow;
 	}
 
 	private async handleGitHubWebhook(
@@ -2413,6 +2515,15 @@ ${taskSection}`;
 			this.egressCaCertPath = null;
 		}
 
+		// Stop GitHub-broker refresh timer and reset state. Done after the
+		// proxy stops so any in-flight refresh can complete naturally.
+		if (this.brokerRefreshTimer) {
+			clearInterval(this.brokerRefreshTimer);
+			this.brokerRefreshTimer = null;
+		}
+		this.brokeredGitHubToken = null;
+		this.brokerWarningEmitted = false;
+
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
 	}
@@ -2423,6 +2534,13 @@ ${taskSection}`;
 	 * - enabled → enabled: update network policy on the running proxy
 	 * - disabled → enabled: start a new proxy
 	 * - enabled → disabled: stop the running proxy
+	 *
+	 * GitHub credential brokering follows the proxy lifecycle: refreshed
+	 * on enabled→enabled and disabled→enabled, torn down on enabled→disabled.
+	 * Crucially, the enabled→enabled path RE-PUSHES the brokered policy
+	 * after the user policy update — otherwise the user-policy push at
+	 * line `updateNetworkPolicy(newConfig.sandbox?.networkPolicy ?? {})`
+	 * would blow away the brokered transforms.
 	 */
 	private async applySandboxConfigChanges(
 		newConfig: EdgeWorkerConfig,
@@ -2442,6 +2560,10 @@ ${taskSection}`;
 			} else if (!this.egressCaCertPath) {
 				this.egressCaCertPath = this.egressProxy!.buildCACertBundle();
 			}
+			// Reset cached broker state so the next refresh definitely pushes
+			// (we just blew away its transforms with the user policy update).
+			this.brokeredGitHubToken = null;
+			await this.refreshBrokeredGitHubPolicy();
 		} else if (!wasEnabled && isEnabled) {
 			// Start proxy for the first time
 			this.logger.info("🛡️  Sandbox egress proxy: starting (config change)...");
@@ -2468,6 +2590,21 @@ ${taskSection}`;
 			if (!systemWideCert) {
 				this.egressCaCertPath = this.egressProxy.buildCACertBundle();
 			}
+			// Initial broker push + start refresh timer (mirrors start()).
+			await this.refreshBrokeredGitHubPolicy();
+			if (!this.brokerRefreshTimer) {
+				this.brokerRefreshTimer = setInterval(
+					() => {
+						this.refreshBrokeredGitHubPolicy().catch((error) => {
+							this.logger.error(
+								"🛡️  GitHub credential brokering: refresh failed",
+								error instanceof Error ? error : new Error(String(error)),
+							);
+						});
+					},
+					30 * 60 * 1000,
+				);
+			}
 		} else if (wasEnabled && !isEnabled) {
 			// Stop proxy
 			this.logger.info(
@@ -2477,6 +2614,13 @@ ${taskSection}`;
 			this.egressProxy = null;
 			this.sdkSandboxSettings = null;
 			this.egressCaCertPath = null;
+			// Tear down broker state alongside the proxy.
+			if (this.brokerRefreshTimer) {
+				clearInterval(this.brokerRefreshTimer);
+				this.brokerRefreshTimer = null;
+			}
+			this.brokeredGitHubToken = null;
+			this.brokerWarningEmitted = false;
 		}
 	}
 
@@ -6014,6 +6158,14 @@ ${input.userComment}
 			plugins: await this.skillsPluginResolver.resolve(),
 			sandboxSettings: this.sdkSandboxSettings ?? undefined,
 			egressCaCertPath: this.egressCaCertPath ?? undefined,
+			// Brokering is active for THIS session iff: sandbox is on,
+			// brokerGitHubCredentials isn't explicitly disabled, AND we
+			// successfully resolved a token at proxy-start (or refresh).
+			// `brokeredGitHubToken` is null in any of those failure cases.
+			brokerGitHubCredentials:
+				this.config.sandbox?.enabled === true &&
+				this.config.sandbox?.brokerGitHubCredentials !== false &&
+				this.brokeredGitHubToken !== null,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},

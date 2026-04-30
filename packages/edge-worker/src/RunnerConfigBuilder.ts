@@ -15,6 +15,7 @@ import type {
 	AgentRunnerConfig,
 	CyrusAgentSession,
 	ILogger,
+	NetworkPolicy,
 	OnAskUserQuestion,
 	RepositoryConfig,
 	RunnerType,
@@ -127,6 +128,17 @@ export interface IssueRunnerConfigInput {
 	sandboxSettings?: SandboxSettings;
 	/** CA cert path for MITM TLS termination — passed via child process env */
 	egressCaCertPath?: string;
+	/**
+	 * When true, the GitHub credential brokering session env is injected
+	 * (sentinel `GH_TOKEN`, git credential helper) and `GITHUB_TOKEN` /
+	 * `GH_TOKEN` / `GH_ENTERPRISE_TOKEN` are stripped from the inherited
+	 * `repositoryEnv`. EdgeWorker decides this based on
+	 * `sandbox.brokerGitHubCredentials` AND a successfully-resolved token.
+	 *
+	 * The proxy-side policy update happens separately in EdgeWorker via
+	 * `egressProxy.updateNetworkPolicy(buildGitHubBrokeredPolicy(...))`.
+	 */
+	brokerGitHubCredentials?: boolean;
 }
 
 /**
@@ -182,6 +194,253 @@ export function buildEgressCaEnv(
 		AWS_CA_BUNDLE: egressCaCertPath,
 		// Deno
 		DENO_CERT: egressCaCertPath,
+	};
+}
+
+// ─── GitHub credential brokering ───────────────────────────────────────────
+//
+// When `sandbox.brokerGitHubCredentials` is true (default), the egress proxy
+// rewrites Authorization headers on outbound requests to GitHub so the real
+// token never enters the sandboxed session env. The Cloudflare "Outbound
+// Workers TLS auth" model: agent code calls fetch() with no real auth, the
+// proxy intercepts and injects the credentials at request time.
+//
+// The three exports below are the building blocks:
+//   - GITHUB_BROKER_SENTINEL_TOKEN — the placeholder agents see.
+//   - GITHUB_BROKERED_STRIP_ENV_KEYS — env vars to scrub from session env.
+//   - buildGitHubBrokeredPolicy / buildGitHubBrokeredEnv — pure functions
+//     that produce the proxy-side and session-side state respectively.
+
+/**
+ * The placeholder string that takes the place of a real token in the
+ * sandboxed session's environment. gh CLI checks "is GH_TOKEN set?" before
+ * making API calls; this satisfies that check without exposing anything
+ * usable. The proxy's transform overwrites the Authorization header at
+ * request time with the real token. Any value would work as long as it's:
+ *   - non-empty (otherwise gh CLI's auth check fails)
+ *   - obviously identifiable in transcripts and logs as a sentinel
+ *   - not interpretable as a real GitHub token format (i.e. not starting
+ *     with `ghp_`, `ghs_`, `gho_`, etc.)
+ */
+export const GITHUB_BROKER_SENTINEL_TOKEN = "x-cyrus-brokered";
+
+/**
+ * Env var names that carry real GitHub credentials. When brokering is on,
+ * these are filtered out of the session's `repositoryEnv` (loaded from
+ * `.env` files in the worktree) so an agent that reads `process.env`
+ * inside the sandbox can never see a real token.
+ */
+export const GITHUB_BROKERED_STRIP_ENV_KEYS = [
+	"GITHUB_TOKEN",
+	"GH_TOKEN",
+	"GH_ENTERPRISE_TOKEN",
+] as const;
+
+/**
+ * Build a `NetworkPolicy` that layers GitHub credential-brokering transforms
+ * onto a base policy, given a real GitHub token resolved from the App
+ * installation or PAT. Pure function; the caller (EdgeWorker) is responsible
+ * for resolving the token and pushing the result via `updateNetworkPolicy`.
+ *
+ * Brokered transforms:
+ *   - `api.github.com` → `Authorization: Bearer <token>` (gh CLI shape).
+ *   - `github.com`     → `Authorization: Basic base64("x-access-token:<token>")`
+ *     (git over HTTPS shape; `x-access-token` is the canonical username for
+ *     GitHub App installation tokens, also accepted for PATs).
+ *
+ * Composition rules:
+ *   - If `basePolicy` is undefined or has no `allow` entries, returns a
+ *     deny-all-with-allow policy containing only the two brokered domains.
+ *   - If `basePolicy.preset === "trusted"` is set, the preset is preserved
+ *     untouched — `parsePolicy()` in EgressProxy will expand it as usual,
+ *     and the explicit api.github.com / github.com entries we add here will
+ *     take precedence over the preset's empty rule for those same domains
+ *     (per the existing `{ ...presetAllow, ...explicitAllow }` merge order).
+ *   - If `basePolicy.allow` already contains entries for these domains, the
+ *     brokered transform is APPENDED as an additional rule. Per
+ *     `parsePolicy()`'s merge order (later rules win on key conflict), this
+ *     means a user-supplied `Authorization` transform would be overridden
+ *     by the broker. Other user-supplied headers on the same domain merge
+ *     in unchanged.
+ *
+ * Pre-conditions: `token` must be non-empty. Caller checks for a null/empty
+ * token and skips brokering — this function does not no-op silently.
+ */
+export function buildGitHubBrokeredPolicy(
+	basePolicy: NetworkPolicy | undefined,
+	token: string,
+): NetworkPolicy {
+	if (!token) {
+		throw new Error(
+			"buildGitHubBrokeredPolicy requires a non-empty token; caller must " +
+				"check token resolution before invoking",
+		);
+	}
+
+	// Bearer for the API surface. `Authorization: Bearer <token>` is what
+	// gh CLI sends when GH_TOKEN is set.
+	const bearerHeader = `Bearer ${token}`;
+
+	// Basic for git over HTTPS. Username is "x-access-token" (GitHub's
+	// canonical pattern for installation tokens; PATs also work with this
+	// or any other non-empty username).
+	const basicHeader = `Basic ${Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")}`;
+
+	const brokeredEntries: NonNullable<NetworkPolicy["allow"]> = {
+		"api.github.com": [
+			{ transform: [{ headers: { Authorization: bearerHeader } }] },
+		],
+		"github.com": [
+			{ transform: [{ headers: { Authorization: basicHeader } }] },
+		],
+	};
+
+	// Compose with the base policy. Existing rules for these two domains
+	// are preserved; the brokered rule is appended so its transform is the
+	// last-merged (and therefore winning) Authorization value per
+	// EgressProxy.parsePolicy()'s Object.assign-based merge.
+	const baseAllow = basePolicy?.allow ?? {};
+	const composedAllow: NonNullable<NetworkPolicy["allow"]> = { ...baseAllow };
+	for (const [host, brokeredRules] of Object.entries(brokeredEntries)) {
+		const existing = composedAllow[host] ?? [];
+		composedAllow[host] = [...existing, ...brokeredRules];
+	}
+
+	return {
+		...basePolicy,
+		allow: composedAllow,
+	};
+}
+
+/**
+ * Dependencies + previous state for `refreshGitHubBrokerPolicy`.
+ *
+ * Extracted as an explicit interface so the function is testable without an
+ * EdgeWorker instance — the caller (EdgeWorker.refreshBrokeredGitHubPolicy)
+ * threads its own state in and persists the returned result. Pure in the
+ * sense that the function has no internal state; all branching is a
+ * function of the deps it is handed.
+ */
+export interface GitHubBrokerRefreshDeps {
+	/**
+	 * Whether brokering is enabled for this configuration. When false, the
+	 * helper short-circuits to `{ token: null, warningEmittedNow: false }`.
+	 * Caller is still expected to call this on each refresh tick — making
+	 * the gating local to the helper means EdgeWorker doesn't have to
+	 * duplicate the gate logic at every call site.
+	 */
+	brokerEnabled: boolean;
+	/**
+	 * The user-configured base policy. The helper composes the brokered
+	 * transforms on top via `buildGitHubBrokeredPolicy(basePolicy, token)`.
+	 */
+	basePolicy: NetworkPolicy | undefined;
+	/**
+	 * Workspace-stable token resolver. Returns `undefined` when no token
+	 * is resolvable. `EdgeWorker.resolveStableGitHubToken` is the
+	 * production binding.
+	 */
+	resolveToken: () => Promise<string | undefined>;
+	/**
+	 * Push the resulting policy to the proxy. The production binding is
+	 * `egressProxy.updateNetworkPolicy(policy)`.
+	 */
+	pushPolicy: (policy: NetworkPolicy) => void;
+	/** Last token successfully pushed (for change-detection). */
+	prevToken: string | null;
+	/** True if the WARN-once for "no token" has already fired. */
+	warningEmittedAlready: boolean;
+	/** Bound logger.warn — called only when emitting the WARN-once. */
+	emitWarning: () => void;
+	/** Bound logger.info — called when a fresh policy is actually pushed. */
+	emitInfo: () => void;
+}
+
+/**
+ * Resolve and (if changed) push a brokered GitHub `NetworkPolicy` onto the
+ * proxy. Returns the new token + WARN-latch state for the caller to persist.
+ *
+ * Behavior:
+ *   - `brokerEnabled: false` → no-op, returns `{ newToken: null, warningEmittedNow: false }`.
+ *   - resolver returns falsy → if `warningEmittedAlready` is false, emit WARN
+ *     once; return `{ newToken: null, warningEmittedNow: true }` so the
+ *     latch persists on subsequent calls. The latch is reset (via
+ *     `newToken !== null && !warningEmittedAlready` semantics in the
+ *     caller) once a token resolves successfully.
+ *   - resolver returns same token as `prevToken` → no policy push, return
+ *     `{ newToken: token, warningEmittedNow: false }` (the policy is
+ *     already current; just clear the latch).
+ *   - resolver returns a NEW token → call `buildGitHubBrokeredPolicy` and
+ *     `pushPolicy`, return the new token.
+ */
+export async function refreshGitHubBrokerPolicy(
+	deps: GitHubBrokerRefreshDeps,
+): Promise<{ newToken: string | null; warningEmittedNow: boolean }> {
+	if (!deps.brokerEnabled) {
+		return { newToken: null, warningEmittedNow: false };
+	}
+
+	const token = await deps.resolveToken();
+	if (!token) {
+		if (!deps.warningEmittedAlready) deps.emitWarning();
+		return { newToken: null, warningEmittedNow: true };
+	}
+
+	if (deps.prevToken === token) {
+		// Token is current; just clear the WARN latch (token resolution is
+		// healthy). No policy push.
+		return { newToken: token, warningEmittedNow: false };
+	}
+
+	const brokeredPolicy = buildGitHubBrokeredPolicy(deps.basePolicy, token);
+	deps.pushPolicy(brokeredPolicy);
+	deps.emitInfo();
+	return { newToken: token, warningEmittedNow: false };
+}
+
+/**
+ * Build the per-session env vars that make sandboxed `gh` and `git`
+ * unconditionally route GitHub auth through the egress proxy.
+ *
+ * Returns:
+ *   - `GH_TOKEN` — sentinel placeholder. gh CLI's auth check passes; the
+ *     proxy overwrites the Authorization header with the real token at
+ *     request time. The sandboxed agent can read this env var, but it's
+ *     not usable for anything outside the proxy's reach.
+ *   - `GIT_TERMINAL_PROMPT=0` — git never opens an interactive prompt,
+ *     even if the credential-helper handshake somehow misroutes. Prevents
+ *     a sandboxed git push from hanging.
+ *   - `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` —
+ *     register an inline credential helper for `https://github.com` that
+ *     always returns `username=x-access-token` and a sentinel password.
+ *     git then sends `Authorization: Basic base64("x-access-token:<sentinel>")`,
+ *     which the proxy overwrites with the real Basic header. (The env-var
+ *     route is the only way to inject git config without writing to disk;
+ *     see git-config(1) §"GIT_CONFIG_COUNT".)
+ *
+ * Returns `{}` when `enabled: false` — caller spreads unconditionally.
+ */
+export function buildGitHubBrokeredEnv(opts: {
+	enabled: boolean;
+}): Record<string, string> {
+	if (!opts.enabled) return {};
+
+	// Inline credential helper: a single shell function that prints the
+	// helper protocol response. git invokes it as `<helper> get` and reads
+	// `username=...` and `password=...` lines from stdout. The leading `!`
+	// tells git this is a shell snippet, not a binary path.
+	const credentialHelper = `!f() { echo username=x-access-token; echo password=${GITHUB_BROKER_SENTINEL_TOKEN}; }; f`;
+
+	return {
+		// gh CLI auth marker. Real Authorization header is overwritten by
+		// the proxy's transform at request time.
+		GH_TOKEN: GITHUB_BROKER_SENTINEL_TOKEN,
+		// Belt: prevent any interactive prompt if the helper somehow misfires.
+		GIT_TERMINAL_PROMPT: "0",
+		// Suspenders: register the credential helper without touching disk.
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+		GIT_CONFIG_VALUE_0: credentialHelper,
 	};
 }
 
@@ -472,6 +731,15 @@ export class RunnerConfigBuilder {
 			...(runnerType === "claude" &&
 				input.sandboxSettings &&
 				this.buildSandboxConfig(input)),
+			// GitHub credential brokering — strip real GITHUB_TOKEN/GH_TOKEN
+			// from `repositoryEnv` (loaded from .env files) so they never
+			// reach the sandboxed agent. The sentinel GH_TOKEN replacement
+			// is set in additionalEnv via buildGitHubBrokeredEnv (above).
+			// EdgeWorker only sets brokerGitHubCredentials true after
+			// resolving a real token; otherwise this stays unset.
+			...(input.brokerGitHubCredentials === true && {
+				stripEnvKeys: GITHUB_BROKERED_STRIP_ENV_KEYS,
+			}),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
@@ -655,6 +923,13 @@ export class RunnerConfigBuilder {
 			// CA-trust env vars (empty when systemWideCert is true and
 			// EdgeWorker passes egressCaCertPath: null).
 			...buildEgressCaEnv(input.egressCaCertPath),
+			// GitHub credential-brokering session env (empty when EdgeWorker
+			// can't resolve a token, or when brokerGitHubCredentials is false).
+			// The matching proxy-side policy update happens in EdgeWorker via
+			// updateNetworkPolicy.
+			...buildGitHubBrokeredEnv({
+				enabled: input.brokerGitHubCredentials === true,
+			}),
 		};
 
 		result.additionalEnv = additionalEnv;

@@ -934,6 +934,146 @@ describe("EgressProxy.updateNetworkPolicy: transform state is fully replaced", (
 	});
 });
 
+// ─── GitHub credential brokering: sentinel overwrite (end-to-end) ──────────
+//
+// The brokering contract: agents see a sentinel `GH_TOKEN` (and a git
+// credential helper that returns the same sentinel). gh / git emit
+// `Authorization: ... <sentinel>`. The proxy MITM-overwrites Authorization
+// at request time with the real token — same security model as Cloudflare's
+// "Outbound Workers TLS auth" feature.
+//
+// We can't route to api.github.com from a unit test (the proxy would
+// forward there for real). Instead we mimic the brokered policy shape
+// against a 127.0.0.1 upstream — same `Authorization`-overwriting
+// transform mechanic; the broker-policy.test.ts file already pins the
+// api.github.com / github.com hostname binding separately.
+
+describe("EgressProxy: brokered-policy sentinel overwrite (end-to-end via plain HTTP)", () => {
+	let proxy: EgressProxy;
+	let upstream: UpstreamHandle;
+	let cyrusHome: string;
+
+	beforeEach(async () => {
+		upstream = await startUpstream();
+		cyrusHome = freshHome();
+	});
+
+	afterEach(async () => {
+		if (proxy) await proxy.stop();
+		await upstream.close();
+		if (existsSync(cyrusHome))
+			rmSync(cyrusHome, { recursive: true, force: true });
+	});
+
+	it("overwrites a client-supplied sentinel Bearer with the broker's real Bearer", async () => {
+		// Mimics gh CLI: agent sees GH_TOKEN=x-cyrus-brokered → sends
+		// `Authorization: Bearer x-cyrus-brokered`. Proxy's transform replaces
+		// it with the real token before reaching upstream.
+		const REAL_TOKEN = "ghs_real_installation_token";
+		const SENTINEL = "x-cyrus-brokered";
+		const policy: NetworkPolicy = {
+			allow: {
+				"127.0.0.1": [
+					{
+						transform: [{ headers: { Authorization: `Bearer ${REAL_TOKEN}` } }],
+					},
+				],
+			},
+		};
+		proxy = new EgressProxy(makeConfig({ networkPolicy: policy }), cyrusHome);
+		await proxy.start();
+
+		await fetchViaProxy(
+			proxy.getHttpProxyPort(),
+			{ hostname: upstream.hostname, port: upstream.port },
+			{ authorization: `Bearer ${SENTINEL}` },
+		);
+
+		expect(upstream.requests[0].headers.authorization).toBe(
+			`Bearer ${REAL_TOKEN}`,
+		);
+	});
+
+	it("overwrites a client-supplied sentinel Basic with the broker's real Basic", async () => {
+		// Mimics git over HTTPS: credential helper returns username=x-access-token
+		// + password=x-cyrus-brokered → git sends Basic base64("x-access-token:x-cyrus-brokered").
+		// Proxy's transform replaces with Basic base64("x-access-token:<real>").
+		const REAL_TOKEN = "ghs_real_token_b";
+		const SENTINEL = "x-cyrus-brokered";
+		const realBasic = `Basic ${Buffer.from(`x-access-token:${REAL_TOKEN}`, "utf8").toString("base64")}`;
+		const sentinelBasic = `Basic ${Buffer.from(`x-access-token:${SENTINEL}`, "utf8").toString("base64")}`;
+		const policy: NetworkPolicy = {
+			allow: {
+				"127.0.0.1": [
+					{ transform: [{ headers: { Authorization: realBasic } }] },
+				],
+			},
+		};
+		proxy = new EgressProxy(makeConfig({ networkPolicy: policy }), cyrusHome);
+		await proxy.start();
+
+		await fetchViaProxy(
+			proxy.getHttpProxyPort(),
+			{ hostname: upstream.hostname, port: upstream.port },
+			{ authorization: sentinelBasic },
+		);
+
+		// Verify the upstream got the real Basic header.
+		expect(upstream.requests[0].headers.authorization).toBe(realBasic);
+		// And the sentinel did NOT survive the overwrite.
+		expect(upstream.requests[0].headers.authorization).not.toBe(sentinelBasic);
+		// Decode the upstream-received base64 — must match the real token.
+		const decoded = Buffer.from(
+			(upstream.requests[0].headers.authorization as string).replace(
+				/^Basic /,
+				"",
+			),
+			"base64",
+		).toString("utf8");
+		expect(decoded).toBe(`x-access-token:${REAL_TOKEN}`);
+	});
+
+	it("brokering applied via updateNetworkPolicy: same overwrite property as construct-time", async () => {
+		// EdgeWorker pushes the brokered policy via `updateNetworkPolicy`
+		// after the proxy has started (the production path). Verify the
+		// overwrite holds when the policy is installed dynamically rather
+		// than at construction.
+		proxy = new EgressProxy(
+			makeConfig({ networkPolicy: { allow: {} } }),
+			cyrusHome,
+		);
+		await proxy.start();
+
+		// Initially: deny-all (no brokering applied), request is 403'd.
+		const before = await fetchViaProxy(proxy.getHttpProxyPort(), {
+			hostname: upstream.hostname,
+			port: upstream.port,
+		});
+		expect(before.status).toBe(403);
+
+		// Push brokered policy at runtime.
+		const REAL_TOKEN = "ghs_dynamic_real";
+		proxy.updateNetworkPolicy({
+			allow: {
+				"127.0.0.1": [
+					{
+						transform: [{ headers: { Authorization: `Bearer ${REAL_TOKEN}` } }],
+					},
+				],
+			},
+		});
+
+		// Now allowed, and Authorization overwritten.
+		await fetchViaProxy(
+			proxy.getHttpProxyPort(),
+			{ hostname: upstream.hostname, port: upstream.port },
+			{ authorization: "Bearer x-cyrus-brokered" },
+		);
+		const lastRequest = upstream.requests[upstream.requests.length - 1];
+		expect(lastRequest.headers.authorization).toBe(`Bearer ${REAL_TOKEN}`);
+	});
+});
+
 describe("EgressProxy.buildCACertBundle", () => {
 	let proxy: EgressProxy;
 	let cyrusHome: string;

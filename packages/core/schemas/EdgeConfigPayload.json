@@ -905,6 +905,9 @@
 				},
 				"logRequests": {
 					"type": "boolean"
+				},
+				"brokerGitHubCredentials": {
+					"type": "boolean"
 				}
 			},
 			"required": ["httpProxyPort", "socksProxyPort"],

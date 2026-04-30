@@ -52,6 +52,18 @@ export interface ClaudeRunnerConfig {
 	sandbox?: SandboxSettings; // Sandbox settings (enabled, network proxy ports, etc.)
 	/** Additional environment variables to pass to the Claude child process (merged after process.env) */
 	additionalEnv?: Record<string, string>;
+	/**
+	 * Env var names to strip from the inherited `repositoryEnv` (loaded from
+	 * the worktree's .env file) before merging into the child process env.
+	 *
+	 * Used by the GitHub credential brokering path to ensure real
+	 * `GITHUB_TOKEN` / `GH_TOKEN` values present in a `.env` file never
+	 * propagate to the sandboxed agent — the proxy is the authoritative
+	 * source of GitHub credentials when brokering is on. The stripped keys
+	 * can still be set via `additionalEnv` (e.g. the brokered `GH_TOKEN`
+	 * sentinel), since the strip applies to `repositoryEnv` only.
+	 */
+	stripEnvKeys?: readonly string[];
 	pathToClaudeCodeExecutable?: string; // Explicit path to Claude Code CLI executable (auto-resolved if not set)
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
 	/**

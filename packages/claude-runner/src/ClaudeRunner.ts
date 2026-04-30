@@ -219,6 +219,32 @@ function flattenSanitizedQueryOptions(
 	return out;
 }
 
+/**
+ * Return a shallow copy of `env` with `keysToStrip` removed.
+ *
+ * Pure function, exported for tests. Used at the env-merge step to filter
+ * `repositoryEnv` (loaded from the worktree's `.env` file) before it reaches
+ * the child process — the strip path that makes GitHub credential brokering
+ * actually deliver isolation. See `buildGitHubBrokeredEnv` and
+ * `GITHUB_BROKERED_STRIP_ENV_KEYS` in cyrus-edge-worker for the wiring.
+ *
+ * Empty / undefined `keysToStrip` returns the input unchanged so callers
+ * can spread `stripKeys(env, undefined)` unconditionally without paying
+ * for a filter when stripping isn't enabled.
+ */
+export function stripKeys(
+	env: Record<string, string>,
+	keysToStrip: readonly string[] | undefined,
+): Record<string, string> {
+	if (!keysToStrip || keysToStrip.length === 0) return env;
+	const stripSet = new Set(keysToStrip);
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(env)) {
+		if (!stripSet.has(k)) out[k] = v;
+	}
+	return out;
+}
+
 export declare interface ClaudeRunner {
 	on<K extends keyof ClaudeRunnerEvents>(
 		event: K,
@@ -648,7 +674,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						// investigated. The sandbox requirements precheck is still run
 						// above so the diagnostics remain available when we re-enable.
 						// See: CYPACK-1108.
-						...this.repositoryEnv,
+						//
+						// `stripEnvKeys` filters `repositoryEnv` only (the .env-loaded
+						// inheritance) — not `additionalEnv`, which is intentional
+						// session-scoped state from RunnerConfigBuilder (e.g. brokered
+						// `GH_TOKEN` sentinel). Stripping at this level is what makes
+						// GitHub credential brokering actually deliver isolation: a real
+						// `GITHUB_TOKEN` in the worktree's .env never reaches the child.
+						...stripKeys(this.repositoryEnv, this.config.stripEnvKeys),
 						...this.config.additionalEnv,
 						// When logging at DEBUG level, enable the SDK's own debug output so
 						// --debug-to-stderr and DEBUG=1 propagate to the Claude subprocess.
