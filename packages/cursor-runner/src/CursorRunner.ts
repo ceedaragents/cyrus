@@ -123,6 +123,7 @@ function createAssistantToolUseMessage(
 		model: "cursor-agent",
 		stop_reason: null,
 		stop_sequence: null,
+		stop_details: null,
 		usage: {
 			input_tokens: 0,
 			output_tokens: 0,
@@ -171,6 +172,7 @@ function createAssistantBetaMessage(
 		model: "cursor-agent",
 		stop_reason: null,
 		stop_sequence: null,
+		stop_details: null,
 		usage: {
 			input_tokens: 0,
 			output_tokens: 0,
