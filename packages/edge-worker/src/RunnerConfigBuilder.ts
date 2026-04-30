@@ -321,21 +321,20 @@ export class RunnerConfigBuilder {
 			onError: input.onError,
 		};
 
-		// Cursor runner-specific wiring for offline/headless harness
+		// Cursor runner uses @cursor/sdk. Pass through API key, the same
+		// sandboxSettings shape Claude consumes (the runner translates it to
+		// Cursor's `.cursor/sandbox.json` schema), and the egress CA bundle
+		// path for MITM TLS trust in sandboxed children. SDK ≥1.0.11
+		// auto-discovers the bundled `cursorsandbox` helper from the
+		// platform-specific optionalDependency.
 		if (runnerType === "cursor") {
-			const approvalPolicy = (process.env.CYRUS_APPROVAL_POLICY || "never") as
-				| "never"
-				| "on-request"
-				| "on-failure"
-				| "untrusted";
-			config.cursorPath =
-				process.env.CURSOR_AGENT_PATH || process.env.CURSOR_PATH || undefined;
 			config.cursorApiKey = process.env.CURSOR_API_KEY || undefined;
-			config.askForApproval = approvalPolicy;
-			config.approveMcps = true;
-			config.sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
-				| "enabled"
-				| "disabled";
+			if (input.sandboxSettings) {
+				config.sandboxSettings = input.sandboxSettings;
+			}
+			if (input.egressCaCertPath) {
+				config.egressCaCertPath = input.egressCaCertPath;
+			}
 		}
 
 		if (input.resumeSessionId) {
