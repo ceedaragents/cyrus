@@ -44,6 +44,27 @@ export class ActivityPoster {
 		}
 	}
 
+	async postThoughtActivity(
+		sessionId: string,
+		workspaceId: string,
+		body: string,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			return;
+		}
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body },
+			},
+			"thought activity",
+		);
+	}
+
 	async postInstantAcknowledgment(
 		sessionId: string,
 		workspaceId: string,
