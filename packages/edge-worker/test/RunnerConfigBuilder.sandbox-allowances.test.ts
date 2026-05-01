@@ -5,7 +5,17 @@ describe("buildPackageManagerHomeAllowances", () => {
 	it("includes the explicitly requested read-only config files", () => {
 		const { read } = buildPackageManagerHomeAllowances();
 		expect(read).toContain("~/.gitconfig");
-		expect(read).toContain("~/.config/gh/hosts.yml");
+		expect(read).toContain("~/.config/git");
+		expect(read).toContain("~/.config/gh/config.yml");
+		expect(read).toContain("~/.ssh/known_hosts");
+	});
+
+	it("excludes credential-bearing files from the read allowlist", () => {
+		// hosts.yml stores gh OAuth tokens — agents must never see it.
+		// Credential brokering is the supported path for GitHub auth.
+		const { read, write } = buildPackageManagerHomeAllowances();
+		expect(read).not.toContain("~/.config/gh/hosts.yml");
+		expect(write).not.toContain("~/.config/gh/hosts.yml");
 	});
 
 	it("covers caches/stores for every major node package manager", () => {
@@ -43,7 +53,8 @@ describe("buildPackageManagerHomeAllowances", () => {
 	it("does not grant write access to read-only config files", () => {
 		const { write } = buildPackageManagerHomeAllowances();
 		expect(write).not.toContain("~/.gitconfig");
-		expect(write).not.toContain("~/.config/gh/hosts.yml");
+		expect(write).not.toContain("~/.config/git");
+		expect(write).not.toContain("~/.config/gh/config.yml");
 		expect(write).not.toContain("~/.npmrc");
 	});
 });

@@ -459,13 +459,18 @@ export function buildPackageManagerHomeAllowances(): {
 	write: string[];
 } {
 	// Read-only config files that tools commonly consult during install/auth.
+	// IMPORTANT: do not include any file that holds a real credential —
+	// notably `~/.config/gh/hosts.yml` (gh OAuth tokens). Credential brokering
+	// is the supported path for GitHub auth from inside the sandbox; tokens
+	// must never reach the agent's process env or filesystem view.
 	const readOnlyConfigs = [
 		"~/.gitconfig",
 		// Git's XDG config dir — covers ~/.config/git/config and ~/.config/git/ignore,
 		// which git tries to access on nearly every command and warns about if missing
 		// from the sandbox read list.
 		"~/.config/git",
-		"~/.config/gh/hosts.yml",
+		// gh CLI's non-credential config (UI prefs, default editor, etc.).
+		// `hosts.yml` is intentionally excluded — it stores OAuth tokens.
 		"~/.config/gh/config.yml",
 		// SSH known_hosts — needed by git and other tools that ssh to git hosts
 		// (github.com, gitlab.com, etc.) to verify host keys without an interactive
