@@ -176,3 +176,125 @@ describe("formatMemoryPressureMessage", () => {
 		expect(msg).not.toMatch(/rss|heap|memory|%/i);
 	});
 });
+
+describe("checkMemoryHealth — partial-threshold semantics (learning tests)", () => {
+	it("ignores RSS when only minAvailableMemoryMb is configured", () => {
+		// RSS is at 95% (would trip if maxRssPercent were set), but we
+		// only configured the free-memory threshold.
+		const sources = sourcesFor({
+			rss: 3.8 * GB,
+			total: 4 * GB,
+			free: 2 * GB,
+			heapUsed: 100 * 1024 * 1024,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{ enabled: true, minAvailableMemoryMb: 500 },
+			sources,
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("ignores heap when only maxRssPercent is configured", () => {
+		const sources = sourcesFor({
+			rss: 0.5 * GB,
+			total: 4 * GB,
+			free: 2 * GB,
+			// Heap at 95% — would trip if heap threshold were set
+			heapUsed: 1.9 * GB,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{ enabled: true, maxRssPercent: 0.75 },
+			sources,
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("enabled with no thresholds is permissive (gate is a no-op)", () => {
+		const sources = sourcesFor({
+			rss: 4 * GB,
+			total: 4 * GB,
+			free: 0,
+			heapUsed: 4 * GB,
+			heapLimit: 4 * GB,
+		});
+		const result = checkMemoryHealth({ enabled: true }, sources);
+		expect(result.ok).toBe(true);
+	});
+
+	it("checks free memory before heap when both would fail", () => {
+		// Both free and heap would individually fail. Documents the
+		// observed precedence order: RSS → free → heap.
+		const sources = sourcesFor({
+			rss: 0.5 * GB,
+			total: 4 * GB,
+			free: 100 * 1024 * 1024,
+			heapUsed: 1.9 * GB,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{
+				enabled: true,
+				minAvailableMemoryMb: 500,
+				maxHeapUsagePercent: 0.85,
+			},
+			sources,
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.reason).toMatch(/available/i);
+			expect(result.reason).not.toMatch(/heap/i);
+		}
+	});
+
+	it("uses strict greater-than for RSS (boundary value passes)", () => {
+		const sources = sourcesFor({
+			rss: 3 * GB, // exactly 75%
+			total: 4 * GB,
+			free: 1 * GB,
+			heapUsed: 100 * 1024 * 1024,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{ enabled: true, maxRssPercent: 0.75 },
+			sources,
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("uses strict less-than for available memory (boundary value passes)", () => {
+		const sources = sourcesFor({
+			rss: 1 * GB,
+			total: 4 * GB,
+			free: 500 * 1024 * 1024, // exactly 500MB
+			heapUsed: 100 * 1024 * 1024,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{ enabled: true, minAvailableMemoryMb: 500 },
+			sources,
+		);
+		expect(result.ok).toBe(true);
+	});
+
+	it("includes the metrics snapshot in the rejection result", () => {
+		const sources = sourcesFor({
+			rss: 3.5 * GB,
+			total: 4 * GB,
+			free: 0.5 * GB,
+			heapUsed: 200 * 1024 * 1024,
+			heapLimit: 2 * GB,
+		});
+		const result = checkMemoryHealth(
+			{ enabled: true, maxRssPercent: 0.5 },
+			sources,
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.metrics.rssMb).toBeCloseTo(3584, 0);
+			expect(result.metrics.totalSystemMemoryMb).toBeCloseTo(4096, 0);
+			expect(result.metrics.availableSystemMemoryMb).toBeCloseTo(512, 0);
+		}
+	});
+});

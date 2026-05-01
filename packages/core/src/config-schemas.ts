@@ -392,6 +392,12 @@ export const EdgeConfigSchema = z.object({
 	/** Default Codex model to use across all repositories (e.g., "gpt-5.3-codex", "gpt-5.2-codex") */
 	codexDefaultModel: z.string().optional(),
 
+	/** Default Cursor model to use across all repositories (e.g., "composer-2", "gpt-5.4") */
+	cursorDefaultModel: z.string().optional(),
+
+	/** Default Cursor fallback model if primary Cursor model is unavailable */
+	cursorDefaultFallbackModel: z.string().optional(),
+
 	/**
 	 * Default runner/harness to use when no runner is specified via labels or description tags.
 	 * If omitted, auto-detected from available API keys (if exactly one is configured),
