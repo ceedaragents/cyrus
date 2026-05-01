@@ -4,7 +4,6 @@ import type {
 	ILogger,
 	RepositoryConfig,
 } from "cyrus-core";
-import { AgentActivitySignal } from "cyrus-core";
 
 export class ActivityPoster {
 	private issueTrackers: Map<string, IIssueTrackerService>;
@@ -100,15 +99,15 @@ export class ActivityPoster {
 			return;
 		}
 
-		// Emit as a response (with Stop signal) rather than a thought so
-		// Linear treats the rejection as the session's terminal message and
-		// closes the agent session — there is no runner to follow up.
+		// Emit as a response rather than a thought so Linear treats the
+		// rejection as the session's terminal message — there is no runner
+		// to follow up. Note: Linear only permits AgentActivitySignal.Stop
+		// on prompt-type activities, so we don't attach a signal here.
 		await this.postActivityDirect(
 			issueTracker,
 			{
 				agentSessionId: sessionId,
 				content: { type: "response", body: message },
-				signal: AgentActivitySignal.Stop,
 			},
 			"memory pressure rejection",
 		);
