@@ -240,6 +240,34 @@ export const SandboxConfigSchema = z.object({
 	 * @default true
 	 */
 	logRequests: z.boolean().optional(),
+
+	/**
+	 * Default-on credential brokering for GitHub when the sandbox is enabled.
+	 *
+	 * When true (default), EdgeWorker resolves the workspace's GitHub token
+	 * (App-installation or PAT) once on proxy start, layers `Authorization`
+	 * header transforms onto the network policy for `api.github.com` (Bearer)
+	 * and `github.com` (Basic with `x-access-token` username), and refreshes
+	 * the policy periodically. The session env gets a sentinel `GH_TOKEN`
+	 * + a git credential helper that returns the same sentinel — the proxy
+	 * overwrites the real `Authorization` header at request time, so
+	 * sandboxed `gh`/`git` see no real credentials. This matches the
+	 * Cloudflare "Outbound Workers TLS auth" credential-injection model.
+	 *
+	 * Set to false to opt out (e.g., during migration, or if you want to
+	 * pass real tokens via .env). When false, `GITHUB_TOKEN`/`GH_TOKEN` flow
+	 * through to sessions as before — no policy injection, no env stripping.
+	 *
+	 * Has no effect when `enabled` is false.
+	 *
+	 * @default true (when sandbox.enabled is true)
+	 *
+	 * Treated as `true` when undefined; the runtime check is `!== false` so
+	 * existing config literals don't need to set this field. (Schema-level
+	 * `.default(true)` would make the post-parse type required and break
+	 * literal `EdgeWorkerConfig` consumers like apps/f1.)
+	 */
+	brokerGitHubCredentials: z.boolean().optional(),
 });
 
 /**

@@ -53,6 +53,15 @@ export interface AgentSessionData {
 	attachmentResult: { manifest: string; attachmentsDir: string | null };
 	attachmentsDir: string;
 	allowedDirectories: string[];
+	/**
+	 * Sandbox-only filesystem paths that need read+write access but aren't
+	 * part of the agent's semantic "working directories". Currently holds
+	 * each worktree's `.git` and `.git/worktrees/<name>` paths (via
+	 * GitService.getGitMetadataDirectories), which git needs to read and
+	 * write for every command. Kept distinct from allowedDirectories so
+	 * the agent CLI doesn't treat them as operation dirs.
+	 */
+	sandboxGitMetadataDirectories: string[];
 	allowedTools: string[];
 	disallowedTools: string[];
 }

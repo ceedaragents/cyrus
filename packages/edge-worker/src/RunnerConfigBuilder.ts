@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -13,6 +15,7 @@ import type {
 	AgentRunnerConfig,
 	CyrusAgentSession,
 	ILogger,
+	NetworkPolicy,
 	OnAskUserQuestion,
 	RepositoryConfig,
 	RunnerType,
@@ -91,6 +94,15 @@ export interface IssueRunnerConfigInput {
 	systemPrompt: string | undefined;
 	allowedTools: string[];
 	allowedDirectories: string[];
+	/**
+	 * Sandbox-only paths (read+write) that aren't semantically "working
+	 * directories" for the agent CLI. Typically collected via
+	 * GitService.getGitMetadataDirectories for every worktree so git can
+	 * read/write `.git/worktrees/<name>` metadata. Passed separately from
+	 * allowedDirectories on purpose: the CLI shouldn't see these as dirs
+	 * it can cd into, but the sandbox must let git touch them.
+	 */
+	sandboxGitMetadataDirectories?: string[];
 	disallowedTools: string[];
 	resumeSessionId?: string;
 	labels?: string[];
@@ -115,6 +127,391 @@ export interface IssueRunnerConfigInput {
 	sandboxSettings?: SandboxSettings;
 	/** CA cert path for MITM TLS termination — passed via child process env */
 	egressCaCertPath?: string;
+	/**
+	 * When true, the GitHub credential brokering session env is injected
+	 * (sentinel `GH_TOKEN`, git credential helper) and `GITHUB_TOKEN` /
+	 * `GH_TOKEN` / `GH_ENTERPRISE_TOKEN` are stripped from the inherited
+	 * `repositoryEnv`. EdgeWorker decides this based on
+	 * `sandbox.brokerGitHubCredentials` AND a successfully-resolved token.
+	 *
+	 * The proxy-side policy update happens separately in EdgeWorker via
+	 * `egressProxy.updateNetworkPolicy(buildGitHubBrokeredPolicy(...))`.
+	 */
+	brokerGitHubCredentials?: boolean;
+}
+
+/**
+ * Per-session CA env vars for the egress proxy's TLS interception cert.
+ *
+ * The egress proxy generates its own CA at `~/.cyrus/certs/cyrus-egress-ca.pem`
+ * and uses it to MITM HTTPS for transformed domains (header injection /
+ * credentials brokering). For tools running inside a sandboxed Bash command
+ * to verify the proxy's fake server certs, they need to trust that CA. There
+ * are two paths:
+ *
+ *  1. **Per-session env vars** (default) — this function. Each tool family
+ *     reads its CA bundle path from a different env var, so we set them all
+ *     to the same proxy CA path. The proxy lifts the trust boundary only
+ *     for that session's children.
+ *
+ *  2. **System-wide trust** — set `sandbox.systemWideCert: true` in
+ *     config.json AFTER copying the cert into the OS trust store. On
+ *     Ubuntu/Debian:
+ *       sudo cp ~/.cyrus/certs/cyrus-egress-ca.pem \\
+ *               /usr/local/share/ca-certificates/cyrus-egress-ca.crt
+ *       sudo update-ca-certificates
+ *     With that flag set, EdgeWorker passes `egressCaCertPath: null` to this
+ *     function and the env vars stay empty — the OS cert store handles it.
+ *
+ * **Tools that ignore env vars regardless** (require system-wide trust):
+ * Bun (own opaque TLS stack), .NET/nuget (OS keychain), curl on macOS
+ * (compiled against SecureTransport).
+ *
+ * **Don't set these in Cyrus's own parent process env** — they would break
+ * Cyrus's own outbound git/HTTPS because the parent doesn't go through the
+ * egress proxy. Setting them here only affects child sessions.
+ */
+export function buildEgressCaEnv(
+	egressCaCertPath: string | null | undefined,
+): Record<string, string> {
+	if (!egressCaCertPath) return {};
+	return {
+		// Node.js (SDK, npm, etc.)
+		NODE_EXTRA_CA_CERTS: egressCaCertPath,
+		// OpenSSL-based tools (general fallback — also covers Ruby)
+		SSL_CERT_FILE: egressCaCertPath,
+		// Git HTTPS operations
+		GIT_SSL_CAINFO: egressCaCertPath,
+		// Python requests/pip
+		REQUESTS_CA_BUNDLE: egressCaCertPath,
+		PIP_CERT: egressCaCertPath,
+		// curl (when compiled against OpenSSL, not SecureTransport)
+		CURL_CA_BUNDLE: egressCaCertPath,
+		// Rust/Cargo
+		CARGO_HTTP_CAINFO: egressCaCertPath,
+		// AWS CLI / boto3
+		AWS_CA_BUNDLE: egressCaCertPath,
+		// Deno
+		DENO_CERT: egressCaCertPath,
+	};
+}
+
+// ─── GitHub credential brokering ───────────────────────────────────────────
+//
+// When `sandbox.brokerGitHubCredentials` is true (default), the egress proxy
+// rewrites Authorization headers on outbound requests to GitHub so the real
+// token never enters the sandboxed session env. The Cloudflare "Outbound
+// Workers TLS auth" model: agent code calls fetch() with no real auth, the
+// proxy intercepts and injects the credentials at request time.
+//
+// The three exports below are the building blocks:
+//   - GITHUB_BROKER_SENTINEL_TOKEN — the placeholder agents see.
+//   - GITHUB_BROKERED_STRIP_ENV_KEYS — env vars to scrub from session env.
+//   - buildGitHubBrokeredPolicy / buildGitHubBrokeredEnv — pure functions
+//     that produce the proxy-side and session-side state respectively.
+
+/**
+ * The placeholder string that takes the place of a real token in the
+ * sandboxed session's environment. gh CLI checks "is GH_TOKEN set?" before
+ * making API calls; this satisfies that check without exposing anything
+ * usable. The proxy's transform overwrites the Authorization header at
+ * request time with the real token. Any value would work as long as it's:
+ *   - non-empty (otherwise gh CLI's auth check fails)
+ *   - obviously identifiable in transcripts and logs as a sentinel
+ *   - not interpretable as a real GitHub token format (i.e. not starting
+ *     with `ghp_`, `ghs_`, `gho_`, etc.)
+ */
+export const GITHUB_BROKER_SENTINEL_TOKEN = "x-cyrus-brokered";
+
+/**
+ * Env var names that carry real GitHub credentials. When brokering is on,
+ * these are filtered out of the session's `repositoryEnv` (loaded from
+ * `.env` files in the worktree) so an agent that reads `process.env`
+ * inside the sandbox can never see a real token.
+ */
+export const GITHUB_BROKERED_STRIP_ENV_KEYS = [
+	"GITHUB_TOKEN",
+	"GH_TOKEN",
+	"GH_ENTERPRISE_TOKEN",
+] as const;
+
+/**
+ * Build a `NetworkPolicy` that layers GitHub credential-brokering transforms
+ * onto a base policy, given a real GitHub token resolved from the App
+ * installation or PAT. Pure function; the caller (EdgeWorker) is responsible
+ * for resolving the token and pushing the result via `updateNetworkPolicy`.
+ *
+ * Brokered transforms:
+ *   - `api.github.com` → `Authorization: Bearer <token>` (gh CLI shape).
+ *   - `github.com`     → `Authorization: Basic base64("x-access-token:<token>")`
+ *     (git over HTTPS shape; `x-access-token` is the canonical username for
+ *     GitHub App installation tokens, also accepted for PATs).
+ *
+ * Composition rules:
+ *   - If `basePolicy` is undefined or has no `allow` entries, returns a
+ *     deny-all-with-allow policy containing only the two brokered domains.
+ *   - If `basePolicy.preset === "trusted"` is set, the preset is preserved
+ *     untouched — `parsePolicy()` in EgressProxy will expand it as usual,
+ *     and the explicit api.github.com / github.com entries we add here will
+ *     take precedence over the preset's empty rule for those same domains
+ *     (per the existing `{ ...presetAllow, ...explicitAllow }` merge order).
+ *   - If `basePolicy.allow` already contains entries for these domains, the
+ *     brokered transform is APPENDED as an additional rule. Per
+ *     `parsePolicy()`'s merge order (later rules win on key conflict), this
+ *     means a user-supplied `Authorization` transform would be overridden
+ *     by the broker. Other user-supplied headers on the same domain merge
+ *     in unchanged.
+ *
+ * Pre-conditions: `token` must be non-empty. Caller checks for a null/empty
+ * token and skips brokering — this function does not no-op silently.
+ */
+export function buildGitHubBrokeredPolicy(
+	basePolicy: NetworkPolicy | undefined,
+	token: string,
+): NetworkPolicy {
+	if (!token) {
+		throw new Error(
+			"buildGitHubBrokeredPolicy requires a non-empty token; caller must " +
+				"check token resolution before invoking",
+		);
+	}
+
+	// Bearer for the API surface. `Authorization: Bearer <token>` is what
+	// gh CLI sends when GH_TOKEN is set.
+	const bearerHeader = `Bearer ${token}`;
+
+	// Basic for git over HTTPS. Username is "x-access-token" (GitHub's
+	// canonical pattern for installation tokens; PATs also work with this
+	// or any other non-empty username).
+	const basicHeader = `Basic ${Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")}`;
+
+	const brokeredEntries: NonNullable<NetworkPolicy["allow"]> = {
+		"api.github.com": [
+			{ transform: [{ headers: { Authorization: bearerHeader } }] },
+		],
+		"github.com": [
+			{ transform: [{ headers: { Authorization: basicHeader } }] },
+		],
+	};
+
+	// Compose with the base policy. Existing rules for these two domains
+	// are preserved; the brokered rule is appended so its transform is the
+	// last-merged (and therefore winning) Authorization value per
+	// EgressProxy.parsePolicy()'s Object.assign-based merge.
+	const baseAllow = basePolicy?.allow ?? {};
+	const composedAllow: NonNullable<NetworkPolicy["allow"]> = { ...baseAllow };
+	for (const [host, brokeredRules] of Object.entries(brokeredEntries)) {
+		const existing = composedAllow[host] ?? [];
+		composedAllow[host] = [...existing, ...brokeredRules];
+	}
+
+	return {
+		...basePolicy,
+		allow: composedAllow,
+	};
+}
+
+/**
+ * Dependencies + previous state for `refreshGitHubBrokerPolicy`.
+ *
+ * Extracted as an explicit interface so the function is testable without an
+ * EdgeWorker instance — the caller (EdgeWorker.refreshBrokeredGitHubPolicy)
+ * threads its own state in and persists the returned result. Pure in the
+ * sense that the function has no internal state; all branching is a
+ * function of the deps it is handed.
+ */
+export interface GitHubBrokerRefreshDeps {
+	/**
+	 * Whether brokering is enabled for this configuration. When false, the
+	 * helper short-circuits to `{ token: null, warningEmittedNow: false }`.
+	 * Caller is still expected to call this on each refresh tick — making
+	 * the gating local to the helper means EdgeWorker doesn't have to
+	 * duplicate the gate logic at every call site.
+	 */
+	brokerEnabled: boolean;
+	/**
+	 * The user-configured base policy. The helper composes the brokered
+	 * transforms on top via `buildGitHubBrokeredPolicy(basePolicy, token)`.
+	 */
+	basePolicy: NetworkPolicy | undefined;
+	/**
+	 * Workspace-stable token resolver. Returns `undefined` when no token
+	 * is resolvable. `EdgeWorker.resolveStableGitHubToken` is the
+	 * production binding.
+	 */
+	resolveToken: () => Promise<string | undefined>;
+	/**
+	 * Push the resulting policy to the proxy. The production binding is
+	 * `egressProxy.updateNetworkPolicy(policy)`.
+	 */
+	pushPolicy: (policy: NetworkPolicy) => void;
+	/** Last token successfully pushed (for change-detection). */
+	prevToken: string | null;
+	/** True if the WARN-once for "no token" has already fired. */
+	warningEmittedAlready: boolean;
+	/** Bound logger.warn — called only when emitting the WARN-once. */
+	emitWarning: () => void;
+	/** Bound logger.info — called when a fresh policy is actually pushed. */
+	emitInfo: () => void;
+}
+
+/**
+ * Resolve and (if changed) push a brokered GitHub `NetworkPolicy` onto the
+ * proxy. Returns the new token + WARN-latch state for the caller to persist.
+ *
+ * Behavior:
+ *   - `brokerEnabled: false` → no-op, returns `{ newToken: null, warningEmittedNow: false }`.
+ *   - resolver returns falsy → if `warningEmittedAlready` is false, emit WARN
+ *     once; return `{ newToken: null, warningEmittedNow: true }` so the
+ *     latch persists on subsequent calls. The latch is reset (via
+ *     `newToken !== null && !warningEmittedAlready` semantics in the
+ *     caller) once a token resolves successfully.
+ *   - resolver returns same token as `prevToken` → no policy push, return
+ *     `{ newToken: token, warningEmittedNow: false }` (the policy is
+ *     already current; just clear the latch).
+ *   - resolver returns a NEW token → call `buildGitHubBrokeredPolicy` and
+ *     `pushPolicy`, return the new token.
+ */
+export async function refreshGitHubBrokerPolicy(
+	deps: GitHubBrokerRefreshDeps,
+): Promise<{ newToken: string | null; warningEmittedNow: boolean }> {
+	if (!deps.brokerEnabled) {
+		return { newToken: null, warningEmittedNow: false };
+	}
+
+	const token = await deps.resolveToken();
+	if (!token) {
+		if (!deps.warningEmittedAlready) deps.emitWarning();
+		return { newToken: null, warningEmittedNow: true };
+	}
+
+	if (deps.prevToken === token) {
+		// Token is current; just clear the WARN latch (token resolution is
+		// healthy). No policy push.
+		return { newToken: token, warningEmittedNow: false };
+	}
+
+	const brokeredPolicy = buildGitHubBrokeredPolicy(deps.basePolicy, token);
+	deps.pushPolicy(brokeredPolicy);
+	deps.emitInfo();
+	return { newToken: token, warningEmittedNow: false };
+}
+
+/**
+ * Build the per-session env vars that make sandboxed `gh` and `git`
+ * unconditionally route GitHub auth through the egress proxy.
+ *
+ * Returns:
+ *   - `GH_TOKEN` — sentinel placeholder. gh CLI's auth check passes; the
+ *     proxy overwrites the Authorization header with the real token at
+ *     request time. The sandboxed agent can read this env var, but it's
+ *     not usable for anything outside the proxy's reach.
+ *   - `GIT_TERMINAL_PROMPT=0` — git never opens an interactive prompt,
+ *     even if the credential-helper handshake somehow misroutes. Prevents
+ *     a sandboxed git push from hanging.
+ *   - `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` —
+ *     register an inline credential helper for `https://github.com` that
+ *     always returns `username=x-access-token` and a sentinel password.
+ *     git then sends `Authorization: Basic base64("x-access-token:<sentinel>")`,
+ *     which the proxy overwrites with the real Basic header. (The env-var
+ *     route is the only way to inject git config without writing to disk;
+ *     see git-config(1) §"GIT_CONFIG_COUNT".)
+ *
+ * Returns `{}` when `enabled: false` — caller spreads unconditionally.
+ */
+export function buildGitHubBrokeredEnv(opts: {
+	enabled: boolean;
+}): Record<string, string> {
+	if (!opts.enabled) return {};
+
+	// Inline credential helper: a single shell function that prints the
+	// helper protocol response. git invokes it as `<helper> get` and reads
+	// `username=...` and `password=...` lines from stdout. The leading `!`
+	// tells git this is a shell snippet, not a binary path.
+	const credentialHelper = `!f() { echo username=x-access-token; echo password=${GITHUB_BROKER_SENTINEL_TOKEN}; }; f`;
+
+	return {
+		// gh CLI auth marker. Real Authorization header is overwritten by
+		// the proxy's transform at request time.
+		GH_TOKEN: GITHUB_BROKER_SENTINEL_TOKEN,
+		// Belt: prevent any interactive prompt if the helper somehow misfires.
+		GIT_TERMINAL_PROMPT: "0",
+		// Suspenders: register the credential helper without touching disk.
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+		GIT_CONFIG_VALUE_0: credentialHelper,
+	};
+}
+
+/**
+ * Default home-directory allowances for node-based package managers and
+ * related developer tooling. Without these, `npm install`, `pnpm install`,
+ * `yarn`, and `bun install` all fail inside the sandbox because they read
+ * and write shared caches/stores under the user's home directory.
+ *
+ * Paths use the sandbox `~/` path-prefix form (see
+ * https://code.claude.com/docs/en/settings#sandbox-path-prefixes). Entries
+ * for both macOS and Linux layouts are included — irrelevant paths on a
+ * given OS are harmless no-ops.
+ */
+export function buildPackageManagerHomeAllowances(): {
+	read: string[];
+	write: string[];
+} {
+	// Read-only config files that tools commonly consult during install/auth.
+	// IMPORTANT: do not include any file that holds a real credential —
+	// notably `~/.config/gh/hosts.yml` (gh OAuth tokens). Credential brokering
+	// is the supported path for GitHub auth from inside the sandbox; tokens
+	// must never reach the agent's process env or filesystem view.
+	const readOnlyConfigs = [
+		"~/.gitconfig",
+		// Git's XDG config dir — covers ~/.config/git/config and ~/.config/git/ignore,
+		// which git tries to access on nearly every command and warns about if missing
+		// from the sandbox read list.
+		"~/.config/git",
+		// gh CLI's non-credential config (UI prefs, default editor, etc.).
+		// `hosts.yml` is intentionally excluded — it stores OAuth tokens.
+		"~/.config/gh/config.yml",
+		// SSH known_hosts — needed by git and other tools that ssh to git hosts
+		// (github.com, gitlab.com, etc.) to verify host keys without an interactive
+		// prompt. Only known_hosts, not the private keys in ~/.ssh.
+		"~/.ssh/known_hosts",
+		"~/.npmrc",
+		"~/.yarnrc",
+		"~/.yarnrc.yml",
+	];
+
+	// Package manager caches, stores, and global install dirs. These need
+	// read AND write access for installs to succeed.
+	const packageManagerDirs = [
+		// npm
+		"~/.npm",
+		// yarn (classic + berry)
+		"~/.yarn",
+		"~/.cache/yarn",
+		// pnpm (content-addressable store + state)
+		"~/.pnpm-store",
+		"~/.local/share/pnpm",
+		"~/.cache/pnpm",
+		"~/Library/pnpm",
+		"~/Library/Caches/pnpm",
+		// bun
+		"~/.bun",
+		// deno
+		"~/.deno",
+		"~/.cache/deno",
+		// node-gyp (native addon builds)
+		"~/.node-gyp",
+		// nvm / version managers that write lazily
+		"~/.nvm",
+		// generic XDG caches — some package managers fall back here
+		"~/.cache",
+	];
+
+	return {
+		read: [...readOnlyConfigs, ...packageManagerDirs],
+		write: [...packageManagerDirs],
+	};
 }
 
 /**
@@ -307,6 +704,15 @@ export class RunnerConfigBuilder {
 			...(runnerType === "claude" &&
 				input.sandboxSettings &&
 				this.buildSandboxConfig(input)),
+			// GitHub credential brokering — strip real GITHUB_TOKEN/GH_TOKEN
+			// from `repositoryEnv` (loaded from .env files) so they never
+			// reach the sandboxed agent. The sentinel GH_TOKEN replacement
+			// is set in additionalEnv via buildGitHubBrokeredEnv (above).
+			// EdgeWorker only sets brokerGitHubCredentials true after
+			// resolving a real token; otherwise this stays unset.
+			...(input.brokerGitHubCredentials === true && {
+				stripEnvKeys: GITHUB_BROKERED_STRIP_ENV_KEYS,
+			}),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
@@ -399,7 +805,19 @@ export class RunnerConfigBuilder {
 	): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 
+		const tmpDir = join(input.cyrusHome, "tmp");
+
 		if (input.sandboxSettings) {
+			// Ensure the tmp dir exists before sandbox start so Bun/npm/etc. can
+			// write to it atomically on first install.
+			try {
+				mkdirSync(tmpDir, { recursive: true });
+			} catch {
+				// best-effort; sandbox will surface clearer errors if this fails
+			}
+
+			const homeAllowances = buildPackageManagerHomeAllowances();
+
 			result.sandbox = {
 				...input.sandboxSettings,
 				// When sandbox is enabled, do not allow commands to run unsandboxed
@@ -409,41 +827,78 @@ export class RunnerConfigBuilder {
 				// opens access to com.apple.trustd.agent, which is a potential data
 				// exfiltration path. See: https://code.claude.com/docs/en/settings#sandbox-settings
 				enableWeakerNetworkIsolation: true,
+				// Run node-based package managers outside the sandbox. They spawn
+				// lifecycle scripts, compile native addons, and touch a long tail of
+				// paths that are impractical to fully enumerate. The egress proxy still
+				// sees their network traffic; excluding them from the filesystem
+				// sandbox is the practical trade-off that makes `install` work.
+				excludedCommands: [
+					...(input.sandboxSettings.excludedCommands ?? []),
+					"bun *",
+					"npm *",
+					"pnpm *",
+					"yarn *",
+				],
 				filesystem: {
 					...input.sandboxSettings.filesystem,
-					// "." resolves to the cwd of the primary folder Claude is working in.
+					// IMPORTANT: the "." path-prefix only resolves into the final
+					// sandbox rules when it's declared inside a committed
+					// `.claude/settings.json` file that Claude Code reads from disk.
+					// When sandbox settings are passed programmatically (like we do
+					// here via the SDK), "." is NOT expanded to the session cwd —
+					// so we must enumerate the worktree path explicitly.
 					// See: https://code.claude.com/docs/en/settings#sandbox-path-prefixes
 					// allowedDirectories contains the attachments dir, repo paths, and git
-					// metadata dirs — all of which need OS-level read access alongside the worktree.
-					allowRead: [".", ...input.allowedDirectories],
+					// metadata dirs — all of which need OS-level read access alongside the
+					// worktree. homeAllowances.read covers common node package manager
+					// caches/stores and git/gh config files. tmpDir is a dedicated session
+					// tmp dir for Bun and other tools that expect TMPDIR to be writable.
+					allowRead: [
+						input.session.workspace.path,
+						...input.allowedDirectories,
+						...(input.sandboxGitMetadataDirectories ?? []),
+						...Object.values(input.session.workspace.repoPaths ?? {}),
+						...homeAllowances.read,
+						tmpDir,
+					],
 					denyRead: ["~/"],
-					// Restrict subprocess writes to the session worktree only
-					allowWrite: [input.session.workspace.path],
+					// Writes are allowed in every worktree (primary + sub-worktrees
+					// for multi-repo), each worktree's `.git`/`.git/worktrees/<name>`
+					// metadata (git needs to write index.lock, HEAD, refs/...),
+					// plus package manager caches/stores and the shared tmp dir.
+					allowWrite: [
+						input.session.workspace.path,
+						...Object.values(input.session.workspace.repoPaths ?? {}),
+						...(input.sandboxGitMetadataDirectories ?? []),
+						...homeAllowances.write,
+						tmpDir,
+					],
 				},
 			};
 		}
 
-		if (input.egressCaCertPath) {
-			result.additionalEnv = {
-				// Node.js (SDK, npm, etc.)
-				NODE_EXTRA_CA_CERTS: input.egressCaCertPath,
-				// OpenSSL-based tools (general fallback — also covers Ruby)
-				SSL_CERT_FILE: input.egressCaCertPath,
-				// Git HTTPS operations
-				GIT_SSL_CAINFO: input.egressCaCertPath,
-				// Python requests/pip
-				REQUESTS_CA_BUNDLE: input.egressCaCertPath,
-				PIP_CERT: input.egressCaCertPath,
-				// curl (when compiled against OpenSSL, not SecureTransport)
-				CURL_CA_BUNDLE: input.egressCaCertPath,
-				// Rust/Cargo
-				CARGO_HTTP_CAINFO: input.egressCaCertPath,
-				// AWS CLI / boto3
-				AWS_CA_BUNDLE: input.egressCaCertPath,
-				// Deno
-				DENO_CERT: input.egressCaCertPath,
-			};
-		}
+		// BUN_TMPDIR points at a path that is always inside allowWrite when the
+		// sandbox is enabled. Bun uses it for atomic installs and will fail if
+		// its default tmp dir isn't writable. We set BUN_TMPDIR rather than
+		// TMPDIR because the Claude Code native binary unconditionally overrides
+		// TMPDIR to its own sandbox-managed path when spawning sandboxed shells,
+		// so a TMPDIR we set here never reaches Bun. BUN_TMPDIR takes precedence
+		// over TMPDIR for Bun, so this is the reliable hook.
+		const additionalEnv: Record<string, string> = {
+			BUN_TMPDIR: tmpDir,
+			// CA-trust env vars (empty when systemWideCert is true and
+			// EdgeWorker passes egressCaCertPath: null).
+			...buildEgressCaEnv(input.egressCaCertPath),
+			// GitHub credential-brokering session env (empty when EdgeWorker
+			// can't resolve a token, or when brokerGitHubCredentials is false).
+			// The matching proxy-side policy update happens in EdgeWorker via
+			// updateNetworkPolicy.
+			...buildGitHubBrokeredEnv({
+				enabled: input.brokerGitHubCredentials === true,
+			}),
+		};
+
+		result.additionalEnv = additionalEnv;
 
 		return result;
 	}
