@@ -6,6 +6,11 @@ This changelog documents internal development changes, refactors, tooling update
 
 _No internal-only changes._
 
+## [0.2.67] - 2026-07-25
+
+### Added
+- F1 release smoke validating the v0.2.67 release branch can start the F1 server, create an issue, start a Gemini-backed session, render/paginate activities, and stop cleanly before publishing. ([CYPACK-1404](https://linear.app/ceedar/issue/CYPACK-1404/run-a-release))
+
 ## [0.2.66] - 2026-06-19
 
 ### Security
