@@ -26,7 +26,7 @@ _No unreleased changes._
 - Forwarded and shared Slack messages are now included when you @mention Cyrus. Previously, forwarding a message (for example a Sentry alert) into a channel and @mentioning Cyrus passed along only your typed comment — the forwarded message's contents were dropped, so a forward with no comment gave Cyrus nothing to work with. The forwarded content is now part of the prompt. ([#1326](https://github.com/cyrusagents/cyrus/pull/1326))
 
 ### Security
-- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1404](https://linear.app/ceedar/issue/CYPACK-1404/run-a-release))
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1404](https://linear.app/ceedar/issue/CYPACK-1404/run-a-release), [#1386](https://github.com/cyrusagents/cyrus/pull/1386))
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1400](https://linear.app/ceedar/issue/CYPACK-1400), [#1383](https://github.com/cyrusagents/cyrus/pull/1383))
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1396](https://linear.app/ceedar/issue/CYPACK-1396), [#1380](https://github.com/cyrusagents/cyrus/pull/1380))
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities, while replacing redundant broad overrides with direct dependency updates where available. ([CYPACK-1379](https://linear.app/ceedar/issue/CYPACK-1379), [#1370](https://github.com/cyrusagents/cyrus/pull/1370))
