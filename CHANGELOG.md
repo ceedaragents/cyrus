@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Updated the bundled Codex CLI and SDK to `0.144.4`, the minimum Codex release required for GPT-5.6 models such as `gpt-5.6-sol`.
+- Cyrus setup now creates Linear OAuth applications from a manifest-backed setup URL, so callback, webhook, and event type settings are pre-populated consistently instead of configured field by field. ([CYPACK-1403](https://linear.app/ceedar/issue/CYPACK-1403/convert-cyrus-setup-linear-app-creation-to-use-manifest), [#1385](https://github.com/cyrusagents/cyrus/pull/1385))
 
 ### Fixed
 - Forwarded and shared Slack messages are now included when you @mention Cyrus. Previously, forwarding a message (for example a Sentry alert) into a channel and @mentioning Cyrus passed along only your typed comment — the forwarded message's contents were dropped, so a forward with no comment gave Cyrus nothing to work with. The forwarded content is now part of the prompt. ([#1326](https://github.com/cyrusagents/cyrus/pull/1326))
