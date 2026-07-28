@@ -52,6 +52,21 @@ export interface ChatPlatformAdapter<TEvent> {
 	/** Fetch thread context as formatted string. Returns "" if not applicable */
 	fetchThreadContext(event: TEvent): Promise<string>;
 
+	/**
+	 * Fetch thread messages posted since `sinceTs`, so a resumed session catches
+	 * up on discussion it never saw. Returns "" if there's nothing new, `null`
+	 * if the fetch failed — only a non-null result advances the cursor.
+	 *
+	 * Optional — platforms that deliver every thread message omit it.
+	 */
+	fetchThreadContextDelta?(
+		event: TEvent,
+		sinceTs?: string,
+	): Promise<string | null>;
+
+	/** This event's thread position, stored as the catch-up cursor */
+	getThreadContextTs?(event: TEvent): string | undefined;
+
 	/** Post the agent's final response back to the platform */
 	postReply(event: TEvent, runner: IAgentRunner): Promise<void>;
 
@@ -198,7 +213,13 @@ export class ChatSessionHandler<TEvent> {
 							`Injecting follow-up prompt into running session ${existingSessionId} (thread ${threadKey})`,
 						);
 						this.enqueueReply(existingSessionId, event);
-						existingRunner.addStreamMessage(taskInstructions);
+						existingRunner.addStreamMessage(
+							await this.withThreadCatchup(
+								existingSession,
+								event,
+								taskInstructions,
+							),
+						);
 					} else {
 						// Runner can't accept mid-turn input (e.g. exec Codex). Queue the
 						// follow-up so it's delivered as a fresh turn once this one ends,
@@ -325,6 +346,7 @@ export class ChatSessionHandler<TEvent> {
 			const userPrompt = threadContext
 				? `${threadContext}\n\n${taskInstructions}`
 				: taskInstructions;
+			this.recordThreadContextTs(session, event);
 
 			this.logger.info(
 				`Starting runner for ${this.adapter.platformName} event ${eventId}`,
@@ -424,6 +446,49 @@ export class ChatSessionHandler<TEvent> {
 		return this.sessionManager.getAgentRunner(sessionId);
 	}
 
+	/** Mark how far this session has thread context, for the next catch-up */
+	private recordThreadContextTs(
+		session: CyrusAgentSession,
+		event: TEvent,
+	): void {
+		if (!this.adapter.fetchThreadContextDelta) {
+			return;
+		}
+		const ts = this.adapter.getThreadContextTs?.(event);
+		if (!ts) {
+			return;
+		}
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		session.metadata.lastContextTs = ts;
+	}
+
+	/**
+	 * Prefix the task instructions with what was said since the last mention.
+	 * A failed fetch leaves the cursor put, so the missed window is retried
+	 * on the next event instead of being lost.
+	 */
+	private async withThreadCatchup(
+		session: CyrusAgentSession,
+		event: TEvent,
+		taskInstructions: string,
+	): Promise<string> {
+		if (!this.adapter.fetchThreadContextDelta) {
+			return taskInstructions;
+		}
+
+		const delta = await this.adapter.fetchThreadContextDelta(
+			event,
+			session.metadata?.lastContextTs,
+		);
+		if (delta !== null) {
+			this.recordThreadContextTs(session, event);
+		}
+
+		return delta ? `${delta}\n\n${taskInstructions}` : taskInstructions;
+	}
+
 	/**
 	 * Resume an existing session with a new prompt (--continue behavior).
 	 */
@@ -447,6 +512,12 @@ export class ChatSessionHandler<TEvent> {
 		const runner = this.deps.createRunner(runnerConfig);
 		this.sessionManager.addAgentRunner(sessionId, runner);
 
+		const resumePrompt = await this.withThreadCatchup(
+			existingSession,
+			event,
+			taskInstructions,
+		);
+
 		// Reply posting is driven by `result` messages on the runner's stream
 		// (see handleAgentMessage). We must not await turn completion here —
 		// warm sessions hold the streaming prompt open across turns so the
@@ -454,8 +525,8 @@ export class ChatSessionHandler<TEvent> {
 		this.enqueueReply(sessionId, event);
 		const startPromise =
 			runner.supportsStreamingInput && runner.startStreaming
-				? runner.startStreaming(taskInstructions)
-				: runner.start(taskInstructions);
+				? runner.startStreaming(resumePrompt)
+				: runner.start(resumePrompt);
 		startPromise
 			.then((sessionInfo: AgentSessionInfo) => {
 				this.logger.info(

@@ -267,6 +267,81 @@ Supported mrkdwn syntax:
 		}
 	}
 
+	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
+		return event.payload.ts;
+	}
+
+	/**
+	 * Fetch what was posted in the thread since `sinceTs`. With thread following
+	 * disabled, untagged messages never reach us, so everything said between two
+	 * @mentions is invisible unless back-read here.
+	 *
+	 * Returns "" when there's nothing new, `null` when the fetch failed — the
+	 * caller only advances its cursor on a non-null result.
+	 */
+	async fetchThreadContextDelta(
+		event: SlackWebhookEvent,
+		sinceTs?: string,
+	): Promise<string | null> {
+		if (!event.payload.thread_ts) {
+			return "";
+		}
+
+		// No cursor yet — fall back to the full window rather than no history
+		if (!sinceTs) {
+			return this.fetchThreadContext(event);
+		}
+
+		const token = this.getSlackBotToken(event);
+		if (!token) {
+			this.logger.warn(
+				"Cannot fetch Slack thread catch-up: no slackBotToken available",
+			);
+			return null;
+		}
+
+		try {
+			const slackService = new SlackMessageService();
+			const [messages, selfBotId] = await Promise.all([
+				slackService.fetchThreadMessages({
+					token,
+					channel: event.payload.channel,
+					thread_ts: event.payload.thread_ts,
+					limit: 50,
+					oldest: sinceTs,
+				}),
+				this.getSelfBotId(token),
+			]);
+
+			const delta = messages.filter((msg) => {
+				// conversations.replies returns the parent regardless of `oldest`
+				if (Number.parseFloat(msg.ts) <= Number.parseFloat(sinceTs)) {
+					return false;
+				}
+				// Already in the task instructions
+				if (msg.ts === event.payload.ts) {
+					return false;
+				}
+				// Already in the resumed session's memory
+				return !(selfBotId && msg.bot_id === selfBotId);
+			});
+
+			if (delta.length === 0) {
+				return "";
+			}
+
+			return `The following messages were posted in this thread since you last had context. Read them for background before responding.\n\n${this.formatThreadContext(
+				delta,
+				selfBotId,
+			)}`;
+		} catch (error) {
+			this.logger.warn(
+				`Failed to fetch Slack thread catch-up: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return null;
+		}
+	}
+
 	async postReply(
 		event: SlackWebhookEvent,
 		runner: IAgentRunner,

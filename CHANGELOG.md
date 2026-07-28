@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+- Cyrus now catches up on what was said in a Slack thread between mentions. Previously, @mentioning Cyrus again in a thread it had already replied to passed along only your new message, so anything the team discussed since the last mention was invisible to it — most noticeably with automatic thread listening turned off, where untagged messages are never delivered. Cyrus now back-reads the messages posted since it last had context and reads them before responding.
 
 ## [0.2.67] - 2026-07-25
 
