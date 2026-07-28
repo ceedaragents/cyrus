@@ -31,6 +31,12 @@ export const BEHAVIOURS_PAGE_ROUTE = "/settings/behaviours";
 /** How many thread messages a single context or catch-up read carries. */
 const THREAD_CONTEXT_MESSAGE_LIMIT = 50;
 
+/**
+ * How deep a catch-up read scans before trimming to the newest messages. A
+ * thread paginates from its head, so reaching the tail means walking past it.
+ */
+const THREAD_CATCHUP_SCAN_LIMIT = 2000;
+
 /** Reaction added when a message is received and queued for processing (👀) */
 export const RECEIPT_REACTION = "eyes";
 
@@ -229,33 +235,19 @@ Supported mrkdwn syntax:
 - Lists: use plain numbered lines (1. item) or dashes (- item) with newlines`;
 	}
 
-	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
-		// Collapses failure into "" — callers needing that distinction use the delta
-		return (await this.fetchThreadWindow(event)) ?? "";
-	}
-
 	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
 		return event.payload.ts;
 	}
 
 	/**
-	 * Fetch what was posted in the thread since `sinceTs`, or the whole window
-	 * when there's no cursor yet. With thread following disabled, untagged
-	 * messages never reach us, so everything said between two @mentions is
-	 * invisible unless back-read here.
+	 * Whole thread when `sinceTs` is absent, otherwise just what followed it.
+	 * With thread following disabled, untagged messages never reach us, so
+	 * everything said between two @mentions is invisible unless back-read here.
 	 *
-	 * Returns "" when there's nothing new, `null` when the fetch failed — the
-	 * caller only advances its cursor on a non-null result.
+	 * "" when there is nothing to add, `null` when the read failed — the caller
+	 * only advances its cursor on a non-null result.
 	 */
-	async fetchThreadContextDelta(
-		event: SlackWebhookEvent,
-		sinceTs?: string,
-	): Promise<string | null> {
-		return this.fetchThreadWindow(event, sinceTs);
-	}
-
-	/** Whole thread when `sinceTs` is absent, otherwise just what follows it. */
-	private async fetchThreadWindow(
+	async fetchThreadContext(
 		event: SlackWebhookEvent,
 		sinceTs?: string,
 	): Promise<string | null> {
@@ -279,9 +271,10 @@ Supported mrkdwn syntax:
 					token,
 					channel: event.payload.channel,
 					thread_ts: event.payload.thread_ts,
-					limit: THREAD_CONTEXT_MESSAGE_LIMIT,
-					// An over-long gap should lose its stalest messages, not its newest
-					...(sinceTs ? { oldest: sinceTs, keep: "newest" as const } : {}),
+					limit: sinceTs
+						? THREAD_CATCHUP_SCAN_LIMIT
+						: THREAD_CONTEXT_MESSAGE_LIMIT,
+					...(sinceTs ? { oldest: sinceTs } : {}),
 				}),
 				this.getSelfBotId(token),
 			]);
@@ -294,19 +287,22 @@ Supported mrkdwn syntax:
 					: this.formatThreadContext(messages, selfBotId);
 			}
 
-			const delta = messages.filter((msg) => {
-				// conversations.replies returns the parent regardless of `oldest`.
-				// Slack ts is zero-padded, so string ordering is chronological.
-				if (msg.ts <= sinceTs) {
-					return false;
-				}
-				// Already in the task instructions
-				if (msg.ts === event.payload.ts) {
-					return false;
-				}
-				// Already in the resumed session's memory
-				return !(selfBotId && msg.bot_id === selfBotId);
-			});
+			const delta = messages
+				.filter((msg) => {
+					// conversations.replies returns the parent regardless of `oldest`.
+					// Slack ts is zero-padded, so string ordering is chronological.
+					if (msg.ts <= sinceTs) {
+						return false;
+					}
+					// Already in the task instructions
+					if (msg.ts === event.payload.ts) {
+						return false;
+					}
+					// Already in the resumed session's memory
+					return !this.isSelfMessage(msg, selfBotId);
+				})
+				// An over-long gap should lose its stalest messages, not its newest
+				.slice(-THREAD_CONTEXT_MESSAGE_LIMIT);
 
 			if (delta.length === 0) {
 				return "";
@@ -457,14 +453,19 @@ Supported mrkdwn syntax:
 		});
 	}
 
+	private isSelfMessage(msg: SlackThreadMessage, selfBotId?: string): boolean {
+		return Boolean(selfBotId && msg.bot_id === selfBotId);
+	}
+
 	private formatThreadContext(
 		messages: SlackThreadMessage[],
 		selfBotId?: string,
 	): string {
 		const formattedMessages = messages
 			.map((msg) => {
-				const isSelf = selfBotId && msg.bot_id === selfBotId;
-				const author = isSelf ? "assistant (you)" : (msg.user ?? "unknown");
+				const author = this.isSelfMessage(msg, selfBotId)
+					? "assistant (you)"
+					: (msg.user ?? "unknown");
 				return `  <message>
     <author>${author}</author>
     <timestamp>${msg.ts}</timestamp>

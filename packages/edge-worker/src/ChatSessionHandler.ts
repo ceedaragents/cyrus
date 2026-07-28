@@ -49,22 +49,18 @@ export interface ChatPlatformAdapter<TEvent> {
 	/** Build a platform-specific system prompt */
 	buildSystemPrompt(event: TEvent): string;
 
-	/** Fetch thread context as formatted string. Returns "" if not applicable */
-	fetchThreadContext(event: TEvent): Promise<string>;
+	/**
+	 * Thread context as a formatted string, or "" if not applicable. Pass
+	 * `sinceTs` to read only what followed it, so a resumed session catches up on
+	 * discussion it never saw. `null` means the read failed — only a non-null
+	 * result advances the cursor.
+	 */
+	fetchThreadContext(event: TEvent, sinceTs?: string): Promise<string | null>;
 
 	/**
-	 * Fetch thread messages posted since `sinceTs`, so a resumed session catches
-	 * up on discussion it never saw. Returns "" if there's nothing new, `null`
-	 * if the fetch failed — only a non-null result advances the cursor.
-	 *
-	 * Optional — platforms that deliver every thread message omit it.
+	 * This event's thread position, stored as the catch-up cursor. Optional —
+	 * platforms that deliver every thread message omit it and get no catch-up.
 	 */
-	fetchThreadContextDelta?(
-		event: TEvent,
-		sinceTs?: string,
-	): Promise<string | null>;
-
-	/** This event's thread position, stored as the catch-up cursor */
 	getThreadContextTs?(event: TEvent): string | undefined;
 
 	/** Post the agent's final response back to the platform */
@@ -342,13 +338,11 @@ export class ChatSessionHandler<TEvent> {
 			await this.deps.onStateChange();
 
 			// Fetch thread context for threaded mentions
-			const threadContext = await this.fetchInitialThreadContext(event);
-			const userPrompt = threadContext
-				? `${threadContext}\n\n${taskInstructions}`
-				: taskInstructions;
-			if (threadContext !== null) {
-				this.recordThreadContextTs(session, event);
-			}
+			const userPrompt = await this.withThreadContext(
+				session,
+				event,
+				taskInstructions,
+			);
 
 			this.logger.info(
 				`Starting runner for ${this.adapter.platformName} event ${eventId}`,
@@ -453,9 +447,6 @@ export class ChatSessionHandler<TEvent> {
 		session: CyrusAgentSession,
 		event: TEvent,
 	): void {
-		if (!this.adapter.fetchThreadContextDelta) {
-			return;
-		}
 		const ts = this.adapter.getThreadContextTs?.(event);
 		if (!ts) {
 			return;
@@ -473,57 +464,50 @@ export class ChatSessionHandler<TEvent> {
 	}
 
 	/**
-	 * Opening read for a new session. Prefers the delta method, whose `null`
-	 * distinguishes a failed read from an empty one and so holds the cursor.
+	 * Prefix the task instructions with thread context — the whole thread for a
+	 * new session, or just what was said since the cursor for a follow-up. The
+	 * cursor only advances on a successful read, so a failed one retries the same
+	 * window instead of losing it.
 	 */
-	private async fetchInitialThreadContext(
-		event: TEvent,
-	): Promise<string | null> {
-		try {
-			return this.adapter.fetchThreadContextDelta
-				? await this.adapter.fetchThreadContextDelta(event, undefined)
-				: await this.adapter.fetchThreadContext(event);
-		} catch (error) {
-			this.logger.warn(
-				`Failed to fetch thread context for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			return null;
-		}
-	}
-
-	/**
-	 * Prefix the task instructions with what was said since the last mention.
-	 * A failed fetch leaves the cursor put, so the missed window is retried
-	 * on the next event instead of being lost.
-	 */
-	private async withThreadCatchup(
+	private async withThreadContext(
 		session: CyrusAgentSession,
 		event: TEvent,
 		taskInstructions: string,
 	): Promise<string> {
-		if (!this.adapter.fetchThreadContextDelta) {
-			return taskInstructions;
-		}
-
-		let delta: string | null;
+		let context: string | null;
 		try {
-			delta = await this.adapter.fetchThreadContextDelta(
+			context = await this.adapter.fetchThreadContext(
 				event,
 				session.metadata?.lastContextTs,
 			);
 		} catch (error) {
 			// A context read must never cost the user their message
 			this.logger.warn(
-				`Failed to fetch thread catch-up for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to fetch thread context for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			return taskInstructions;
 		}
 
-		if (delta !== null) {
+		if (context !== null) {
 			this.recordThreadContextTs(session, event);
 		}
 
-		return delta ? `${delta}\n\n${taskInstructions}` : taskInstructions;
+		return context ? `${context}\n\n${taskInstructions}` : taskInstructions;
+	}
+
+	/**
+	 * Follow-up variant. Platforms with no thread cursor deliver every message
+	 * already, so re-reading the thread would only duplicate what the session has.
+	 */
+	private async withThreadCatchup(
+		session: CyrusAgentSession,
+		event: TEvent,
+		taskInstructions: string,
+	): Promise<string> {
+		if (!this.adapter.getThreadContextTs) {
+			return taskInstructions;
+		}
+		return this.withThreadContext(session, event, taskInstructions);
 	}
 
 	/**

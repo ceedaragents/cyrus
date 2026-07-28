@@ -1002,7 +1002,7 @@ describe("SlackChatAdapter thread catch-up", () => {
 	it("returns nothing for a message outside a thread", async () => {
 		const adapter = new SlackChatAdapter(createStaticProvider([]));
 		await expect(
-			adapter.fetchThreadContextDelta(mentionEvent(false), "1"),
+			adapter.fetchThreadContext(mentionEvent(false), "1"),
 		).resolves.toBe("");
 	});
 
@@ -1015,7 +1015,7 @@ describe("SlackChatAdapter thread catch-up", () => {
 				{ user: "U1", text: "original ask", ts: PARENT_TS },
 			] as any);
 
-		const result = await adapter.fetchThreadContextDelta(mentionEvent());
+		const result = await adapter.fetchThreadContext(mentionEvent());
 
 		// Delegates to the full-window fetch — no `oldest`, no catch-up preamble.
 		expect(fetchSpy.mock.calls[0]?.[0]).not.toHaveProperty("oldest");
@@ -1052,7 +1052,7 @@ original ask
 				{ user: "U1", text: "<@U0BOT> where were we?", ts: TRIGGER_TS },
 			] as any);
 
-		const result = await adapter.fetchThreadContextDelta(
+		const result = await adapter.fetchThreadContext(
 			mentionEvent(),
 			"1700000000.000200",
 		);
@@ -1061,9 +1061,8 @@ original ask
 			token: "xoxb-test",
 			channel: "C1",
 			thread_ts: PARENT_TS,
-			limit: 50,
+			limit: 2000,
 			oldest: "1700000000.000200",
-			keep: "newest",
 		});
 		expect(result).toContain("since you last had context");
 		expect(result).toContain("we decided to use redis");
@@ -1084,7 +1083,7 @@ original ask
 		] as any);
 
 		await expect(
-			adapter.fetchThreadContextDelta(mentionEvent(), "1700000000.000200"),
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
 		).resolves.toBe("");
 	});
 
@@ -1100,7 +1099,7 @@ original ask
 			{ user: "U2", text: "genuinely new", ts: "1700000000.000400" },
 		] as any);
 
-		const result = await adapter.fetchThreadContextDelta(
+		const result = await adapter.fetchThreadContext(
 			mentionEvent(),
 			"1700000000.000200",
 		);
@@ -1115,11 +1114,37 @@ original ask
 		delete (event as any).slackBotToken;
 
 		await expect(
-			adapter.fetchThreadContextDelta(event, "1700000000.000200"),
+			adapter.fetchThreadContext(event, "1700000000.000200"),
 		).resolves.toBeNull();
 	});
 
-	it("reports a failed initial full-window read as null, not as empty", async () => {
+	it("keeps only the newest messages of an over-long gap", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		// 60 new messages, more than a single context read carries
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue(
+			Array.from({ length: 60 }, (_, i) => ({
+				user: "U2",
+				text: `msg ${i}`,
+				ts: `1700000000.00${String(1000 + i)}`,
+			})) as any,
+		);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		// Trimmed to the last 50, so the stalest go and the freshest stay
+		expect(result).not.toContain("msg 9\n");
+		expect(result).toContain("msg 10");
+		expect(result).toContain("msg 59");
+	});
+
+	it("returns null whether the read fails with a cursor or without one", async () => {
 		const adapter = new SlackChatAdapter(createStaticProvider([]));
 		mockIdentity();
 		vi.spyOn(
@@ -1127,24 +1152,11 @@ original ask
 			"fetchThreadMessages",
 		).mockRejectedValue(new Error("ratelimited"));
 
-		// The cursor-less read covers the whole thread; failure must stay visible
 		await expect(
-			adapter.fetchThreadContextDelta(mentionEvent()),
+			adapter.fetchThreadContext(mentionEvent()),
 		).resolves.toBeNull();
-		// fetchThreadContext still collapses that to ""
-		await expect(adapter.fetchThreadContext(mentionEvent())).resolves.toBe("");
-	});
-
-	it("returns null when the Slack fetch fails", async () => {
-		const adapter = new SlackChatAdapter(createStaticProvider([]));
-		mockIdentity();
-		vi.spyOn(
-			SlackMessageService.prototype,
-			"fetchThreadMessages",
-		).mockRejectedValue(new Error("ratelimited"));
-
 		await expect(
-			adapter.fetchThreadContextDelta(mentionEvent(), "1700000000.000200"),
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
 		).resolves.toBeNull();
 	});
 });
@@ -1165,7 +1177,7 @@ describe("ChatSessionHandler thread catch-up", () => {
 			return event.ts;
 		}
 
-		async fetchThreadContextDelta(
+		async fetchThreadContext(
 			_event: TestEvent,
 			sinceTs?: string,
 		): Promise<string | null> {
@@ -1177,23 +1189,33 @@ describe("ChatSessionHandler thread catch-up", () => {
 		}
 	}
 
-	/** Handler whose runner is idle between events, so follow-ups resume it */
-	function buildHandler(adapter: ChatPlatformAdapter<TestEvent>) {
+	/**
+	 * Handler whose runner is idle between events, so follow-ups resume it.
+	 * With `streaming`, the runner stays live and follow-ups inject mid-turn.
+	 */
+	function buildHandler(
+		adapter: ChatPlatformAdapter<TestEvent>,
+		{ streaming = false } = {},
+	) {
 		const prompts: string[] = [];
 		let running = false;
 		let capturedConfig: any;
 
+		const capture = async (prompt: string) => {
+			prompts.push(prompt);
+			return { sessionId: "session-1" };
+		};
+
 		const createRunner = vi.fn((config: any) => {
 			capturedConfig = config;
+			running = streaming;
 			return {
-				supportsStreamingInput: false,
-				start: vi.fn(async (prompt: string) => {
-					prompts.push(prompt);
-					return { sessionId: "session-1" };
-				}),
+				supportsStreamingInput: streaming,
+				start: vi.fn(capture),
+				startStreaming: vi.fn(capture),
 				stop: vi.fn(),
 				isRunning: vi.fn(() => running),
-				isStreaming: vi.fn(() => false),
+				isStreaming: vi.fn(() => streaming),
 				addStreamMessage: vi.fn((prompt: string) => prompts.push(prompt)),
 				getMessages: vi.fn().mockReturnValue([]),
 			} as any;
@@ -1345,7 +1367,7 @@ describe("ChatSessionHandler thread catch-up", () => {
 				return event.ts;
 			}
 
-			async fetchThreadContextDelta(
+			async fetchThreadContext(
 				_event: TestEvent,
 				sinceTs?: string,
 			): Promise<string | null> {
@@ -1385,7 +1407,7 @@ describe("ChatSessionHandler thread catch-up", () => {
 				return event.ts;
 			}
 
-			async fetchThreadContextDelta(
+			async fetchThreadContext(
 				_event: TestEvent,
 				sinceTs?: string,
 			): Promise<string | null> {
@@ -1401,31 +1423,7 @@ describe("ChatSessionHandler thread catch-up", () => {
 		}
 
 		const adapter = new GatedAdapter("racy-thread");
-		let running = false;
-		const createRunner = vi.fn(() => {
-			running = true;
-			return {
-				supportsStreamingInput: true,
-				startStreaming: vi.fn(async () => ({ sessionId: "session-1" })),
-				start: vi.fn(),
-				stop: vi.fn(),
-				isRunning: vi.fn(() => running),
-				isStreaming: vi.fn(() => true),
-				addStreamMessage: vi.fn(),
-				getMessages: vi.fn().mockReturnValue([]),
-			} as any;
-		});
-
-		const handler = new ChatSessionHandler(adapter, {
-			cyrusHome: TEST_CYRUS_CHAT,
-			chatRepositoryProvider: createStaticProvider([]),
-			runnerConfigBuilder: createMockRunnerConfigBuilder(),
-			createRunner,
-			onWebhookStart: vi.fn(),
-			onWebhookEnd: vi.fn(),
-			onStateChange: vi.fn().mockResolvedValue(undefined),
-			onClaudeError: vi.fn(),
-		});
+		const { handler } = buildHandler(adapter, { streaming: true });
 
 		await handler.handleEvent({
 			eventId: "m1",
@@ -1467,35 +1465,8 @@ describe("ChatSessionHandler thread catch-up", () => {
 
 	it("catches up when the follow-up is injected mid-turn", async () => {
 		const adapter = new CatchupAdapter("live-thread", ["", "<catch-up/>"]);
-		const prompts: string[] = [];
-		let running = false;
-
-		const createRunner = vi.fn(() => {
-			running = true;
-			return {
-				supportsStreamingInput: true,
-				startStreaming: vi.fn(async (prompt: string) => {
-					prompts.push(prompt);
-					return { sessionId: "session-1" };
-				}),
-				start: vi.fn(),
-				stop: vi.fn(),
-				isRunning: vi.fn(() => running),
-				isStreaming: vi.fn(() => true),
-				addStreamMessage: vi.fn((prompt: string) => prompts.push(prompt)),
-				getMessages: vi.fn().mockReturnValue([]),
-			} as any;
-		});
-
-		const handler = new ChatSessionHandler(adapter, {
-			cyrusHome: TEST_CYRUS_CHAT,
-			chatRepositoryProvider: createStaticProvider([]),
-			runnerConfigBuilder: createMockRunnerConfigBuilder(),
-			createRunner,
-			onWebhookStart: vi.fn(),
-			onWebhookEnd: vi.fn(),
-			onStateChange: vi.fn().mockResolvedValue(undefined),
-			onClaudeError: vi.fn(),
+		const { handler, prompts, createRunner } = buildHandler(adapter, {
+			streaming: true,
 		});
 
 		await handler.handleEvent({
