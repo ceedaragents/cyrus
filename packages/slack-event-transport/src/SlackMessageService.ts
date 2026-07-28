@@ -5,6 +5,9 @@
  * typically used to reply to @mention webhooks in a thread.
  */
 
+/** Bounds the full pagination pass that `keep: "newest"` requires. */
+const MAX_PAGES_WHEN_KEEPING_NEWEST = 10;
+
 /**
  * A single message from a Slack thread (conversations.replies)
  */
@@ -39,6 +42,11 @@ export interface SlackFetchThreadParams {
 	 * recent messages in a thread longer than `limit`.
 	 */
 	oldest?: string;
+	/**
+	 * Which end to keep when more than `limit` messages match. A thread is
+	 * returned oldest-first, so "newest" must walk every page before slicing.
+	 */
+	keep?: "oldest" | "newest";
 }
 
 /**
@@ -154,15 +162,30 @@ export class SlackMessageService {
 	async fetchThreadMessages(
 		params: SlackFetchThreadParams,
 	): Promise<SlackThreadMessage[]> {
-		const { token, channel, thread_ts, limit = 100, oldest } = params;
+		const {
+			token,
+			channel,
+			thread_ts,
+			limit = 100,
+			oldest,
+			keep = "oldest",
+		} = params;
 		const messages: SlackThreadMessage[] = [];
 		let cursor: string | undefined;
+		let pages = 0;
 
-		while (messages.length < limit) {
+		while (
+			keep === "newest"
+				? pages < MAX_PAGES_WHEN_KEEPING_NEWEST
+				: messages.length < limit
+		) {
+			pages++;
 			const queryParams = new URLSearchParams({
 				channel,
 				ts: thread_ts,
-				limit: String(Math.min(limit - messages.length, 200)),
+				limit: String(
+					keep === "newest" ? 200 : Math.min(limit - messages.length, 200),
+				),
 			});
 			if (oldest) {
 				queryParams.set("oldest", oldest);
@@ -214,6 +237,8 @@ export class SlackMessageService {
 		}
 
 		// Enforce limit
-		return messages.slice(0, limit);
+		return keep === "newest"
+			? messages.slice(-limit)
+			: messages.slice(0, limit);
 	}
 }

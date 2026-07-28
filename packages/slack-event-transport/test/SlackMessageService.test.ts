@@ -272,6 +272,66 @@ describe("SlackMessageService", () => {
 			expect(calledUrl.searchParams.get("limit")).toBe("50");
 		});
 
+		it("keeps the newest messages when keep is newest", async () => {
+			mockFetch
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						ok: true,
+						messages: [
+							{ user: "U111", text: "Stalest", ts: "1704110400.000100" },
+							{ user: "U222", text: "Middle", ts: "1704110400.000200" },
+						],
+						has_more: true,
+						response_metadata: { next_cursor: "page2" },
+					}),
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						ok: true,
+						messages: [
+							{ user: "U333", text: "Recent", ts: "1704110400.000300" },
+							{ user: "U444", text: "Newest", ts: "1704110400.000400" },
+						],
+						has_more: false,
+					}),
+				});
+
+			const result = await service.fetchThreadMessages({
+				token: "xoxb-test-token",
+				channel: "C9876543210",
+				thread_ts: "1704110400.000100",
+				limit: 2,
+				keep: "newest",
+			});
+
+			// keep: "oldest" would have stopped at page 1 with Stalest/Middle
+			expect(mockFetch).toHaveBeenCalledTimes(2);
+			expect(result.map((m) => m.text)).toEqual(["Recent", "Newest"]);
+		});
+
+		it("returns everything when keep is newest and the gap fits the limit", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					ok: true,
+					messages: [{ user: "U111", text: "Only", ts: "1704110400.000100" }],
+					has_more: false,
+				}),
+			});
+
+			const result = await service.fetchThreadMessages({
+				token: "xoxb-test-token",
+				channel: "C9876543210",
+				thread_ts: "1704110400.000100",
+				limit: 50,
+				keep: "newest",
+			});
+
+			expect(result.map((m) => m.text)).toEqual(["Only"]);
+		});
+
 		it("omits oldest when it is not supplied", async () => {
 			mockFetch.mockResolvedValueOnce({
 				ok: true,

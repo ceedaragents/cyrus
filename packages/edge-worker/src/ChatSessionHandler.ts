@@ -342,11 +342,13 @@ export class ChatSessionHandler<TEvent> {
 			await this.deps.onStateChange();
 
 			// Fetch thread context for threaded mentions
-			const threadContext = await this.adapter.fetchThreadContext(event);
+			const threadContext = await this.fetchInitialThreadContext(event);
 			const userPrompt = threadContext
 				? `${threadContext}\n\n${taskInstructions}`
 				: taskInstructions;
-			this.recordThreadContextTs(session, event);
+			if (threadContext !== null) {
+				this.recordThreadContextTs(session, event);
+			}
 
 			this.logger.info(
 				`Starting runner for ${this.adapter.platformName} event ${eventId}`,
@@ -461,7 +463,32 @@ export class ChatSessionHandler<TEvent> {
 		if (!session.metadata) {
 			session.metadata = {};
 		}
+		// Concurrent mentions race here; a backwards cursor re-delivers a message.
+		// Slack ts is zero-padded, so string ordering is chronological.
+		const current = session.metadata.lastContextTs;
+		if (current && ts <= current) {
+			return;
+		}
 		session.metadata.lastContextTs = ts;
+	}
+
+	/**
+	 * Opening read for a new session. Prefers the delta method, whose `null`
+	 * distinguishes a failed read from an empty one and so holds the cursor.
+	 */
+	private async fetchInitialThreadContext(
+		event: TEvent,
+	): Promise<string | null> {
+		try {
+			return this.adapter.fetchThreadContextDelta
+				? await this.adapter.fetchThreadContextDelta(event, undefined)
+				: await this.adapter.fetchThreadContext(event);
+		} catch (error) {
+			this.logger.warn(
+				`Failed to fetch thread context for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return null;
+		}
 	}
 
 	/**
@@ -478,10 +505,20 @@ export class ChatSessionHandler<TEvent> {
 			return taskInstructions;
 		}
 
-		const delta = await this.adapter.fetchThreadContextDelta(
-			event,
-			session.metadata?.lastContextTs,
-		);
+		let delta: string | null;
+		try {
+			delta = await this.adapter.fetchThreadContextDelta(
+				event,
+				session.metadata?.lastContextTs,
+			);
+		} catch (error) {
+			// A context read must never cost the user their message
+			this.logger.warn(
+				`Failed to fetch thread catch-up for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return taskInstructions;
+		}
+
 		if (delta !== null) {
 			this.recordThreadContextTs(session, event);
 		}

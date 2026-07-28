@@ -28,6 +28,9 @@ export const SLACK_NO_RESPONSE_SENTINEL = "<<NO_RESPONSE>>";
  */
 export const BEHAVIOURS_PAGE_ROUTE = "/settings/behaviours";
 
+/** How many thread messages a single context or catch-up read carries. */
+const THREAD_CONTEXT_MESSAGE_LIMIT = 50;
+
 /** Reaction added when a message is received and queued for processing (👀) */
 export const RECEIPT_REACTION = "eyes";
 
@@ -227,6 +230,35 @@ Supported mrkdwn syntax:
 	}
 
 	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
+		// Collapses failure into "" — callers needing that distinction use the delta
+		return (await this.fetchThreadWindow(event)) ?? "";
+	}
+
+	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
+		return event.payload.ts;
+	}
+
+	/**
+	 * Fetch what was posted in the thread since `sinceTs`, or the whole window
+	 * when there's no cursor yet. With thread following disabled, untagged
+	 * messages never reach us, so everything said between two @mentions is
+	 * invisible unless back-read here.
+	 *
+	 * Returns "" when there's nothing new, `null` when the fetch failed — the
+	 * caller only advances its cursor on a non-null result.
+	 */
+	async fetchThreadContextDelta(
+		event: SlackWebhookEvent,
+		sinceTs?: string,
+	): Promise<string | null> {
+		return this.fetchThreadWindow(event, sinceTs);
+	}
+
+	/** Whole thread when `sinceTs` is absent, otherwise just what follows it. */
+	private async fetchThreadWindow(
+		event: SlackWebhookEvent,
+		sinceTs?: string,
+	): Promise<string | null> {
 		// Only fetch context for threaded messages
 		if (!event.payload.thread_ts) {
 			return "";
@@ -236,66 +268,6 @@ Supported mrkdwn syntax:
 		if (!token) {
 			this.logger.warn(
 				"Cannot fetch Slack thread context: no slackBotToken available",
-			);
-			return "";
-		}
-
-		try {
-			const slackService = new SlackMessageService();
-			const [messages, selfBotId] = await Promise.all([
-				slackService.fetchThreadMessages({
-					token,
-					channel: event.payload.channel,
-					thread_ts: event.payload.thread_ts,
-					limit: 50,
-				}),
-				this.getSelfBotId(token),
-			]);
-
-			if (messages.length === 0) {
-				return "";
-			}
-
-			// Include all messages (user and bot) so follow-up sessions retain
-			// full conversation history, especially when the runner type changes.
-			return this.formatThreadContext(messages, selfBotId);
-		} catch (error) {
-			this.logger.warn(
-				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			return "";
-		}
-	}
-
-	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
-		return event.payload.ts;
-	}
-
-	/**
-	 * Fetch what was posted in the thread since `sinceTs`. With thread following
-	 * disabled, untagged messages never reach us, so everything said between two
-	 * @mentions is invisible unless back-read here.
-	 *
-	 * Returns "" when there's nothing new, `null` when the fetch failed — the
-	 * caller only advances its cursor on a non-null result.
-	 */
-	async fetchThreadContextDelta(
-		event: SlackWebhookEvent,
-		sinceTs?: string,
-	): Promise<string | null> {
-		if (!event.payload.thread_ts) {
-			return "";
-		}
-
-		// No cursor yet — fall back to the full window rather than no history
-		if (!sinceTs) {
-			return this.fetchThreadContext(event);
-		}
-
-		const token = this.getSlackBotToken(event);
-		if (!token) {
-			this.logger.warn(
-				"Cannot fetch Slack thread catch-up: no slackBotToken available",
 			);
 			return null;
 		}
@@ -307,15 +279,25 @@ Supported mrkdwn syntax:
 					token,
 					channel: event.payload.channel,
 					thread_ts: event.payload.thread_ts,
-					limit: 50,
-					oldest: sinceTs,
+					limit: THREAD_CONTEXT_MESSAGE_LIMIT,
+					// An over-long gap should lose its stalest messages, not its newest
+					...(sinceTs ? { oldest: sinceTs, keep: "newest" as const } : {}),
 				}),
 				this.getSelfBotId(token),
 			]);
 
+			if (!sinceTs) {
+				// Include all messages (user and bot) so follow-up sessions retain
+				// full conversation history, especially when the runner type changes.
+				return messages.length === 0
+					? ""
+					: this.formatThreadContext(messages, selfBotId);
+			}
+
 			const delta = messages.filter((msg) => {
-				// conversations.replies returns the parent regardless of `oldest`
-				if (Number.parseFloat(msg.ts) <= Number.parseFloat(sinceTs)) {
+				// conversations.replies returns the parent regardless of `oldest`.
+				// Slack ts is zero-padded, so string ordering is chronological.
+				if (msg.ts <= sinceTs) {
 					return false;
 				}
 				// Already in the task instructions
@@ -336,7 +318,7 @@ Supported mrkdwn syntax:
 			)}`;
 		} catch (error) {
 			this.logger.warn(
-				`Failed to fetch Slack thread catch-up: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			return null;
 		}
