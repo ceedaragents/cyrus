@@ -35,20 +35,26 @@ interface SkillScope {
 /**
  * Resolves skills plugins for agent sessions.
  *
- * Two plugin sources are supported:
+ * Three plugin sources are supported:
  * 1. Internal plugin — default Cyrus workflow skills deployed to ~/.cyrus/cyrus-skills-plugin/
  *    (editable by the user)
  * 2. User skills plugin — custom skills managed by the CYHOST UI at ~/.cyrus/user-skills-plugin/
+ * 3. External plugins — full Claude Code plugins (skills, agents, commands) dropped
+ *    into ~/.cyrus/plugins/<name>/, each identified by its own
+ *    .claude-plugin/plugin.json manifest. A directory entry may be a symlink to a
+ *    plugin repo cloned elsewhere on the host.
  *
- * Both live outside the repository so they are never committed to the user's repo.
+ * All live outside the repository so they are never committed to the user's repo.
  *
- * Plugin ordering: user plugin is loaded before internal plugin so that
- * user-defined skills take precedence over internal skills with the same name.
+ * Plugin ordering: user plugin, then external plugins (alphabetical), then the
+ * internal plugin, so user-defined skills take precedence over external ones and
+ * both take precedence over internal skills with the same name.
  */
 export class SkillsPluginResolver {
 	private readonly internalPluginPath: string;
 	private readonly userPluginPath: string;
 	private readonly userSkillsDir: string;
+	private readonly externalPluginsDir: string;
 
 	constructor(
 		private readonly cyrusHome: string,
@@ -57,6 +63,7 @@ export class SkillsPluginResolver {
 		this.internalPluginPath = join(this.cyrusHome, "cyrus-skills-plugin");
 		this.userPluginPath = join(this.cyrusHome, "user-skills-plugin");
 		this.userSkillsDir = join(this.userPluginPath, "skills");
+		this.externalPluginsDir = join(this.cyrusHome, "plugins");
 	}
 
 	/**
@@ -119,11 +126,13 @@ export class SkillsPluginResolver {
 	async resolve(): Promise<SdkPluginConfig[]> {
 		const plugins: SdkPluginConfig[] = [];
 
-		// User plugin first — user skills override internal skills
+		// User plugin first — user skills override external and internal skills
 		const user = await this.resolveUserPlugin();
 		if (user) {
 			plugins.push(user);
 		}
+
+		plugins.push(...(await this.resolveExternalPlugins()));
 
 		const internal = await this.resolveInternalPlugin();
 		if (internal) {
@@ -363,6 +372,47 @@ export class SkillsPluginResolver {
 		return null;
 	}
 
+	/**
+	 * Discover external plugins under `~/.cyrus/plugins/`.
+	 *
+	 * Each immediate subdirectory (or symlink) holding a
+	 * `.claude-plugin/plugin.json` manifest is treated as a full local plugin —
+	 * the SDK loads its skills, agents, and commands under the name declared in
+	 * that manifest. Entries without a manifest are skipped with a warning so a
+	 * half-copied plugin fails loudly rather than silently. Returned in
+	 * alphabetical order for deterministic precedence.
+	 */
+	private async resolveExternalPlugins(): Promise<SdkPluginConfig[]> {
+		let entries: string[];
+		try {
+			const dirents = await readdir(this.externalPluginsDir, {
+				withFileTypes: true,
+			});
+			entries = dirents
+				.filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+				.map((entry) => entry.name)
+				.sort();
+		} catch {
+			// ~/.cyrus/plugins/ doesn't exist — external plugins not in use
+			return [];
+		}
+
+		const plugins: SdkPluginConfig[] = [];
+		for (const name of entries) {
+			const pluginPath = join(this.externalPluginsDir, name);
+			const manifestPath = join(pluginPath, ".claude-plugin", "plugin.json");
+			if (!(await this.exists(manifestPath))) {
+				this.logger.warn(
+					`Ignoring ${pluginPath}: no .claude-plugin/plugin.json manifest`,
+				);
+				continue;
+			}
+			this.logger.debug(`Using external plugin at ${pluginPath}`);
+			plugins.push({ type: "local", path: pluginPath });
+		}
+		return plugins;
+	}
+
 	private async resolveUserPlugin(): Promise<SdkPluginConfig | null> {
 		const manifestPath = join(
 			this.userPluginPath,
@@ -378,36 +428,35 @@ export class SkillsPluginResolver {
 	}
 
 	/**
-	 * Detect and log skill name conflicts between user and internal plugins.
+	 * Detect and log skill name conflicts across plugins. Earlier plugins in
+	 * the resolved order shadow later ones (user > external > internal).
 	 */
 	private async logConflicts(plugins: SdkPluginConfig[]): Promise<void> {
 		if (plugins.length < 2) {
 			return;
 		}
 
-		const skillSets: string[][] = [];
+		const seen = new Set<string>();
 		for (const plugin of plugins) {
 			const skillsDir = join(plugin.path, "skills");
+			let names: string[] = [];
 			try {
 				const entries = await readdir(skillsDir, { withFileTypes: true });
-				skillSets.push(
-					entries
-						.filter((e) => e.isDirectory() || e.isSymbolicLink())
-						.map((e) => e.name),
-				);
+				names = entries
+					.filter((e) => e.isDirectory() || e.isSymbolicLink())
+					.map((e) => e.name);
 			} catch {
-				skillSets.push([]);
+				// no skills dir — nothing to conflict
 			}
-		}
 
-		// First set is user, second is internal — find overlap
-		if (skillSets.length >= 2 && skillSets[0] && skillSets[1]) {
-			const userSkills = new Set(skillSets[0]);
-			const conflicts = skillSets[1].filter((s) => userSkills.has(s));
+			const conflicts = names.filter((s) => seen.has(s));
 			if (conflicts.length > 0) {
 				this.logger.info(
-					`User skills override internal skills: ${conflicts.join(", ")}`,
+					`Skills in ${plugin.path} are shadowed by an earlier plugin: ${conflicts.join(", ")}`,
 				);
+			}
+			for (const name of names) {
+				seen.add(name);
 			}
 		}
 	}
