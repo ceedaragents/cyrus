@@ -26,8 +26,12 @@ const AUTH_ENV_KEYS = [
  *
  * - MCP_CONNECTION_NONBLOCKING lets MCP servers connect in the background so
  *   both cold-start and pre-warm sessions return faster.
+ * - CYRUS_AGENT_SESSION marks the session as a headless Cyrus agent session so
+ *   skills and tooling can detect agent mode deterministically (e.g. relax
+ *   interactive approval checkpoints that would otherwise stall unattended runs).
  */
 export const CYRUS_SESSION_ENV = {
+	CYRUS_AGENT_SESSION: "1",
 	CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
 	CLAUDE_CODE_ENABLE_TASKS: "true",
 	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
