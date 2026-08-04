@@ -69,6 +69,8 @@ function createStaticProvider(
 interface TestEvent {
 	eventId: string;
 	threadKey: string;
+	/** Thread position, used by adapters that support catch-up */
+	ts?: string;
 }
 
 class TestChatAdapter implements ChatPlatformAdapter<TestEvent> {
@@ -963,5 +965,540 @@ describe("LiveChatRepositoryProvider", () => {
 		const provider = new LiveChatRepositoryProvider(repos, () => workspaces);
 
 		expect(provider.getDefaultLinearWorkspaceId()).toBe("ws1");
+	});
+});
+
+describe("SlackChatAdapter thread catch-up", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		delete process.env.SLACK_BOT_TOKEN;
+	});
+
+	const TRIGGER_TS = "1700000000.000500";
+	const PARENT_TS = "1700000000.000100";
+
+	const mentionEvent = (thread = true): SlackWebhookEvent =>
+		({
+			eventType: "app_mention",
+			eventId: "Ev2",
+			teamId: "T1",
+			slackBotToken: "xoxb-test",
+			payload: {
+				type: "app_mention",
+				user: "U1",
+				channel: "C1",
+				text: "<@U0BOT> where were we?",
+				ts: TRIGGER_TS,
+				...(thread ? { thread_ts: PARENT_TS } : {}),
+				event_ts: TRIGGER_TS,
+			},
+		}) as SlackWebhookEvent;
+
+	const mockIdentity = () =>
+		vi
+			.spyOn(SlackMessageService.prototype, "getIdentity")
+			.mockResolvedValue({ bot_id: "B0BOT" } as any);
+
+	it("returns nothing for a message outside a thread", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(false), "1"),
+		).resolves.toBe("");
+	});
+
+	it("falls back to the full thread window when no cursor is known", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		const fetchSpy = vi
+			.spyOn(SlackMessageService.prototype, "fetchThreadMessages")
+			.mockResolvedValue([
+				{ user: "U1", text: "original ask", ts: PARENT_TS },
+			] as any);
+
+		const result = await adapter.fetchThreadContext(mentionEvent());
+
+		// Delegates to the full-window fetch — no `oldest`, no catch-up preamble.
+		expect(fetchSpy.mock.calls[0]?.[0]).not.toHaveProperty("oldest");
+		expect(result).toBe(
+			`<slack_thread_context>
+  <message>
+    <author>U1</author>
+    <timestamp>${PARENT_TS}</timestamp>
+    <content>
+original ask
+    </content>
+  </message>
+</slack_thread_context>`,
+		);
+	});
+
+	it("asks Slack for messages after the cursor and drops the ones already known", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		const fetchSpy = vi
+			.spyOn(SlackMessageService.prototype, "fetchThreadMessages")
+			.mockResolvedValue([
+				// Slack returns the thread parent regardless of `oldest`
+				{ user: "U1", text: "original ask", ts: PARENT_TS },
+				// our own earlier reply — already in the session's memory
+				{ text: "on it", ts: "1700000000.000300", bot_id: "B0BOT" },
+				// the inter-tag discussion we actually want
+				{
+					user: "U2",
+					text: "we decided to use redis",
+					ts: "1700000000.000400",
+				},
+				// the triggering message — already in the task instructions
+				{ user: "U1", text: "<@U0BOT> where were we?", ts: TRIGGER_TS },
+			] as any);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		expect(fetchSpy).toHaveBeenCalledWith({
+			token: "xoxb-test",
+			channel: "C1",
+			thread_ts: PARENT_TS,
+			limit: 2000,
+			oldest: "1700000000.000200",
+		});
+		expect(result).toContain("since you last had context");
+		expect(result).toContain("we decided to use redis");
+		expect(result).not.toContain("original ask");
+		expect(result).not.toContain("on it");
+		expect(result).not.toContain("where were we?");
+	});
+
+	it("returns an empty string when nothing new was said", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue([
+			{ user: "U1", text: "original ask", ts: PARENT_TS },
+			{ user: "U1", text: "<@U0BOT> where were we?", ts: TRIGGER_TS },
+		] as any);
+
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
+		).resolves.toBe("");
+	});
+
+	it("drops a message sitting exactly on the cursor", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue([
+			// Slack can echo the cursor message back when `inclusive` is honoured
+			{ user: "U2", text: "already seen", ts: "1700000000.000200" },
+			{ user: "U2", text: "genuinely new", ts: "1700000000.000400" },
+		] as any);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		expect(result).toContain("genuinely new");
+		expect(result).not.toContain("already seen");
+	});
+
+	it("returns null when there is no bot token", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		const event = mentionEvent();
+		delete (event as any).slackBotToken;
+
+		await expect(
+			adapter.fetchThreadContext(event, "1700000000.000200"),
+		).resolves.toBeNull();
+	});
+
+	it("keeps only the newest messages of an over-long gap", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		// 60 new messages, more than a single context read carries
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue(
+			Array.from({ length: 60 }, (_, i) => ({
+				user: "U2",
+				text: `msg ${i}`,
+				ts: `1700000000.00${String(1000 + i)}`,
+			})) as any,
+		);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		// Trimmed to the last 50, so the stalest go and the freshest stay
+		expect(result).not.toContain("msg 9\n");
+		expect(result).toContain("msg 10");
+		expect(result).toContain("msg 59");
+	});
+
+	it("returns null whether the read fails with a cursor or without one", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockRejectedValue(new Error("ratelimited"));
+
+		await expect(
+			adapter.fetchThreadContext(mentionEvent()),
+		).resolves.toBeNull();
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
+		).resolves.toBeNull();
+	});
+});
+
+describe("ChatSessionHandler thread catch-up", () => {
+	/** Adapter that supports catch-up, with a scripted queue of delta results */
+	class CatchupAdapter extends TestChatAdapter {
+		public sinceArgs: Array<string | undefined> = [];
+
+		constructor(
+			threadKey: string,
+			private readonly deltas: Array<string | null>,
+		) {
+			super(threadKey);
+		}
+
+		getThreadContextTs(event: TestEvent): string | undefined {
+			return event.ts;
+		}
+
+		async fetchThreadContext(
+			_event: TestEvent,
+			sinceTs?: string,
+		): Promise<string | null> {
+			this.sinceArgs.push(sinceTs);
+			// Not `?? ""` — a scripted null means a fetch failure
+			return this.deltas.length > 0
+				? (this.deltas.shift() as string | null)
+				: "";
+		}
+	}
+
+	/**
+	 * Handler whose runner is idle between events, so follow-ups resume it.
+	 * With `streaming`, the runner stays live and follow-ups inject mid-turn.
+	 */
+	function buildHandler(
+		adapter: ChatPlatformAdapter<TestEvent>,
+		{ streaming = false } = {},
+	) {
+		const prompts: string[] = [];
+		let running = false;
+		let capturedConfig: any;
+
+		const capture = async (prompt: string) => {
+			prompts.push(prompt);
+			return { sessionId: "session-1" };
+		};
+
+		const createRunner = vi.fn((config: any) => {
+			capturedConfig = config;
+			running = streaming;
+			return {
+				supportsStreamingInput: streaming,
+				start: vi.fn(capture),
+				startStreaming: vi.fn(capture),
+				stop: vi.fn(),
+				isRunning: vi.fn(() => running),
+				isStreaming: vi.fn(() => streaming),
+				addStreamMessage: vi.fn((prompt: string) => prompts.push(prompt)),
+				getMessages: vi.fn().mockReturnValue([]),
+			} as any;
+		});
+
+		const handler = new ChatSessionHandler(adapter, {
+			cyrusHome: TEST_CYRUS_CHAT,
+			chatRepositoryProvider: createStaticProvider([]),
+			runnerConfigBuilder: createMockRunnerConfigBuilder(),
+			createRunner,
+			onWebhookStart: vi.fn(),
+			onWebhookEnd: vi.fn(),
+			onStateChange: vi.fn().mockResolvedValue(undefined),
+			onClaudeError: vi.fn(),
+		});
+
+		/** Give the session a runner session id so follow-ups resume it */
+		const bindResumableSession = async () => {
+			await capturedConfig.onMessage({
+				type: "system",
+				subtype: "init",
+				session_id: "session-1",
+				model: "claude-test",
+				tools: [],
+				permissionMode: "default",
+				apiKeySource: "test",
+			});
+			await new Promise((resolve) => setImmediate(resolve));
+		};
+
+		return {
+			handler,
+			prompts,
+			createRunner,
+			bindResumableSession,
+			setRunning: (value: boolean) => {
+				running = value;
+			},
+		};
+	}
+
+	const TASK = "Inspect repository configuration";
+
+	it("prefixes the resumed prompt with what was said between mentions", async () => {
+		const adapter = new CatchupAdapter("catchup-thread", ["", "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "mention-1",
+			threadKey: "catchup-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+
+		await handler.handleEvent({
+			eventId: "mention-2",
+			threadKey: "catchup-thread",
+			ts: "200",
+		} as any);
+
+		// New session reads the full window; the second back-reads from there
+		expect(adapter.sinceArgs).toEqual([undefined, "100"]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("advances the cursor on a successful fetch even when nothing was said", async () => {
+		const adapter = new CatchupAdapter("empty-thread", ["", "", "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "empty-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "empty-thread",
+			ts: "200",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m3",
+			threadKey: "empty-thread",
+			ts: "300",
+		} as any);
+
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "200"]);
+		// An empty catch-up leaves the prompt untouched.
+		expect(prompts[1]).toBe(TASK);
+	});
+
+	it("holds the cursor when the catch-up fetch fails, retrying the window later", async () => {
+		const adapter = new CatchupAdapter("failed-thread", [
+			"",
+			null,
+			"<catch-up/>",
+		]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "failed-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "failed-thread",
+			ts: "200",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m3",
+			threadKey: "failed-thread",
+			ts: "300",
+		} as any);
+
+		// The failed window is retried rather than skipped.
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "100"]);
+		expect(prompts[1]).toBe(TASK);
+		expect(prompts[2]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("holds the cursor when the initial full-window read fails", async () => {
+		const adapter = new CatchupAdapter("cold-thread", [null, "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "cold-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "cold-thread",
+			ts: "200",
+		} as any);
+
+		// No cursor was set, so the next mention re-reads the whole thread
+		expect(adapter.sinceArgs).toEqual([undefined, undefined]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("still delivers the message when the catch-up read throws", async () => {
+		class ThrowingAdapter extends TestChatAdapter {
+			getThreadContextTs(event: TestEvent): string | undefined {
+				return event.ts;
+			}
+
+			async fetchThreadContext(
+				_event: TestEvent,
+				sinceTs?: string,
+			): Promise<string | null> {
+				if (sinceTs === undefined) {
+					return "";
+				}
+				throw new Error("adapter blew up");
+			}
+		}
+
+		const adapter = new ThrowingAdapter("throwing-thread");
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "throwing-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "throwing-thread",
+			ts: "200",
+		} as any);
+
+		// A throwing context read degrades to the bare task rather than losing it
+		expect(prompts[1]).toBe(TASK);
+	});
+
+	it("never lets a concurrent mention move the cursor backwards", async () => {
+		const releases: Array<() => void> = [];
+
+		class GatedAdapter extends TestChatAdapter {
+			public sinceArgs: Array<string | undefined> = [];
+
+			getThreadContextTs(event: TestEvent): string | undefined {
+				return event.ts;
+			}
+
+			async fetchThreadContext(
+				_event: TestEvent,
+				sinceTs?: string,
+			): Promise<string | null> {
+				this.sinceArgs.push(sinceTs);
+				// Gate only the two mentions raced below, to finish them out of order
+				if (this.sinceArgs.length === 2 || this.sinceArgs.length === 3) {
+					await new Promise<void>((resolve) => {
+						releases.push(resolve);
+					});
+				}
+				return "";
+			}
+		}
+
+		const adapter = new GatedAdapter("racy-thread");
+		const { handler } = buildHandler(adapter, { streaming: true });
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "racy-thread",
+			ts: "100",
+		} as any);
+
+		// Two mentions in flight at once, both reading the same cursor
+		const second = handler.handleEvent({
+			eventId: "m2",
+			threadKey: "racy-thread",
+			ts: "200",
+		} as any);
+		const third = handler.handleEvent({
+			eventId: "m3",
+			threadKey: "racy-thread",
+			ts: "300",
+		} as any);
+		// Wait until both are parked on their gated read
+		for (let i = 0; i < 100 && releases.length < 2; i++) {
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		expect(releases).toHaveLength(2);
+
+		// Resolve them out of order: the newer mention lands first
+		releases[1]();
+		releases[0]();
+		await Promise.all([second, third]);
+
+		await handler.handleEvent({
+			eventId: "m4",
+			threadKey: "racy-thread",
+			ts: "400",
+		} as any);
+
+		// The straggler must not drag the cursor back to its own ts
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "100", "300"]);
+	});
+
+	it("catches up when the follow-up is injected mid-turn", async () => {
+		const adapter = new CatchupAdapter("live-thread", ["", "<catch-up/>"]);
+		const { handler, prompts, createRunner } = buildHandler(adapter, {
+			streaming: true,
+		});
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "live-thread",
+			ts: "100",
+		} as any);
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "live-thread",
+			ts: "200",
+		} as any);
+
+		expect(createRunner).toHaveBeenCalledTimes(1);
+		expect(adapter.sinceArgs).toEqual([undefined, "100"]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("leaves adapters without catch-up support untouched", async () => {
+		const adapter = new TestChatAdapter("plain-thread");
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "plain-thread",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "plain-thread",
+		} as any);
+
+		expect(prompts).toEqual([TASK, TASK]);
 	});
 });

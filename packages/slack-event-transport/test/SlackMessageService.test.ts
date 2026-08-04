@@ -249,6 +249,83 @@ describe("SlackMessageService", () => {
 			expect(calledUrl.searchParams.get("limit")).toBe("2");
 		});
 
+		it("passes oldest through so Slack filters server-side", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					ok: true,
+					messages: [{ user: "U111", text: "Newer", ts: "1704110400.000900" }],
+					has_more: false,
+				}),
+			});
+
+			await service.fetchThreadMessages({
+				token: "xoxb-test-token",
+				channel: "C9876543210",
+				thread_ts: "1704110400.000100",
+				limit: 50,
+				oldest: "1704110400.000500",
+			});
+
+			const calledUrl = new URL(mockFetch.mock.calls[0][0]);
+			expect(calledUrl.searchParams.get("oldest")).toBe("1704110400.000500");
+			expect(calledUrl.searchParams.get("limit")).toBe("50");
+		});
+
+		it("omits oldest when it is not supplied", async () => {
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ ok: true, messages: [], has_more: false }),
+			});
+
+			await service.fetchThreadMessages({
+				token: "xoxb-test-token",
+				channel: "C9876543210",
+				thread_ts: "1704110400.000100",
+			});
+
+			const calledUrl = new URL(mockFetch.mock.calls[0][0]);
+			expect(calledUrl.searchParams.has("oldest")).toBe(false);
+		});
+
+		it("keeps oldest on paginated follow-up requests", async () => {
+			mockFetch
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						ok: true,
+						messages: [
+							{ user: "U111", text: "Page 1", ts: "1704110400.000600" },
+						],
+						has_more: true,
+						response_metadata: { next_cursor: "cursor_abc" },
+					}),
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						ok: true,
+						messages: [
+							{ user: "U222", text: "Page 2", ts: "1704110400.000700" },
+						],
+						has_more: false,
+					}),
+				});
+
+			await service.fetchThreadMessages({
+				token: "xoxb-test-token",
+				channel: "C9876543210",
+				thread_ts: "1704110400.000100",
+				oldest: "1704110400.000500",
+			});
+
+			const secondCallUrl = new URL(mockFetch.mock.calls[1][0]);
+			expect(secondCallUrl.searchParams.get("oldest")).toBe(
+				"1704110400.000500",
+			);
+			expect(secondCallUrl.searchParams.get("cursor")).toBe("cursor_abc");
+		});
+
 		it("throws on non-OK HTTP response", async () => {
 			mockFetch.mockResolvedValueOnce({
 				ok: false,

@@ -33,6 +33,12 @@ export interface SlackFetchThreadParams {
 	thread_ts: string;
 	/** Maximum number of messages to fetch (default 100) */
 	limit?: number;
+	/**
+	 * Only fetch messages after this timestamp. Must be server-side: pagination
+	 * walks from the thread head, so a client-side filter would never reach
+	 * recent messages in a thread longer than `limit`.
+	 */
+	oldest?: string;
 }
 
 /**
@@ -148,7 +154,7 @@ export class SlackMessageService {
 	async fetchThreadMessages(
 		params: SlackFetchThreadParams,
 	): Promise<SlackThreadMessage[]> {
-		const { token, channel, thread_ts, limit = 100 } = params;
+		const { token, channel, thread_ts, limit = 100, oldest } = params;
 		const messages: SlackThreadMessage[] = [];
 		let cursor: string | undefined;
 
@@ -158,6 +164,9 @@ export class SlackMessageService {
 				ts: thread_ts,
 				limit: String(Math.min(limit - messages.length, 200)),
 			});
+			if (oldest) {
+				queryParams.set("oldest", oldest);
+			}
 			if (cursor) {
 				queryParams.set("cursor", cursor);
 			}
