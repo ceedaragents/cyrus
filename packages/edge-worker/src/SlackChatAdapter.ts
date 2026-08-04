@@ -28,6 +28,15 @@ export const SLACK_NO_RESPONSE_SENTINEL = "<<NO_RESPONSE>>";
  */
 export const BEHAVIOURS_PAGE_ROUTE = "/settings/behaviours";
 
+/** How many thread messages a single context or catch-up read carries. */
+const THREAD_CONTEXT_MESSAGE_LIMIT = 50;
+
+/**
+ * How deep a catch-up read scans before trimming to the newest messages. A
+ * thread paginates from its head, so reaching the tail means walking past it.
+ */
+const THREAD_CATCHUP_SCAN_LIMIT = 2000;
+
 /** Reaction added when a message is received and queued for processing (👀) */
 export const RECEIPT_REACTION = "eyes";
 
@@ -226,7 +235,22 @@ Supported mrkdwn syntax:
 - Lists: use plain numbered lines (1. item) or dashes (- item) with newlines`;
 	}
 
-	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
+	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
+		return event.payload.ts;
+	}
+
+	/**
+	 * Whole thread when `sinceTs` is absent, otherwise just what followed it.
+	 * With thread following disabled, untagged messages never reach us, so
+	 * everything said between two @mentions is invisible unless back-read here.
+	 *
+	 * "" when there is nothing to add, `null` when the read failed — the caller
+	 * only advances its cursor on a non-null result.
+	 */
+	async fetchThreadContext(
+		event: SlackWebhookEvent,
+		sinceTs?: string,
+	): Promise<string | null> {
 		// Only fetch context for threaded messages
 		if (!event.payload.thread_ts) {
 			return "";
@@ -237,7 +261,7 @@ Supported mrkdwn syntax:
 			this.logger.warn(
 				"Cannot fetch Slack thread context: no slackBotToken available",
 			);
-			return "";
+			return null;
 		}
 
 		try {
@@ -247,23 +271,52 @@ Supported mrkdwn syntax:
 					token,
 					channel: event.payload.channel,
 					thread_ts: event.payload.thread_ts,
-					limit: 50,
+					limit: sinceTs
+						? THREAD_CATCHUP_SCAN_LIMIT
+						: THREAD_CONTEXT_MESSAGE_LIMIT,
+					...(sinceTs ? { oldest: sinceTs } : {}),
 				}),
 				this.getSelfBotId(token),
 			]);
 
-			if (messages.length === 0) {
+			if (!sinceTs) {
+				// Include all messages (user and bot) so follow-up sessions retain
+				// full conversation history, especially when the runner type changes.
+				return messages.length === 0
+					? ""
+					: this.formatThreadContext(messages, selfBotId);
+			}
+
+			const delta = messages
+				.filter((msg) => {
+					// conversations.replies returns the parent regardless of `oldest`.
+					// Slack ts is zero-padded, so string ordering is chronological.
+					if (msg.ts <= sinceTs) {
+						return false;
+					}
+					// Already in the task instructions
+					if (msg.ts === event.payload.ts) {
+						return false;
+					}
+					// Already in the resumed session's memory
+					return !this.isSelfMessage(msg, selfBotId);
+				})
+				// An over-long gap should lose its stalest messages, not its newest
+				.slice(-THREAD_CONTEXT_MESSAGE_LIMIT);
+
+			if (delta.length === 0) {
 				return "";
 			}
 
-			// Include all messages (user and bot) so follow-up sessions retain
-			// full conversation history, especially when the runner type changes.
-			return this.formatThreadContext(messages, selfBotId);
+			return `The following messages were posted in this thread since you last had context. Read them for background before responding.\n\n${this.formatThreadContext(
+				delta,
+				selfBotId,
+			)}`;
 		} catch (error) {
 			this.logger.warn(
 				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
 			);
-			return "";
+			return null;
 		}
 	}
 
@@ -400,14 +453,19 @@ Supported mrkdwn syntax:
 		});
 	}
 
+	private isSelfMessage(msg: SlackThreadMessage, selfBotId?: string): boolean {
+		return Boolean(selfBotId && msg.bot_id === selfBotId);
+	}
+
 	private formatThreadContext(
 		messages: SlackThreadMessage[],
 		selfBotId?: string,
 	): string {
 		const formattedMessages = messages
 			.map((msg) => {
-				const isSelf = selfBotId && msg.bot_id === selfBotId;
-				const author = isSelf ? "assistant (you)" : (msg.user ?? "unknown");
+				const author = this.isSelfMessage(msg, selfBotId)
+					? "assistant (you)"
+					: (msg.user ?? "unknown");
 				return `  <message>
     <author>${author}</author>
     <timestamp>${msg.ts}</timestamp>

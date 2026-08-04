@@ -24,10 +24,10 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"fastify": "^5.10.0",
+		"fastify": "^5.11.2",
 		"tsx": "^4.23.0",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	},
 	"publishConfig": {
 		"access": "public"
