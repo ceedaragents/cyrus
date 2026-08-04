@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+- The Cursor runner now respects `cursorDefaultModel` and `cursorDefaultFallbackModel` from `config.json` (and the `CYRUS_CURSOR_DEFAULT_MODEL` environment variable). Previously these settings were silently ignored and every Cursor session fell back to the built-in default model regardless of configuration.
 
 ## [0.2.67] - 2026-07-25
 

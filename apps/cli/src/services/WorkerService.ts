@@ -228,6 +228,9 @@ export class WorkerService {
 				process.env.CYRUS_GEMINI_DEFAULT_MODEL || edgeConfig.geminiDefaultModel,
 			codexDefaultModel:
 				process.env.CYRUS_CODEX_DEFAULT_MODEL || edgeConfig.codexDefaultModel,
+			cursorDefaultModel:
+				process.env.CYRUS_CURSOR_DEFAULT_MODEL || edgeConfig.cursorDefaultModel,
+			cursorDefaultFallbackModel: edgeConfig.cursorDefaultFallbackModel,
 			defaultRunner:
 				(process.env.CYRUS_DEFAULT_RUNNER as
 					| "claude"
