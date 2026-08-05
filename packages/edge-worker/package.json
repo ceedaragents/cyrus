@@ -2,6 +2,11 @@
 	"name": "cyrus-edge-worker",
 	"version": "0.2.67",
 	"description": "Unified edge worker for processing Linear issues with Claude",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/edge-worker"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

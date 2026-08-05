@@ -1,0 +1,125 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const repositoryRoot = resolve(import.meta.dirname, "../..");
+const workflow = readFileSync(
+	resolve(repositoryRoot, ".github/workflows/release-cli.yml"),
+	"utf8",
+);
+const releaseGuide = readFileSync(
+	resolve(repositoryRoot, "apps/cli/RELEASING.md"),
+	"utf8",
+);
+const releaseScript = readFileSync(
+	resolve(repositoryRoot, "scripts/release-packages.mjs"),
+	"utf8",
+);
+
+const configuredPackages = [
+	...releaseScript.matchAll(
+		/\{\s*directory:\s*"([^"]+)",\s*name:\s*"([^"]+)",?\s*\}/g,
+	),
+].map(([, directory, name]) => ({ directory, name }));
+
+describe("trusted Cyrus release workflow", () => {
+	it("is an on-demand, main-only, serialized workflow", () => {
+		expect(workflow).toContain("workflow_dispatch:");
+		expect(workflow).not.toMatch(/^\s+push:/m);
+		expect(workflow).not.toMatch(/^\s+pull_request:/m);
+		expect(workflow).toContain('"refs/heads/main"');
+		expect(workflow).toContain("group: release-cyrus-cli");
+		expect(workflow).toContain("cancel-in-progress: false");
+	});
+
+	it("uses npm OIDC without a long-lived publish token", () => {
+		expect(workflow).toContain("id-token: write");
+		expect(workflow).toContain("contents: write");
+		expect(workflow).toContain("runs-on: ubuntu-latest");
+		expect(workflow).toContain('node-version: "22.14.0"');
+		expect(workflow).toContain("npm@11.18.0");
+		expect(workflow).toContain("registry.npmjs.org");
+		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken/);
+		expect(workflow.indexOf("pnpm install --frozen-lockfile")).toBeLessThan(
+			workflow.indexOf("npm install --global npm@11.18.0"),
+		);
+	});
+
+	it("gates publishing on audit, tests, types, build, and package inspection", () => {
+		expect(workflow).toContain("pnpm audit --audit-level low");
+		expect(workflow).toContain("pnpm test:packages:run");
+		expect(workflow).toContain("pnpm --filter cyrus-ai test:run");
+		expect(workflow).toContain("pnpm typecheck");
+		expect(workflow).toContain("pnpm build");
+		expect(workflow.indexOf("run: pnpm build")).toBeLessThan(
+			workflow.indexOf("run: pnpm typecheck"),
+		);
+		expect(workflow).toContain('pnpm --dir "$directory" pack');
+		expect(workflow).toContain(
+			'ACTUAL_VERSION="$(CYRUS_SENTRY_DISABLED=1 cyrus --version)"',
+		);
+		expect(workflow).toContain(
+			'npm publish "$tarball" --access public --tag "$DIST_TAG"',
+		);
+	});
+
+	it("publishes every public package in dependency order", () => {
+		const publicDirectories = [
+			...readdirSync(resolve(repositoryRoot, "packages"), {
+				withFileTypes: true,
+			})
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => `packages/${entry.name}`)
+				.filter((directory) =>
+					existsSync(resolve(repositoryRoot, directory, "package.json")),
+				),
+			"apps/cli",
+		].filter((directory) => {
+			const manifest = JSON.parse(
+				readFileSync(
+					resolve(repositoryRoot, directory, "package.json"),
+					"utf8",
+				),
+			);
+			return manifest.private !== true;
+		});
+
+		expect(configuredPackages.map(({ directory }) => directory).sort()).toEqual(
+			publicDirectories.sort(),
+		);
+
+		const indexByName = new Map(
+			configuredPackages.map(({ name }, index) => [name, index]),
+		);
+		for (const [index, { directory }] of configuredPackages.entries()) {
+			const manifest = JSON.parse(
+				readFileSync(
+					resolve(repositoryRoot, directory, "package.json"),
+					"utf8",
+				),
+			);
+			for (const [dependency, range] of Object.entries(
+				manifest.dependencies ?? {},
+			)) {
+				if (!String(range).startsWith("workspace:")) continue;
+				expect(indexByName.get(dependency)).toBeLessThan(index);
+			}
+		}
+	});
+
+	it("finishes a live release with a tag and GitHub release", () => {
+		expect(workflow).toMatch(/git tag --annotate "v\$\{REQUESTED_VERSION\}"/);
+		expect(workflow).toMatch(/git push origin "v\$\{REQUESTED_VERSION\}"/);
+		expect(workflow).toMatch(/gh release create "v\$\{REQUESTED_VERSION\}"/);
+	});
+
+	it("documents the npm trust identity and complete release lifecycle", () => {
+		expect(releaseGuide).toContain("`cyrusagents`");
+		expect(releaseGuide).toContain("`cyrus`");
+		expect(releaseGuide).toContain("`release-cli.yml`");
+		expect(releaseGuide).toContain("`npm publish`");
+		expect(releaseGuide).toContain("gh workflow run release-cli.yml");
+		expect(releaseGuide).toContain("F1 release test-drive protocol");
+		expect(releaseGuide).toContain("ReleasedMonitoring");
+	});
+});

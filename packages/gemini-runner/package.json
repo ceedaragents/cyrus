@@ -2,6 +2,11 @@
 	"name": "cyrus-gemini-runner",
 	"version": "0.2.67",
 	"description": "Gemini CLI process spawning and management for Cyrus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/gemini-runner"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

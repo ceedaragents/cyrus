@@ -4,7 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-_No internal-only changes._
+### Added
+- Added an on-demand, main-only Cyrus CLI release workflow using npm trusted publishing. It validates the coordinated monorepo version and changelogs, runs release gates, inspects every package tarball, publishes the complete dependency graph in order, and creates the matching git tag and GitHub release without a long-lived npm token.
 
 ## [0.2.67] - 2026-07-25
 
