@@ -30,6 +30,12 @@ describe("trusted Cyrus release workflow", () => {
 		expect(workflow).toContain('"refs/heads/main"');
 		expect(workflow).toContain("group: release-cyrus-cli");
 		expect(workflow).toContain("cancel-in-progress: false");
+		expect(workflow).not.toContain(
+			`RELEASE_ARTIFACTS: \${{ runner.temp }}/cyrus-release`,
+		);
+		expect(workflow).toContain(
+			'echo "RELEASE_ARTIFACTS=$RUNNER_TEMP/cyrus-release" >> "$GITHUB_ENV"',
+		);
 	});
 
 	it("uses npm OIDC without a long-lived publish token", () => {
