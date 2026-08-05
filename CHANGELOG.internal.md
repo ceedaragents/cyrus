@@ -9,6 +9,9 @@ This changelog documents internal development changes, refactors, tooling update
 ### Added
 - Added an on-demand, main-only Cyrus CLI release workflow using npm trusted publishing. It validates the coordinated monorepo version and changelogs, runs release gates, inspects every package tarball, publishes the complete dependency graph in order, and creates the matching git tag and GitHub release without a long-lived npm token. ([#1398](https://github.com/cyrusagents/cyrus/pull/1398))
 
+### Fixed
+- Made CLI releases safely resumable after a partial npm publish and tolerant of short registry visibility delays, while still rejecting existing versions that do not carry the requested distribution tag or whose published tarballs differ from the recovery run. CI now tests supported Node.js 22 and 24 releases, and CI/release actions run on their current Node.js 24-based majors. ([#1401](https://github.com/cyrusagents/cyrus/pull/1401))
+
 ## [0.2.67] - 2026-07-25
 
 ### Added

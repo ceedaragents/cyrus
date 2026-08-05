@@ -7,6 +7,14 @@ const workflow = readFileSync(
 	resolve(repositoryRoot, ".github/workflows/release-cli.yml"),
 	"utf8",
 );
+const ciWorkflow = readFileSync(
+	resolve(repositoryRoot, ".github/workflows/ci.yml"),
+	"utf8",
+);
+const installDependenciesAction = readFileSync(
+	resolve(repositoryRoot, ".github/actions/install-dependencies/action.yml"),
+	"utf8",
+);
 const releaseGuide = readFileSync(
 	resolve(repositoryRoot, "apps/cli/RELEASING.md"),
 	"utf8",
@@ -42,13 +50,27 @@ describe("trusted Cyrus release workflow", () => {
 		expect(workflow).toContain("id-token: write");
 		expect(workflow).toContain("contents: write");
 		expect(workflow).toContain("runs-on: ubuntu-latest");
-		expect(workflow).toContain('node-version: "22.14.0"');
+		expect(workflow).toContain("actions/checkout@v7");
+		expect(workflow).toContain("actions/setup-node@v7");
+		expect(workflow).toContain("actions/upload-artifact@v7");
+		expect(workflow).toContain('node-version: "24.18.0"');
 		expect(workflow).toContain("npm@11.18.0");
 		expect(workflow).toContain("registry.npmjs.org");
 		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken/);
 		expect(workflow.indexOf("pnpm install --frozen-lockfile")).toBeLessThan(
 			workflow.indexOf("npm install --global npm@11.18.0"),
 		);
+	});
+
+	it("uses supported Node releases and Node 24-based CI actions", () => {
+		expect(ciWorkflow).toContain("node-version: [22.x, 24.x]");
+		expect(ciWorkflow).toContain("actions/checkout@v7");
+		expect(ciWorkflow).toContain("actions/setup-node@v7");
+		expect(ciWorkflow).toContain("codecov/codecov-action@v7");
+		expect(ciWorkflow).toContain("use_oidc: true");
+		expect(ciWorkflow).not.toContain("20.x");
+		expect(installDependenciesAction).toContain("pnpm/action-setup@v6");
+		expect(installDependenciesAction).not.toContain("wyvox/action-setup-pnpm");
 	});
 
 	it("gates publishing on audit, tests, types, build, and package inspection", () => {
@@ -120,6 +142,26 @@ describe("trusted Cyrus release workflow", () => {
 				expect(indexByName.get(dependency)).toBeLessThan(index);
 			}
 		}
+	});
+
+	it("recovers safely from partially published npm releases", () => {
+		expect(workflow).toContain("verify_registry_version() {");
+		expect(workflow).toContain("tarball_integrity() {");
+		expect(workflow).toContain("for attempt in {1..12}; do");
+		expect(workflow).toContain("dist.integrity");
+		expect(workflow).toContain('createHash("sha512")');
+		expect(workflow).toContain(
+			`Skipping immutable \${package_name}@\${REQUESTED_VERSION}; verifying npm tag \${DIST_TAG}.`,
+		);
+		expect(workflow).toContain(
+			`\${package_name}@\${REQUESTED_VERSION} does not match the artifact packed by this run; refusing a mixed-commit release.`,
+		);
+		expect(workflow).toContain(
+			`Dry run would publish \${package_name}@\${REQUESTED_VERSION} with npm tag \${DIST_TAG}.`,
+		);
+		expect(workflow).toContain(
+			`\${package_name}@\${REQUESTED_VERSION} is not consistently visible with npm tag \${DIST_TAG}.`,
+		);
 	});
 
 	it("finishes a live release with a tag and GitHub release", () => {
