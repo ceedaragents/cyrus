@@ -56,6 +56,15 @@ describe("trusted Cyrus release workflow", () => {
 		);
 		expect(workflow).toContain('pnpm --dir "$directory" pack');
 		expect(workflow).toContain(
+			`release_tarballs+=("$RELEASE_ARTIFACTS/\${package_name}-\${REQUESTED_VERSION}.tgz")`,
+		);
+		expect(workflow).toContain(
+			`npm install --global "\${release_tarballs[@]}"`,
+		);
+		expect(workflow).not.toContain(
+			`npm install --global "$RELEASE_ARTIFACTS/cyrus-ai-\${REQUESTED_VERSION}.tgz"`,
+		);
+		expect(workflow).toContain(
 			'ACTUAL_VERSION="$(CYRUS_SENTRY_DISABLED=1 cyrus --version)"',
 		);
 		expect(workflow).toContain(

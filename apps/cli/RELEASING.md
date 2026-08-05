@@ -81,9 +81,11 @@ The workflow refuses non-`main` refs, duplicate live releases, version drift,
 and an existing release tag. It performs a frozen install and audit, runs lint,
 tests, type checks, and the full build, then packs every package using pnpm so
 `workspace:*` references become exact published versions. It inspects each
-tarball, installs the CLI tarball, verifies `cyrus --version`, and publishes the
-same inspected artifacts through npm's OIDC-capable CLI. After all packages are
-visible on npm, it creates `v<version>` and the matching GitHub release.
+tarball, installs all local release tarballs together so the CLI smoke test does
+not depend on unpublished internal versions, verifies `cyrus --version`, and
+publishes the same inspected artifacts through npm's OIDC-capable CLI. After all
+packages are visible on npm, it creates `v<version>` and the matching GitHub
+release.
 
 ## Post-release
 

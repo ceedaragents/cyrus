@@ -160,7 +160,11 @@ jobs:
       - name: Smoke-test the packed CLI
         shell: bash
         run: |
-          npm install --global "$RELEASE_ARTIFACTS/cyrus-ai-${REQUESTED_VERSION}.tgz"
+          release_tarballs=()
+          while IFS=$'\t' read -r directory package_name; do
+            release_tarballs+=("$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz")
+          done < <(node scripts/release-packages.mjs list)
+          npm install --global "${release_tarballs[@]}"
           ACTUAL_VERSION="$(CYRUS_SENTRY_DISABLED=1 cyrus --version)"
           if [[ "$ACTUAL_VERSION" != "$REQUESTED_VERSION" ]]; then
             echo "Packed CLI reports ${ACTUAL_VERSION}; expected ${REQUESTED_VERSION}." >&2
