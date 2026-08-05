@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.68] - 2026-08-05
+
 ### Added
 - `ClaudeRunnerConfig` accepts a `spawnClaudeCodeProcess` override, forwarded to the Claude Agent SDK option of the same name. Lets the Claude Code process run somewhere other than a local child process — a container, a Kubernetes pod, a remote host — without forking the runner. ([#1391](https://github.com/cyrusagents/cyrus/pull/1391))
 
@@ -13,6 +15,53 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1423](https://linear.app/ceedar/issue/CYPACK-1423/address-open-security-patches-for-cyrus-cli), [#1392](https://github.com/cyrusagents/cyrus/pull/1392))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.68
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.68
+
+#### cyrus-core
+- cyrus-core@0.2.68
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.68
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.68
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.68
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.68
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.68
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.68
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.68
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.68
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.68
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.68
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.68
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.68
 
 ## [0.2.67] - 2026-07-25
 
