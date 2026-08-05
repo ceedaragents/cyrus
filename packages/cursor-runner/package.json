@@ -2,6 +2,11 @@
 	"name": "cyrus-cursor-runner",
 	"version": "0.2.67",
 	"description": "Cursor Agent CLI process wrapper for Cyrus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/cursor-runner"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

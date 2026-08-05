@@ -2,6 +2,11 @@
 	"name": "cyrus-simple-agent-runner",
 	"version": "0.2.67",
 	"description": "Simple agent runner for enumerated responses",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/simple-agent-runner"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
