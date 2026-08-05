@@ -95,8 +95,10 @@ jobs:
             if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
               if [[ "$DRY_RUN" == "true" ]]; then
                 echo "::warning::${package_name}@${REQUESTED_VERSION} is already published; continuing because this is a dry run."
+              elif [[ "$(npm view "$package_name" "dist-tags.${DIST_TAG}" 2>/dev/null || true)" == "$REQUESTED_VERSION" ]]; then
+                echo "::warning::${package_name}@${REQUESTED_VERSION} is already published with npm tag ${DIST_TAG}; continuing this partial release."
               else
-                echo "${package_name}@${REQUESTED_VERSION} is already published." >&2
+                echo "${package_name}@${REQUESTED_VERSION} is already published without npm tag ${DIST_TAG}." >&2
                 exit 1
               fi
             fi
@@ -190,11 +192,35 @@ jobs:
         if: ${{ !inputs.dry_run }}
         shell: bash
         run: |
+          verify_registry_version() {
+            local package_name="$1"
+            local published=""
+            local tagged=""
+
+            for attempt in {1..12}; do
+              published="$(npm view "${package_name}@${REQUESTED_VERSION}" version 2>/dev/null || true)"
+              tagged="$(npm view "$package_name" "dist-tags.${DIST_TAG}" 2>/dev/null || true)"
+              if [[ "$published" == "$REQUESTED_VERSION" && "$tagged" == "$REQUESTED_VERSION" ]]; then
+                return 0
+              fi
+              if [[ "$attempt" -lt 12 ]]; then
+                echo "Waiting for ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG} to become visible (attempt ${attempt}/12)."
+                sleep 5
+              fi
+            done
+
+            echo "${package_name}@${REQUESTED_VERSION} is not consistently visible with npm tag ${DIST_TAG}." >&2
+            return 1
+          }
+
           while IFS=$'\t' read -r directory package_name; do
             tarball="$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz"
-            npm publish "$tarball" --access public --tag "$DIST_TAG"
-            published="$(npm view "${package_name}@${REQUESTED_VERSION}" version)"
-            test "$published" = "$REQUESTED_VERSION"
+            if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
+              echo "Skipping immutable ${package_name}@${REQUESTED_VERSION}; verifying npm tag ${DIST_TAG}."
+            else
+              npm publish "$tarball" --access public --tag "$DIST_TAG"
+            fi
+            verify_registry_version "$package_name"
           done < <(node scripts/release-packages.mjs list)
 
       - name: Tag the release

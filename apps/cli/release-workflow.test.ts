@@ -122,6 +122,17 @@ describe("trusted Cyrus release workflow", () => {
 		}
 	});
 
+	it("recovers safely from partially published npm releases", () => {
+		expect(workflow).toContain("verify_registry_version() {");
+		expect(workflow).toContain("for attempt in {1..12}; do");
+		expect(workflow).toContain(
+			`Skipping immutable \${package_name}@\${REQUESTED_VERSION}; verifying npm tag \${DIST_TAG}.`,
+		);
+		expect(workflow).toContain(
+			`\${package_name}@\${REQUESTED_VERSION} is not consistently visible with npm tag \${DIST_TAG}.`,
+		);
+	});
+
 	it("finishes a live release with a tag and GitHub release", () => {
 		expect(workflow).toMatch(/git tag --annotate "v\$\{REQUESTED_VERSION\}"/);
 		expect(workflow).toMatch(/git push origin "v\$\{REQUESTED_VERSION\}"/);
