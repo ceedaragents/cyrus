@@ -188,8 +188,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: npm install --global npm@11.18.0
 
-      - name: Publish packages in dependency order
-        if: ${{ !inputs.dry_run }}
+      - name: Verify and publish packages in dependency order
         shell: bash
         run: |
           verify_registry_version() {
@@ -213,13 +212,38 @@ jobs:
             return 1
           }
 
+          tarball_integrity() {
+            TARBALL_PATH="$1" node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+
+          const digest = createHash("sha512")
+            .update(readFileSync(process.env.TARBALL_PATH))
+            .digest("base64");
+          process.stdout.write(`sha512-${digest}`);
+          NODE
+          }
+
           while IFS=$'\t' read -r directory package_name; do
             tarball="$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz"
             if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
+              verify_registry_version "$package_name"
+              registry_integrity="$(npm view "${package_name}@${REQUESTED_VERSION}" dist.integrity)"
+              packed_integrity="$(tarball_integrity "$tarball")"
+              if [[ "$registry_integrity" != "$packed_integrity" ]]; then
+                echo "${package_name}@${REQUESTED_VERSION} does not match the artifact packed by this run; refusing a mixed-commit release." >&2
+                exit 1
+              fi
               echo "Skipping immutable ${package_name}@${REQUESTED_VERSION}; verifying npm tag ${DIST_TAG}."
-            else
-              npm publish "$tarball" --access public --tag "$DIST_TAG"
+              continue
             fi
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "Dry run would publish ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG}."
+              continue
+            fi
+
+            npm publish "$tarball" --access public --tag "$DIST_TAG"
             verify_registry_version "$package_name"
           done < <(node scripts/release-packages.mjs list)
 

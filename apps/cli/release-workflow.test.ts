@@ -124,9 +124,18 @@ describe("trusted Cyrus release workflow", () => {
 
 	it("recovers safely from partially published npm releases", () => {
 		expect(workflow).toContain("verify_registry_version() {");
+		expect(workflow).toContain("tarball_integrity() {");
 		expect(workflow).toContain("for attempt in {1..12}; do");
+		expect(workflow).toContain("dist.integrity");
+		expect(workflow).toContain('createHash("sha512")');
 		expect(workflow).toContain(
 			`Skipping immutable \${package_name}@\${REQUESTED_VERSION}; verifying npm tag \${DIST_TAG}.`,
+		);
+		expect(workflow).toContain(
+			`\${package_name}@\${REQUESTED_VERSION} does not match the artifact packed by this run; refusing a mixed-commit release.`,
+		);
+		expect(workflow).toContain(
+			`Dry run would publish \${package_name}@\${REQUESTED_VERSION} with npm tag \${DIST_TAG}.`,
 		);
 		expect(workflow).toContain(
 			`\${package_name}@\${REQUESTED_VERSION} is not consistently visible with npm tag \${DIST_TAG}.`,
