@@ -43,7 +43,6 @@ jobs:
       REQUESTED_VERSION: ${{ inputs.version }}
       DIST_TAG: ${{ inputs.dist_tag }}
       DRY_RUN: ${{ inputs.dry_run }}
-      RELEASE_ARTIFACTS: ${{ runner.temp }}/cyrus-release
 
     steps:
       - name: Require the main branch
@@ -53,6 +52,10 @@ jobs:
             echo "Cyrus releases must be dispatched from main; received $GITHUB_REF." >&2
             exit 1
           fi
+
+      - name: Initialize release paths
+        shell: bash
+        run: echo "RELEASE_ARTIFACTS=$RUNNER_TEMP/cyrus-release" >> "$GITHUB_ENV"
 
       - name: Check out the release source
         uses: actions/checkout@v6
