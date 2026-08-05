@@ -7,6 +7,14 @@ const workflow = readFileSync(
 	resolve(repositoryRoot, ".github/workflows/release-cli.yml"),
 	"utf8",
 );
+const ciWorkflow = readFileSync(
+	resolve(repositoryRoot, ".github/workflows/ci.yml"),
+	"utf8",
+);
+const installDependenciesAction = readFileSync(
+	resolve(repositoryRoot, ".github/actions/install-dependencies/action.yml"),
+	"utf8",
+);
 const releaseGuide = readFileSync(
 	resolve(repositoryRoot, "apps/cli/RELEASING.md"),
 	"utf8",
@@ -42,13 +50,27 @@ describe("trusted Cyrus release workflow", () => {
 		expect(workflow).toContain("id-token: write");
 		expect(workflow).toContain("contents: write");
 		expect(workflow).toContain("runs-on: ubuntu-latest");
-		expect(workflow).toContain('node-version: "22.14.0"');
+		expect(workflow).toContain("actions/checkout@v7");
+		expect(workflow).toContain("actions/setup-node@v7");
+		expect(workflow).toContain("actions/upload-artifact@v7");
+		expect(workflow).toContain('node-version: "24.18.0"');
 		expect(workflow).toContain("npm@11.18.0");
 		expect(workflow).toContain("registry.npmjs.org");
 		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken/);
 		expect(workflow.indexOf("pnpm install --frozen-lockfile")).toBeLessThan(
 			workflow.indexOf("npm install --global npm@11.18.0"),
 		);
+	});
+
+	it("uses supported Node releases and Node 24-based CI actions", () => {
+		expect(ciWorkflow).toContain("node-version: [22.x, 24.x]");
+		expect(ciWorkflow).toContain("actions/checkout@v7");
+		expect(ciWorkflow).toContain("actions/setup-node@v7");
+		expect(ciWorkflow).toContain("codecov/codecov-action@v7");
+		expect(ciWorkflow).toContain("use_oidc: true");
+		expect(ciWorkflow).not.toContain("20.x");
+		expect(installDependenciesAction).toContain("pnpm/action-setup@v6");
+		expect(installDependenciesAction).not.toContain("wyvox/action-setup-pnpm");
 	});
 
 	it("gates publishing on audit, tests, types, build, and package inspection", () => {

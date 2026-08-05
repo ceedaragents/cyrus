@@ -58,14 +58,14 @@ jobs:
         run: echo "RELEASE_ARTIFACTS=$RUNNER_TEMP/cyrus-release" >> "$GITHUB_ENV"
 
       - name: Check out the release source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Node and npm registry
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: "22.14.0"
+          node-version: "24.18.0"
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
@@ -177,7 +177,7 @@ jobs:
           fi
 
       - name: Upload inspected release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cyrus-${{ inputs.version }}-packages
           path: ${{ runner.temp }}/cyrus-release/*.tgz
