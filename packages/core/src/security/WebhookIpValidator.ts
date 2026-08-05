@@ -19,10 +19,13 @@ import { createLogger, type ILogger } from "../logging/index.js";
 export const LINEAR_WEBHOOK_IPS = [
 	"35.231.147.226",
 	"35.243.134.228",
+	"35.196.141.51",
 	"34.140.253.14",
 	"34.38.87.206",
+	"34.62.119.29",
 	"34.134.222.122",
 	"35.222.25.142",
+	"34.60.255.158",
 ] as const;
 
 /**
