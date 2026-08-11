@@ -161,7 +161,6 @@ Construct the manifest, substituting `AGENT_NAME`, `HOMEPAGE_URL`, and `CYRUS_BA
   },
   "default_events": [
     "issue_comment",
-    "organization",
     "pull_request_review",
     "pull_request_review_comment",
     "repository"
