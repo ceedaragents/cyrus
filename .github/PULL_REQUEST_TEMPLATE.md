@@ -8,8 +8,4 @@
 
 ## Verification
 
-<!-- How did you test the change? -->
-
-- [ ] I added or updated tests where needed
-- [ ] I ran relevant tests, lint and type checking
-- [ ] I updated documentation and changelogs where needed
+<!-- List the tests, checks or manual steps you ran. -->
