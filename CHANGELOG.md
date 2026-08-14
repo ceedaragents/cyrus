@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Repositories can now override the Claude Agent SDK's `settingSources` option per-repo via `repositoryConfig.settingSources` (e.g. `["project"]` to skip loading user-scope settings). Useful on multi-repo self-host machines where a repo wants context hygiene from the operator's global `~/.claude` settings. Must be a non-empty array of `"user"` | `"project"` | `"local"`; an unset or invalid override falls back to the existing default (`["user", "project", "local"]`), so behavior is unchanged unless you opt in. ([PR link pending])
+
 ### Fixed
 - The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
 
