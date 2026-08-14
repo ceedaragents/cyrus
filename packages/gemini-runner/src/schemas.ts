@@ -4,8 +4,8 @@
  * These schemas provide runtime validation for Gemini CLI's stream-json output format.
  * TypeScript types are derived from these schemas using z.infer<> for type safety.
  *
- * Note: The official `@google/gemini-cli-core` package (v0.17.1) exports TypeScript
- * interfaces for these event types. However, we use custom Zod schemas because:
+ * Note: The official Gemini CLI core package exports TypeScript interfaces for
+ * these event types. However, we use custom Zod schemas because:
  * 1. Runtime validation - official types are TypeScript-only, no runtime checks
  * 2. Detailed tool typing - official uses `Record<string, unknown>` for tool params
  * 3. Type guards and parsers - utility functions for narrowing event/tool types
