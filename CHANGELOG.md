@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1431](https://linear.app/ceedar/issue/CYPACK-1431/address-open-security-patches-for-cyrus-cli), [#1404](https://github.com/cyrusagents/cyrus/pull/1404))
+- Removed an unused Gemini runner reference dependency so `pnpm audit` no longer reports the `extract-zip` advisory. ([CYPACK-1443](https://linear.app/ceedar/issue/CYPACK-1443/address-open-security-patches-for-cyrus-cli), [#1409](https://github.com/cyrusagents/cyrus/pull/1409))
 
 ## [0.2.68] - 2026-08-05
 
