@@ -16,7 +16,7 @@ Cyrus connects AI coding agents to Linear, GitHub, GitLab and Slack, and turns a
 
 ## Development Process
 
-We use GitHub for issue tracking, code hosting and pull requests. We also track issues on an internal Linear workspace.
+We use GitHub for issue tracking, code hosting and pull requests. Our team also uses Linear internally, but you do not need a Linear issue to contribute.
 
 Before starting a larger change, open an issue so we can discuss the approach together.
 
@@ -78,7 +78,7 @@ cyrus/
    ```
 4. Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes:
    - Use subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
-   - Include the PR number/link and Linear issue identifier when available
+   - Include the PR number/link and related GitHub issue when available
    - Focus on end-user impact, not implementation details
    - For internal-only changes, update `CHANGELOG.internal.md` instead
 5. Fill out the [pull request template](./.github/PULL_REQUEST_TEMPLATE.md) and issue your pull request
