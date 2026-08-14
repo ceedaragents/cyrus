@@ -78,7 +78,7 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ## Contributing
 
-We welcome bug fixes, documentation improvements and focused feature contributions. See the [contribution guide](./CONTRIBUTING.md) for development setup, project standards and the pull request process.
+We love your input! See the [contribution guide](./CONTRIBUTING.md) to get started.
 
 ---
 

@@ -1,94 +1,131 @@
 # Contributing to Cyrus
 
-Cyrus connects AI coding agents to Linear, GitHub, GitLab and Slack, then manages the issue-to-pull-request workflow in isolated Git worktrees. Contributions that make those workflows more reliable, easier to operate or better documented are welcome.
+We love your input! We want to make contributing to Cyrus as easy and transparent as possible, whether it's:
 
-You can help by reporting bugs, improving documentation, proposing features or submitting fixes.
+- Reporting a bug
+- Discussing the current state of the code
+- Submitting a fix
+- Proposing new features
 
-## Before You Start
+Cyrus connects AI coding agents to Linear, GitHub, GitLab and Slack, and turns assigned work into reviewed changes in isolated Git worktrees.
 
-- Search the existing issues and pull requests before opening a new one.
-- Open an issue for a bug or focused improvement. For larger changes, discuss the approach with the maintainers before investing significant time.
-- Keep each pull request focused on one problem. Small, reviewable changes are easier to test and merge.
+## Prerequisites
 
-## Development Setup
+- **Node.js** >= 22
+- **pnpm** >= 10 (this is a pnpm monorepo — do not use npm or yarn)
 
-### Prerequisites
+## Development Process
 
-- **Node.js** 22 or later
-- **pnpm** 10 or later (this is a pnpm monorepo; do not use npm or Yarn)
+We use GitHub for issue tracking, code hosting and pull requests. We also track issues on an internal Linear workspace.
 
-### Get Started
+Before starting a larger change, open an issue so we can discuss the approach together.
 
-1. Fork the repository and create a branch from `main`.
+### Getting Started
+
+1. Fork the repo and create your branch from `main`
 2. Install dependencies:
-
    ```bash
    pnpm install
    ```
-
-3. Build the workspace:
-
+3. Build all packages:
    ```bash
    pnpm build
    ```
-
-4. Run the package tests:
-
+4. Run the tests:
    ```bash
    pnpm test:packages:run
    ```
-
-5. Start packages in development mode when you need watch processes:
-
+5. Start development mode (watch all packages):
    ```bash
    pnpm dev
    ```
 
-## Repository Structure
+### Project Structure
 
-Cyrus is a TypeScript pnpm monorepo:
+Cyrus is a pnpm monorepo with the following layout:
 
-```text
+```
 cyrus/
 ├── apps/
-│   ├── cli/       # The cyrus-ai CLI
-│   └── f1/        # End-to-end test-drive framework
+│   ├── cli/        # Main CLI application (the `cyrus-ai` npm package)
+│   └── f1/         # F1 testing framework for end-to-end test drives
 └── packages/
-    ├── core/      # Shared configuration, types and session management
-    ├── edge-worker/ # Issue routing and agent orchestration
-    ├── *-runner/  # Agent runtime adapters
-    └── *-transport/ # Linear, GitHub, GitLab and Slack event transports
+    ├── core/                     # Shared types and session management
+    ├── edge-worker/              # Edge worker implementation
+    ├── claude-runner/            # Claude CLI execution wrapper
+    ├── codex-runner/             # Codex CLI execution wrapper
+    ├── cursor-runner/            # Cursor CLI execution wrapper
+    ├── gemini-runner/            # Gemini CLI execution wrapper
+    ├── simple-agent-runner/      # Simple agent runner
+    ├── config-updater/           # Configuration update utilities
+    ├── cloudflare-tunnel-client/ # Cloudflare tunnel management
+    ├── mcp-tools/                # MCP tool definitions
+    ├── linear-event-transport/   # Linear webhook event handling
+    ├── github-event-transport/   # GitHub event handling
+    ├── gitlab-event-transport/   # GitLab event handling
+    └── slack-event-transport/    # Slack event handling
 ```
-
-Package-level README files contain more detail about individual components.
-
-## Contribution Standards
-
-- Write TypeScript and follow the structure and naming of the surrounding code.
-- Add or update tests when behavior changes. We use [Vitest](https://vitest.dev/) across the packages.
-- Keep public behavior, configuration and setup documentation in sync with the code.
-- Use Biome for linting and formatting. Husky and lint-staged also run checks when you commit.
-- Avoid unrelated refactors in the same pull request.
-
-Before submitting, run the checks relevant to your change. For most changes, run the full verification set:
-
-```bash
-pnpm test:packages:run
-pnpm typecheck
-pnpm lint
-```
-
-Use `pnpm format` to apply the repository's formatting rules.
 
 ## Pull Requests
 
-1. Rebase or merge the latest `main` into your branch.
-2. Confirm that tests, type checking and linting pass.
-3. Update documentation when setup, configuration or user-visible behavior changes.
-4. Add an entry under `## [Unreleased]` in `CHANGELOG.md` for user-visible changes, or `CHANGELOG.internal.md` for internal-only changes. Follow the existing format and include the related issue and pull request links when available.
-5. Complete the repository's [pull request template](./.github/PULL_REQUEST_TEMPLATE.md). Explain what changed and why, link the related issue and list the verification you performed.
+1. Create your branch from `main`
+2. Write and run tests for any new code
+3. Run the verification suite before submitting:
+   ```bash
+   pnpm test:packages:run   # Run all package tests
+   pnpm typecheck           # TypeScript type checking
+   pnpm lint                # Biome lint check
+   ```
+4. Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes:
+   - Use subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
+   - Include the PR number/link and Linear issue identifier when available
+   - Focus on end-user impact, not implementation details
+   - For internal-only changes, update `CHANGELOG.internal.md` instead
+5. Fill out the [pull request template](./.github/PULL_REQUEST_TEMPLATE.md) and issue your pull request
 
-Maintainers may ask for changes or additional verification. Review feedback is part of the process, and we appreciate follow-up commits that keep the discussion easy to trace.
+## Testing
+
+We use [Vitest](https://vitest.dev/) for all packages.
+
+```bash
+# Run all package tests (once)
+pnpm test:packages:run
+
+# Run all tests in watch mode
+pnpm test
+
+# Run tests for a specific package
+cd packages/edge-worker
+pnpm test:run
+
+# Run a specific test file
+cd packages/edge-worker
+pnpm test:run -- path/to/test.ts
+```
+
+## Code Style
+
+- **TypeScript** for all packages — no plain JavaScript
+- **Biome** for linting and formatting (configured in the repo root)
+- **Husky** + **lint-staged** run automatically on commit to enforce formatting
+- Follow the existing code structure and organization
+- Format code before committing:
+  ```bash
+  pnpm format
+  ```
+
+## Common Commands
+
+```bash
+pnpm install              # Install all dependencies
+pnpm build                # Build all packages
+pnpm dev                  # Development mode (watch all packages)
+pnpm test                 # Run tests across all packages (watch mode)
+pnpm test:packages:run    # Run package tests once (recommended for CI)
+pnpm typecheck            # TypeScript type checking
+pnpm lint                 # Biome lint check
+pnpm format               # Auto-format with Biome
+```
 
 ## License
 

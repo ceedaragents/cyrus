@@ -1,19 +1,15 @@
 ## Summary
 
-<!-- Explain what changed and why. -->
+<!-- What changed and why? -->
 
 ## Related issue
 
-<!-- Link the relevant GitHub issue or Linear ticket. -->
+<!-- Link the GitHub issue or Linear ticket, if there is one. -->
 
 ## Verification
 
-<!-- List the commands and manual checks you ran. -->
+<!-- How did you test the change? -->
 
-- [ ] Tests were added or updated where needed
-- [ ] Relevant tests, lint and type checking pass
-
-## Checklist
-
-- [ ] The change is focused and follows existing patterns
-- [ ] Documentation and changelogs are updated where needed
+- [ ] I added or updated tests where needed
+- [ ] I ran relevant tests, lint and type checking
+- [ ] I updated documentation and changelogs where needed
