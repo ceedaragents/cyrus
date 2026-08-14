@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Improved contributor guidance, added a reusable pull request template, and linked the contribution process from the README. ([CYPACK-1444](https://linear.app/ceedar/issue/CYPACK-1444/update-contributingmd-and-create-a-contributor-pull-request-template), [#1410](https://github.com/cyrusagents/cyrus/pull/1410))
+
 ## [0.2.68] - 2026-08-05
 
 ### Added
