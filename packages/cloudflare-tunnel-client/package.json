@@ -1,7 +1,12 @@
 {
 	"name": "cyrus-cloudflare-tunnel-client",
-	"version": "0.2.67",
+	"version": "0.2.68",
 	"description": "Cloudflare tunnel client for receiving config updates and webhooks from cyrus-hosted",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/cloudflare-tunnel-client"
+	},
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -27,7 +32,7 @@
 	"devDependencies": {
 		"@types/node": "^20.12.7",
 		"typescript": "^5.4.5",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	},
 	"keywords": [
 		"cloudflare",

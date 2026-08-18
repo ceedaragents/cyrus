@@ -51,8 +51,19 @@ export interface ChatPlatformAdapter<TEvent> {
 	/** Build a platform-specific system prompt */
 	buildSystemPrompt(event: TEvent): string;
 
-	/** Fetch thread context as formatted string. Returns "" if not applicable */
-	fetchThreadContext(event: TEvent): Promise<string>;
+	/**
+	 * Thread context as a formatted string, or "" if not applicable. Pass
+	 * `sinceTs` to read only what followed it, so a resumed session catches up on
+	 * discussion it never saw. `null` means the read failed — only a non-null
+	 * result advances the cursor.
+	 */
+	fetchThreadContext(event: TEvent, sinceTs?: string): Promise<string | null>;
+
+	/**
+	 * This event's thread position, stored as the catch-up cursor. Optional —
+	 * platforms that deliver every thread message omit it and get no catch-up.
+	 */
+	getThreadContextTs?(event: TEvent): string | undefined;
 
 	/** Post the agent's final response back to the platform */
 	postReply(event: TEvent, runner: IAgentRunner): Promise<void>;
@@ -209,7 +220,13 @@ export class ChatSessionHandler<TEvent> {
 							`Injecting follow-up prompt into running session ${existingSessionId} (thread ${threadKey})`,
 						);
 						this.enqueueReply(existingSessionId, event);
-						existingRunner.addStreamMessage(taskInstructions);
+						existingRunner.addStreamMessage(
+							await this.withThreadCatchup(
+								existingSession,
+								event,
+								taskInstructions,
+							),
+						);
 					} else {
 						// Runner can't accept mid-turn input (e.g. exec Codex). Queue the
 						// follow-up so it's delivered as a fresh turn once this one ends,
@@ -333,10 +350,11 @@ export class ChatSessionHandler<TEvent> {
 			await this.deps.onStateChange();
 
 			// Fetch thread context for threaded mentions
-			const threadContext = await this.adapter.fetchThreadContext(event);
-			const userPrompt = threadContext
-				? `${threadContext}\n\n${taskInstructions}`
-				: taskInstructions;
+			const userPrompt = await this.withThreadContext(
+				session,
+				event,
+				taskInstructions,
+			);
 
 			this.logger.info(
 				`Starting runner for ${this.adapter.platformName} event ${eventId}`,
@@ -436,6 +454,74 @@ export class ChatSessionHandler<TEvent> {
 		return this.sessionManager.getAgentRunner(sessionId);
 	}
 
+	/** Mark how far this session has thread context, for the next catch-up */
+	private recordThreadContextTs(
+		session: CyrusAgentSession,
+		event: TEvent,
+	): void {
+		const ts = this.adapter.getThreadContextTs?.(event);
+		if (!ts) {
+			return;
+		}
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		// Concurrent mentions race here; a backwards cursor re-delivers a message.
+		// Slack ts is zero-padded, so string ordering is chronological.
+		const current = session.metadata.lastContextTs;
+		if (current && ts <= current) {
+			return;
+		}
+		session.metadata.lastContextTs = ts;
+	}
+
+	/**
+	 * Prefix the task instructions with thread context — the whole thread for a
+	 * new session, or just what was said since the cursor for a follow-up. The
+	 * cursor only advances on a successful read, so a failed one retries the same
+	 * window instead of losing it.
+	 */
+	private async withThreadContext(
+		session: CyrusAgentSession,
+		event: TEvent,
+		taskInstructions: string,
+	): Promise<string> {
+		let context: string | null;
+		try {
+			context = await this.adapter.fetchThreadContext(
+				event,
+				session.metadata?.lastContextTs,
+			);
+		} catch (error) {
+			// A context read must never cost the user their message
+			this.logger.warn(
+				`Failed to fetch thread context for ${this.adapter.platformName} session: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return taskInstructions;
+		}
+
+		if (context !== null) {
+			this.recordThreadContextTs(session, event);
+		}
+
+		return context ? `${context}\n\n${taskInstructions}` : taskInstructions;
+	}
+
+	/**
+	 * Follow-up variant. Platforms with no thread cursor deliver every message
+	 * already, so re-reading the thread would only duplicate what the session has.
+	 */
+	private async withThreadCatchup(
+		session: CyrusAgentSession,
+		event: TEvent,
+		taskInstructions: string,
+	): Promise<string> {
+		if (!this.adapter.getThreadContextTs) {
+			return taskInstructions;
+		}
+		return this.withThreadContext(session, event, taskInstructions);
+	}
+
 	/**
 	 * Resume an existing session with a new prompt (--continue behavior).
 	 */
@@ -461,6 +547,12 @@ export class ChatSessionHandler<TEvent> {
 		const runner = this.deps.createRunner(runnerConfig, runnerType);
 		this.sessionManager.addAgentRunner(sessionId, runner);
 
+		const resumePrompt = await this.withThreadCatchup(
+			existingSession,
+			event,
+			taskInstructions,
+		);
+
 		// Reply posting is driven by `result` messages on the runner's stream
 		// (see handleAgentMessage). We must not await turn completion here —
 		// warm sessions hold the streaming prompt open across turns so the
@@ -468,8 +560,8 @@ export class ChatSessionHandler<TEvent> {
 		this.enqueueReply(sessionId, event);
 		const startPromise =
 			runner.supportsStreamingInput && runner.startStreaming
-				? runner.startStreaming(taskInstructions)
-				: runner.start(taskInstructions);
+				? runner.startStreaming(resumePrompt)
+				: runner.start(resumePrompt);
 		startPromise
 			.then((sessionInfo: AgentSessionInfo) => {
 				this.logger.info(

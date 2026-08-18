@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - **OpenCode runner selection** — Cyrus can now route sessions to OpenCode with an `opencode` label or `[agent=opencode]` issue description selector, supports OpenCode default/fallback model config, and can optionally infer OpenCode from `provider/model` selectors with `inferOpenCodeRunnerFromProviderModel` or `CYRUS_INFER_OPENCODE_RUNNER_FROM_PROVIDER_MODEL=true`.
 
 ### Fixed
+- The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
 - OpenCode `todowrite` activity now appears as a readable checklist in Linear instead of raw JSON. ([NG-156](https://linear.app/digimondo/issue/NG-156/format-opencode-todowrite-activity-like-claude-runner), [#16](https://github.com/jappyjan/cyrus/pull/16))
 - **OpenCode Linear transcripts show useful model names** — OpenCode sessions now report runner-prefixed provider/model names from Cyrus or OpenCode runtime config instead of the internal `opencode` placeholder in Linear activity timelines. ([NG-157](https://linear.app/digimondo/issue/NG-157/show-useful-opencode-providermodel-names-in-linear-transcripts), [#15](https://github.com/jappyjan/cyrus/pull/15))
 - OpenCode aborted tool calls now show useful Linear activity labels and context instead of `unknown` when OpenCode omits or reports an unknown tool name. ([NG-158](https://linear.app/digimondo/issue/NG-158/map-opencode-aborted-tool-calls-to-meaningful-linear-activity), [#13](https://github.com/jappyjan/cyrus/pull/13))
@@ -25,6 +26,67 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 - **Patched current dependency audit advisories** — Updated the existing `qs` dependency override so `pnpm audit` reports no known vulnerabilities.
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1431](https://linear.app/ceedar/issue/CYPACK-1431/address-open-security-patches-for-cyrus-cli), [#1404](https://github.com/cyrusagents/cyrus/pull/1404))
+- Removed an unused Gemini runner reference dependency so `pnpm audit` no longer reports the `extract-zip` advisory. ([CYPACK-1443](https://linear.app/ceedar/issue/CYPACK-1443/address-open-security-patches-for-cyrus-cli), [#1409](https://github.com/cyrusagents/cyrus/pull/1409))
+
+## [0.2.68] - 2026-08-05
+
+### Added
+- `ClaudeRunnerConfig` accepts a `spawnClaudeCodeProcess` override, forwarded to the Claude Agent SDK option of the same name. Lets the Claude Code process run somewhere other than a local child process — a container, a Kubernetes pod, a remote host — without forking the runner. ([#1391](https://github.com/cyrusagents/cyrus/pull/1391))
+
+### Fixed
+- Linear webhooks sent from Linear's three newly added delivery IPs are no longer rejected. Instances validating webhook source IPs were intermittently dropping agent mentions (the agent appeared to randomly not respond) after Linear expanded its documented egress IP list on 2026-08-04. ([#1395](https://github.com/cyrusagents/cyrus/pull/1395))
+- Cyrus now catches up on what was said in a Slack thread between mentions. Previously, @mentioning Cyrus again in a thread it had already replied to passed along only your new message, so anything the team discussed since the last mention was invisible to it — most noticeably with automatic thread listening turned off, where untagged messages are never delivered. Cyrus now back-reads the messages posted since it last had context and reads them before responding. ([#1388](https://github.com/cyrusagents/cyrus/pull/1388)) Thanks @rairulyle for the contribution!
+
+### Security
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1423](https://linear.app/ceedar/issue/CYPACK-1423/address-open-security-patches-for-cyrus-cli), [#1392](https://github.com/cyrusagents/cyrus/pull/1392))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.68
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.68
+
+#### cyrus-core
+- cyrus-core@0.2.68
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.68
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.68
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.68
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.68
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.68
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.68
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.68
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.68
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.68
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.68
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.68
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.68
 
 ## [0.2.67] - 2026-07-25
 

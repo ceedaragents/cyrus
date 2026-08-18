@@ -12,6 +12,8 @@ import type {
 	SDKUserMessage,
 	SdkPluginConfig,
 	SessionStore,
+	SpawnedProcess,
+	SpawnOptions,
 	WarmQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
@@ -72,6 +74,13 @@ export interface ClaudeRunnerConfig {
 	/** Additional environment variables to pass to the Claude child process (merged after process.env) */
 	additionalEnv?: Record<string, string>;
 	pathToClaudeCodeExecutable?: string; // Explicit path to Claude Code CLI executable (auto-resolved if not set)
+	/**
+	 * Override how the Claude Code process is spawned. Forwarded to the SDK's
+	 * `query()` option of the same name. Lets the CLI run somewhere other than a
+	 * local child process — a container, a pod, a remote host — as long as the
+	 * returned object proxies stdin/stdout and exit.
+	 */
+	spawnClaudeCodeProcess?: (options: SpawnOptions) => SpawnedProcess;
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { 'output-format': 'json' } for --output-format=json, or { verbose: null } for boolean flags)
 	/**
 	 * Callback for handling AskUserQuestion tool invocations.

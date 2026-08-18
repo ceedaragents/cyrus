@@ -148,8 +148,8 @@ describe("IP utility functions", () => {
 });
 
 describe("Known provider allowlists", () => {
-	it("has 6 Linear webhook IPs", () => {
-		expect(LINEAR_WEBHOOK_IPS).toHaveLength(6);
+	it("has 9 Linear webhook IPs", () => {
+		expect(LINEAR_WEBHOOK_IPS).toHaveLength(9);
 	});
 
 	it("all Linear IPs are valid IPv4", () => {

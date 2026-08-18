@@ -1,5 +1,5 @@
 name: 'Install Dependencies'
-description: 'Sets up Node.js and pnpm, then installs dependencies'
+description: 'Sets up pnpm and installs locked dependencies'
 runs:
   using: 'composite'
   steps:
@@ -15,7 +15,10 @@ runs:
         echo "Installing pnpm version: $PNPM_VERSION"
     
     - name: Install dependencies with pnpm
-      uses: wyvox/action-setup-pnpm@v3
+      uses: pnpm/action-setup@v6
       with:
-        pnpm-version: ${{ env.PNPM_VERSION }}
-        args: --frozen-lockfile --strict-peer-dependencies
+        version: ${{ env.PNPM_VERSION }}
+
+    - name: Install locked dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile --strict-peer-dependencies

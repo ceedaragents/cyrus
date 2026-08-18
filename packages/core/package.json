@@ -1,7 +1,12 @@
 {
 	"name": "cyrus-core",
-	"version": "0.2.67",
+	"version": "0.2.68",
 	"description": "Core business logic for Cyrus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/core"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -24,10 +29,10 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"fastify": "^5.10.0",
+		"fastify": "^5.11.2",
 		"tsx": "^4.23.0",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	},
 	"publishConfig": {
 		"access": "public"

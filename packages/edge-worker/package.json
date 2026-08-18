@@ -1,7 +1,12 @@
 {
 	"name": "cyrus-edge-worker",
-	"version": "0.2.67",
+	"version": "0.2.68",
 	"description": "Unified edge worker for processing Linear issues with Claude",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/edge-worker"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -41,7 +46,7 @@
 		"cyrus-opencode-runner": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
 		"cyrus-slack-event-transport": "workspace:*",
-		"fastify": "^5.10.0",
+		"fastify": "^5.11.2",
 		"fastify-mcp": "^2.1.0",
 		"file-type": "^21.3.2",
 		"ignore": "^7.0.5",
@@ -51,10 +56,10 @@
 	"devDependencies": {
 		"@types/node": "^20.0.0",
 		"@types/node-forge": "^1.3.14",
-		"@vitest/coverage-v8": "^4.1.9",
+		"@vitest/coverage-v8": "^4.1.10",
 		"axios": "^1.18.0",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.9",
+		"vitest": "^4.1.10",
 		"vitest-mock-extended": "^3.1.0"
 	},
 	"publishConfig": {

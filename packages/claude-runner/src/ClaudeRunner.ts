@@ -194,6 +194,8 @@ function buildSanitizedQueryOptions(
 	out.hasExtraArgs = !!o.extraArgs;
 	out.hasPathToClaudeCodeExecutable =
 		typeof o.pathToClaudeCodeExecutable === "string";
+	out.hasSpawnClaudeCodeProcess =
+		typeof o.spawnClaudeCodeProcess === "function";
 
 	return out;
 }
@@ -736,6 +738,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(this.config.sandbox && { sandbox: this.config.sandbox }),
 					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
 					...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
+					...(this.config.spawnClaudeCodeProcess && {
+						spawnClaudeCodeProcess: this.config.spawnClaudeCodeProcess,
+					}),
 				},
 			};
 

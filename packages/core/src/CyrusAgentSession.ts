@@ -104,6 +104,8 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/** Chat sessions: thread position up to which this session has context */
+		lastContextTs?: string;
 	};
 }
 
