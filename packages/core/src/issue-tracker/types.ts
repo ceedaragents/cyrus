@@ -413,8 +413,12 @@ export type IssueTrackerAgentSessionPayload = Pick<
 	LinearSDK.AgentSessionPayload,
 	"success" | "lastSyncId"
 > & {
-	// AgentSession property - use Promise instead of LinearFetch
+	// AgentSession property - use Promise instead of LinearFetch.
+	// Prefer `agentSessionId` where only the id is needed: reading `agentSession`
+	// triggers a fetch of the whole session, whereas the id is already known.
 	agentSession?: Promise<IssueTrackerAgentSession>;
+	/** The ID of the agent session that was created or updated. */
+	agentSessionId?: string;
 };
 
 /**
@@ -528,6 +532,10 @@ export type AgentActivityCreateInput =
 /**
  * Agent activity payload type.
  * Returned from createAgentActivity mutation - contains success status and created activity.
+ *
+ * Prefer `agentActivityId` where only the id is needed: `agentActivity` is a
+ * getter that re-fetches the activity with a fresh `agentActivity(id:)` query
+ * on every access, whereas the id is already on the mutation payload.
  *
  * @see {@link LinearSDK.AgentActivityPayload}
  */

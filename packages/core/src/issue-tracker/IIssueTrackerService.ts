@@ -591,6 +591,9 @@ export interface IIssueTrackerService {
 	 * @remarks
 	 * This creates a tracking session for AI/bot activity on an issue.
 	 * The session can receive agent activities and user prompts.
+	 *
+	 * When only the created session's id is needed, read `result.agentSessionId`
+	 * rather than `result.agentSession` — see {@link IssueTrackerAgentSessionPayload}.
 	 */
 	createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
@@ -702,6 +705,12 @@ export interface IIssueTrackerService {
 	 * This is the primary method for posting agent updates to Linear.
 	 * Activities are visible in the Linear UI as part of the agent session.
 	 * Ephemeral activities disappear when replaced by the next activity.
+	 *
+	 * When only the created activity's id is needed, read `result.agentActivityId`
+	 * rather than `result.agentActivity`: on the Linear SDK payload the latter is
+	 * a getter that issues a fresh `agentActivity(id:)` query on every access
+	 * (even a bare truthiness test), costing an extra API request for an id the
+	 * mutation response already carries.
 	 */
 	createAgentActivity(
 		input: AgentActivityCreateInput,

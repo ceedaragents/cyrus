@@ -9,7 +9,7 @@ describe("ActivityPoster", () => {
 	beforeEach(() => {
 		createAgentActivity = vi.fn().mockResolvedValue({
 			success: true,
-			agentActivity: Promise.resolve({ id: "activity-1" }),
+			agentActivityId: "activity-1",
 		});
 
 		poster = new ActivityPoster(
@@ -68,5 +68,57 @@ describe("ActivityPoster", () => {
 		expect(result).toContain("missing package @fake/missing");
 		expect(result).not.toContain("sudo privileges");
 		expect(result).not.toContain("/settings/packages");
+	});
+	it("reads the activity id off the payload without fetching agentActivity", async () => {
+		let agentActivityReads = 0;
+		createAgentActivity.mockResolvedValue({
+			success: true,
+			agentActivityId: "activity-7",
+			get agentActivity() {
+				agentActivityReads++;
+				return Promise.resolve({ id: "activity-7" });
+			},
+		});
+
+		const issueTracker = {
+			createAgentActivity,
+		} as unknown as IIssueTrackerService;
+		const activityId = await poster.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: "session-1",
+				content: { type: "thought", body: "thinking" },
+			},
+			"thought activity",
+		);
+
+		expect(activityId).toBe("activity-7");
+		expect(agentActivityReads).toBe(0);
+	});
+
+	it("returns null without fetching agentActivity when the payload carries no id", async () => {
+		let agentActivityReads = 0;
+		createAgentActivity.mockResolvedValue({
+			success: true,
+			get agentActivity() {
+				agentActivityReads++;
+				return Promise.resolve({ id: "activity-8" });
+			},
+		});
+
+		const issueTracker = {
+			createAgentActivity,
+		} as unknown as IIssueTrackerService;
+		const activityId = await poster.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: "session-1",
+				content: { type: "thought", body: "thinking" },
+			},
+			"thought activity",
+		);
+
+		expect(activityId).toBeNull();
+		expect(agentActivityReads).toBe(0);
 	});
 });
