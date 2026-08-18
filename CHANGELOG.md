@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Rate-limited Linear requests (HTTP 429) are now retried with bounded backoff, honouring the `Retry-After` Linear sends, instead of failing the in-flight agent session. Token-authenticated clients, which previously had no retry at all, are covered too. ([#1324](https://github.com/cyrusagents/cyrus/issues/1324))
 - EdgeWorker state saves are now atomic, preventing a process interrupted during a save from leaving a truncated state file that strands in-flight sessions; empty and legacy-truncated state files also recover cleanly. Thanks @connor-tembo for the contribution. ([CYPACK-1486](https://linear.app/ceedar/issue/CYPACK-1486/can-you-add-a-changelog-entry-for-this), [#1444](https://github.com/cyrusagents/cyrus/pull/1444))
 
 ### Changed

@@ -5,6 +5,12 @@ export {
 	type LinearOAuthConfig,
 } from "./LinearIssueTrackerService.js";
 export { LinearMessageTranslator } from "./LinearMessageTranslator.js";
+export {
+	getLinearRetryAfterMs,
+	isLinearRateLimitError,
+	type LinearRateLimitRetryOptions,
+	withLinearRateLimitRetry,
+} from "./rateLimitRetry.js";
 export type {
 	LinearEventTransportConfig,
 	LinearEventTransportEvents,
