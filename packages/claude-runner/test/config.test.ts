@@ -29,6 +29,7 @@ describe("config", () => {
 				"Skill",
 				"SendMessage",
 				"PushNotification",
+				"ShareOnboardingGuide",
 				"EnterWorktree",
 				"ExitWorktree",
 				"CronCreate",
@@ -36,6 +37,8 @@ describe("config", () => {
 				"CronList",
 				"ScheduleWakeup",
 				"Monitor",
+				"LSP",
+				"ListAgents",
 				"RemoteTrigger",
 				"TaskOutput",
 				"TaskStop",
@@ -44,7 +47,7 @@ describe("config", () => {
 				"Workflow",
 				"ReportFindings",
 			]);
-			expect(availableTools).toHaveLength(29);
+			expect(availableTools).toHaveLength(32);
 		});
 
 		it("should define read-only tools", () => {
@@ -59,10 +62,13 @@ describe("config", () => {
 				"Task",
 				"Skill",
 				"Monitor",
+				"LSP",
+				"ListAgents",
+				"ShareOnboardingGuide",
 				"TaskOutput",
 				"ToolSearch",
 			]);
-			expect(readOnlyTools).toHaveLength(12);
+			expect(readOnlyTools).toHaveLength(15);
 		});
 
 		it("should define write tools", () => {

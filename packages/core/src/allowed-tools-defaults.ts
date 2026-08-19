@@ -50,6 +50,7 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 	// User interaction
 	"SendMessage",
 	"PushNotification",
+	"ShareOnboardingGuide",
 
 	// Task lifecycle
 	"TaskCreate",
@@ -58,6 +59,7 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 	"TaskList",
 	"TaskOutput",
 	"TaskStop",
+	"ListAgents",
 
 	// Scheduling
 	"CronCreate",
@@ -67,6 +69,7 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 
 	// Monitoring + discovery
 	"Monitor",
+	"LSP",
 	"RemoteTrigger",
 	"ToolSearch",
 	"Skill",
@@ -168,6 +171,7 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	// User interaction
 	"SendMessage",
 	"PushNotification",
+	"ShareOnboardingGuide",
 
 	// Task lifecycle
 	"TaskCreate",
@@ -176,6 +180,7 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	"TaskList",
 	"TaskOutput",
 	"TaskStop",
+	"ListAgents",
 
 	// Scheduling
 	"CronCreate",
@@ -185,6 +190,7 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 
 	// Monitoring + discovery
 	"Monitor",
+	"LSP",
 	"RemoteTrigger",
 	"ToolSearch",
 	"Skill",
