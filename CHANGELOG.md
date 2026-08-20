@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Self-hosted deployments running headless with `CYRUS_HOST_EXTERNAL=true` and a direct Linear OAuth app (`LINEAR_CLIENT_ID`/`LINEAR_CLIENT_SECRET`) can now complete first-time Linear authorization against the already-running edge worker itself — no separate process or SSH access needed. Visiting `/oauth/authorize?key=<CYRUS_API_KEY>` on the deployment now redirects into Linear's consent screen and a working `/callback` route saves the resulting workspace token into `config.json`. An optional `CYRUS_DIRECT_OAUTH_AUTO_REPO_URL` env var auto-clones and registers a repository for the newly authorized workspace in the same step.
+
 ### Fixed
 - The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
 

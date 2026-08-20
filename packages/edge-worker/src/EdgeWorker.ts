@@ -148,6 +148,7 @@ import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
+import { registerDirectLinearOAuthRoutes } from "./DirectLinearOAuth.js";
 import { EgressProxy } from "./EgressProxy.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
@@ -850,6 +851,34 @@ export class EdgeWorker extends EventEmitter {
 		this.logger.info(
 			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
+
+		// 3b. Register direct self-hosted Linear OAuth routes (GET /oauth/authorize,
+		// GET /callback) on this same always-on server, when self-hosting with a
+		// direct Linear OAuth app (CYRUS_HOST_EXTERNAL=true + LINEAR_CLIENT_ID/SECRET).
+		// This lets a headless, long-running deployment complete first-time Linear
+		// authorization without a separate process needing to steal port 3456.
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		if (
+			isExternalHost &&
+			process.env.LINEAR_CLIENT_ID &&
+			process.env.LINEAR_CLIENT_SECRET
+		) {
+			const autoRepoUrl = process.env.CYRUS_DIRECT_OAUTH_AUTO_REPO_URL;
+			registerDirectLinearOAuthRoutes(
+				this.sharedApplicationServer.getFastifyInstance(),
+				{
+					cyrusHome: this.cyrusHome,
+					getApiKey: () => process.env.CYRUS_API_KEY || "",
+					getBaseUrl: () => process.env.CYRUS_BASE_URL,
+					autoAddRepository: autoRepoUrl ? { url: autoRepoUrl } : undefined,
+					logger: this.logger,
+				},
+			);
+			this.logger.info(
+				"✅ Direct Linear OAuth registered (GET /oauth/authorize, GET /callback)",
+			);
+		}
 
 		// 3. Register MCP endpoint for cyrus-tools on the same Fastify server/port
 		await this.registerCyrusToolsMcpEndpoint();
