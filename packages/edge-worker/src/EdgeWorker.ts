@@ -151,6 +151,7 @@ import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { registerDirectLinearOAuthRoutes } from "./DirectLinearOAuth.js";
 import { registerModelConfigRoute } from "./DirectModelConfig.js";
 import { registerRepositoryConfigRoute } from "./DirectRepositoryConfig.js";
+import { registerRepositoryDiscoveryRoute } from "./DirectRepositoryDiscovery.js";
 import { EgressProxy } from "./EgressProxy.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
@@ -870,12 +871,26 @@ export class EdgeWorker extends EventEmitter {
 			},
 		);
 
+		// Merge-safe endpoint that discovers repositories itself: fetches the
+		// Linear workspace's projects, lists a GitHub owner's repos live via
+		// the GitHub API, fuzzy-matches project names against repo names, and
+		// registers the confident matches — no hand-curated repo list required.
+		registerRepositoryDiscoveryRoute(
+			this.sharedApplicationServer.getFastifyInstance(),
+			{
+				cyrusHome: this.cyrusHome,
+				getApiKey: () => process.env.CYRUS_API_KEY || "",
+				getGithubToken: () => this.resolveGitHubToken(),
+				logger: this.logger,
+			},
+		);
+
 		this.logger.info("✅ Config updater registered");
 		this.logger.info(
 			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
 		);
 		this.logger.info(
-			"           /api/update/repository, /api/update/repositories, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model",
+			"           /api/update/repository, /api/update/repositories, /api/update/repositories/discover, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model",
 		);
 
 		// 3b. Register direct self-hosted Linear OAuth routes (GET /oauth/authorize,
@@ -1243,9 +1258,9 @@ export class EdgeWorker extends EventEmitter {
 	 * 3. Personal access token from GITHUB_TOKEN env var (fallback)
 	 */
 	private async resolveGitHubToken(
-		event: GitHubWebhookEvent,
+		event?: GitHubWebhookEvent,
 	): Promise<string | undefined> {
-		if (event.installationToken) return event.installationToken;
+		if (event?.installationToken) return event.installationToken;
 		if (this.gitHubAppTokenProvider) {
 			try {
 				return await this.gitHubAppTokenProvider.getToken();

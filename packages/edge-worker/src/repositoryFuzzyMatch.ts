@@ -71,22 +71,28 @@ function scoreAgainst(projectName: string, candidate: string): number {
 }
 
 /**
- * Find the single best repository match for a Linear project name among
- * `repos`, or null if no candidate is a confident, unambiguous match.
+ * Find the single best-scoring candidate for `target` among `candidates`,
+ * or null if nothing clears the confidence threshold, or the top two
+ * candidates are too close to call unambiguously. `getMatchStrings` returns
+ * one or more strings to score each candidate against (the best of which
+ * counts) — e.g. a repo's name AND its GitHub URL slug.
+ *
+ * Generic so the same conservative matching rules back both
+ * `findBestFuzzyRepoMatch` (against already-configured repos) and repo
+ * auto-discovery (against repos fetched live from GitHub).
  */
-export function findBestFuzzyRepoMatch(
-	projectName: string,
-	repos: RepositoryConfig[],
-): RepositoryConfig | null {
-	if (repos.length === 0) return null;
+export function findBestFuzzyMatch<T>(
+	target: string,
+	candidates: T[],
+	getMatchStrings: (candidate: T) => string[],
+): T | null {
+	if (candidates.length === 0) return null;
 
-	const scored = repos
-		.map((repo) => ({
-			repo,
+	const scored = candidates
+		.map((candidate) => ({
+			candidate,
 			score: Math.max(
-				...repoMatchCandidates(repo).map((candidate) =>
-					scoreAgainst(projectName, candidate),
-				),
+				...getMatchStrings(candidate).map((s) => scoreAgainst(target, s)),
 			),
 		}))
 		.sort((a, b) => b.score - a.score);
@@ -96,9 +102,20 @@ export function findBestFuzzyRepoMatch(
 
 	const second = scored[1];
 	if (second && best.score - second.score < FUZZY_MATCH_MIN_MARGIN) {
-		// Two (or more) repos are near-equally plausible matches — don't guess.
+		// Two (or more) candidates are near-equally plausible — don't guess.
 		return null;
 	}
 
-	return best.repo;
+	return best.candidate;
+}
+
+/**
+ * Find the single best repository match for a Linear project name among
+ * `repos`, or null if no candidate is a confident, unambiguous match.
+ */
+export function findBestFuzzyRepoMatch(
+	projectName: string,
+	repos: RepositoryConfig[],
+): RepositoryConfig | null {
+	return findBestFuzzyMatch(projectName, repos, repoMatchCandidates);
 }
