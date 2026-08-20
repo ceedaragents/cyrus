@@ -148,6 +148,7 @@ import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
+import { registerIssueRepositoryCacheRoute } from "./DirectIssueRepositoryCache.js";
 import { registerDirectLinearOAuthRoutes } from "./DirectLinearOAuth.js";
 import { registerModelConfigRoute } from "./DirectModelConfig.js";
 import { registerRepositoryConfigRoute } from "./DirectRepositoryConfig.js";
@@ -885,13 +886,28 @@ export class EdgeWorker extends EventEmitter {
 			},
 		);
 
+		// Admin endpoint for unsticking an issue that got cached to the wrong
+		// repository before that repository was registered (see doc comment
+		// in DirectIssueRepositoryCache.ts) — clears one issue's cached
+		// routing (or the whole cache) so the next webhook re-routes fresh.
+		registerIssueRepositoryCacheRoute(
+			this.sharedApplicationServer.getFastifyInstance(),
+			{
+				cyrusHome: this.cyrusHome,
+				getApiKey: () => process.env.CYRUS_API_KEY || "",
+				getRepositoryRouter: () => this.repositoryRouter,
+				logger: this.logger,
+			},
+		);
+
 		this.logger.info("✅ Config updater registered");
 		this.logger.info(
 			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
 		);
 		this.logger.info(
-			"           /api/update/repository, /api/update/repositories, /api/update/repositories/discover, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model",
+			"           /api/update/repository, /api/update/repositories, /api/update/repositories/discover, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model,",
 		);
+		this.logger.info("           /api/update/issue-repository-cache/clear");
 
 		// 3b. Register direct self-hosted Linear OAuth routes (GET /oauth/authorize,
 		// GET /callback) on this same always-on server, when self-hosting with a
