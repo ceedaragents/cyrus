@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/dist
+**/.turbo
+**/*.log
+worktrees
+.env
+**/.env
+.DS_Store
