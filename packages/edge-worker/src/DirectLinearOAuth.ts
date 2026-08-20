@@ -57,7 +57,7 @@ ${body}
 </body></html>`;
 }
 
-function loadConfig(configPath: string): EdgeConfig {
+export function loadConfig(configPath: string): EdgeConfig {
 	if (!existsSync(configPath)) {
 		return { repositories: [] } as EdgeConfig;
 	}
@@ -70,7 +70,7 @@ function loadConfig(configPath: string): EdgeConfig {
 	}
 }
 
-function saveConfig(configPath: string, config: EdgeConfig): void {
+export function saveConfig(configPath: string, config: EdgeConfig): void {
 	writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 }
 
