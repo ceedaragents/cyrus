@@ -1178,6 +1178,101 @@ describe("RepositoryRouter", () => {
 				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
 			});
 		});
+
+		describe("when no repository has a matching projectKeys entry", () => {
+			it("should fuzzy-match the project name against a repo name with no projectKeys configured", async () => {
+				// Given: A repo with no projectKeys, but its name matches the
+				// Linear project name (Linear itself exposes no structured
+				// project-to-repo link, so this is the primary discovery path).
+				const neoRepo = env.repository("repo-1", "neo").build();
+				const otherRepo = env
+					.repository("repo-2", "orchestral")
+					.withTeams("TEST")
+					.build();
+
+				env.issueIsInProject("issue-1", "neo");
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					neoRepo,
+					otherRepo,
+				]);
+
+				// Then: Should select the fuzzy-matched repo via project-based routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					neoRepo,
+					"project-based",
+				);
+			});
+
+			it("should fuzzy-match against a repo's GitHub URL slug when the repo name differs from the project name", async () => {
+				// Given: A repo named differently from the Linear project, but
+				// whose GitHub URL slug is a close token match.
+				const obsidianRepo = env
+					.repository("repo-1", "obsidian-myst")
+					.withGithubUrl("https://github.com/codegod100/obsidian-myst")
+					.build();
+				const otherRepo = env
+					.repository("repo-2", "freeq")
+					.withTeams("TEST")
+					.build();
+
+				env.issueIsInProject("issue-1", "myst obsidian plugin");
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					obsidianRepo,
+					otherRepo,
+				]);
+
+				expectRouting(result).shouldSelectRepositoryVia(
+					obsidianRepo,
+					"project-based",
+				);
+			});
+
+			it("should not guess when the fuzzy match is ambiguous between repos, falling through to team-based routing", async () => {
+				// Given: Two repos that are both roughly-equally plausible
+				// fuzzy matches for the project name — project-based routing
+				// should not guess between them.
+				const repoA = env
+					.repository("repo-1", "web-app")
+					.withTeams("TEST")
+					.build();
+				const repoB = env
+					.repository("repo-2", "app-web")
+					.withTeams("TEST")
+					.build();
+
+				env.issueIsInProject("issue-1", "web app");
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repoA,
+					repoB,
+				]);
+
+				// Then: Falls through to team-based routing rather than an
+				// unreliable project-based guess.
+				expectRouting(result).shouldSelectRepositoryVia(repoA, "team-based");
+			});
+		});
 	});
 
 	// ========================================================================

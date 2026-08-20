@@ -140,27 +140,50 @@ async function exchangeCodeForTokens(
 	return { accessToken: data.access_token, refreshToken: data.refresh_token };
 }
 
-function addRepositoryIfMissing(
+export interface AddRepositoryResult {
+	added: boolean;
+	repoName?: string;
+	reason?: string;
+}
+
+/**
+ * Clone (if needed) and register a repository in `config.repositories`,
+ * unless a repo with the same name is already configured. Merge-safe: only
+ * mutates the passed-in `config` object in place, doesn't touch anything
+ * else (callers are responsible for `saveConfig`).
+ *
+ * `projectKeys`, when provided, are attached to the new repo config so
+ * exact Linear-project routing (`RepositoryRouter.findRepositoryByProject`)
+ * works immediately; fuzzy project-name matching still applies as a
+ * fallback for repos with no `projectKeys` at all.
+ */
+export function addRepositoryIfMissing(
 	config: EdgeConfig,
 	cyrusHome: string,
 	linearWorkspaceId: string,
 	repoUrl: string,
 	routingLabels: string[] | undefined,
 	logger: ILogger,
-): void {
+	projectKeys?: string[],
+): AddRepositoryResult {
 	if (!config.repositories) config.repositories = [];
 
 	const repoName = repoUrl
 		.split("/")
 		.pop()
 		?.replace(/\.git$/, "");
-	if (!repoName) return;
+	if (!repoName) {
+		return {
+			added: false,
+			reason: `Could not derive repo name from URL: ${repoUrl}`,
+		};
+	}
 
 	if (config.repositories.some((r) => r.name === repoName)) {
 		logger.info(
 			`Repository '${repoName}' already configured — skipping auto-add`,
 		);
-		return;
+		return { added: false, repoName, reason: "already configured" };
 	}
 
 	const repositoryPath = resolve(getDefaultReposDir(cyrusHome), repoName);
@@ -171,10 +194,9 @@ function addRepositoryIfMissing(
 			execSync(`git clone ${repoUrl} ${repositoryPath}`, { stdio: "pipe" });
 		}
 	} catch (error) {
-		logger.error(
-			`Failed to clone ${repoUrl}: ${error instanceof Error ? error.message : String(error)}`,
-		);
-		return;
+		const message = error instanceof Error ? error.message : String(error);
+		logger.error(`Failed to clone ${repoUrl}: ${message}`);
+		return { added: false, repoName, reason: `clone failed: ${message}` };
 	}
 
 	const baseBranch = detectDefaultBranch(repositoryPath);
@@ -188,6 +210,7 @@ function addRepositoryIfMissing(
 		linearWorkspaceId,
 		isActive: true,
 		routingLabels: routingLabels ?? [repoName],
+		...(projectKeys && projectKeys.length > 0 ? { projectKeys } : {}),
 	};
 
 	if (repoUrl.includes("gitlab.com") || repoUrl.includes("gitlab.")) {
@@ -200,6 +223,7 @@ function addRepositoryIfMissing(
 	logger.info(
 		`Added repository '${repoName}' routed to workspace ${linearWorkspaceId}`,
 	);
+	return { added: true, repoName };
 }
 
 export function registerDirectLinearOAuthRoutes(

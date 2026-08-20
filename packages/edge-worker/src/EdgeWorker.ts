@@ -150,6 +150,7 @@ import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { DefaultSkillsDeployer } from "./DefaultSkillsDeployer.js";
 import { registerDirectLinearOAuthRoutes } from "./DirectLinearOAuth.js";
 import { registerModelConfigRoute } from "./DirectModelConfig.js";
+import { registerRepositoryConfigRoute } from "./DirectRepositoryConfig.js";
 import { EgressProxy } from "./EgressProxy.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
@@ -857,12 +858,24 @@ export class EdgeWorker extends EventEmitter {
 			},
 		);
 
+		// Merge-safe endpoint for cloning + registering repositories into
+		// config.json's `repositories` array (unlike /api/update/repository,
+		// which only clones to disk and never touches config.json).
+		registerRepositoryConfigRoute(
+			this.sharedApplicationServer.getFastifyInstance(),
+			{
+				cyrusHome: this.cyrusHome,
+				getApiKey: () => process.env.CYRUS_API_KEY || "",
+				logger: this.logger,
+			},
+		);
+
 		this.logger.info("✅ Config updater registered");
 		this.logger.info(
 			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
 		);
 		this.logger.info(
-			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model",
+			"           /api/update/repository, /api/update/repositories, /api/update/test-mcp, /api/update/configure-mcp, /api/update/claude-model",
 		);
 
 		// 3b. Register direct self-hosted Linear OAuth routes (GET /oauth/authorize,

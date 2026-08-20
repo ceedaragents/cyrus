@@ -8,6 +8,7 @@ import {
 	type RepositoryConfig,
 	type Webhook,
 } from "cyrus-core";
+import { findBestFuzzyRepoMatch } from "./repositoryFuzzyMatch.js";
 
 /**
  * Repository routing result types
@@ -554,49 +555,60 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Find repository by project name
+	 * Find repository by project name.
+	 *
+	 * First tries an exact match against each repository's configured
+	 * `projectKeys`. If nothing matches exactly (or no repo has
+	 * `projectKeys` configured at all), falls back to fuzzy-matching the
+	 * Linear project name against repository names / GitHub / GitLab URLs
+	 * — see `findBestFuzzyRepoMatch` for the matching rules. This lets
+	 * routing work for repos that were never given explicit `projectKeys`,
+	 * since Linear itself exposes no structured project-to-repo link.
 	 */
 	private async findRepositoryByProject(
 		issueId: string,
 		repos: RepositoryConfig[],
 		workspaceId: string,
 	): Promise<RepositoryConfig | null> {
-		// Try each repository that has projectKeys configured
+		const issueTracker = this.deps.getIssueTracker(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			return null;
+		}
+
+		let projectName: string | undefined;
+		try {
+			const fullIssue = await issueTracker.fetchIssue(issueId);
+			const project = await fullIssue?.project;
+			projectName = project?.name;
+		} catch (error) {
+			this.logger.debug(`Failed to fetch project for issue ${issueId}:`, error);
+			return null;
+		}
+
+		if (!projectName) {
+			this.logger.debug(`No project name found for issue ${issueId}`);
+			return null;
+		}
+
+		// Exact match against explicitly configured projectKeys takes priority.
 		for (const repo of repos) {
-			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
-
-			try {
-				const issueTracker = this.deps.getIssueTracker(workspaceId);
-				if (!issueTracker) {
-					this.logger.warn(
-						`No issue tracker found for workspace ${workspaceId}`,
-					);
-					continue;
-				}
-
-				const fullIssue = await issueTracker.fetchIssue(issueId);
-				const project = await fullIssue?.project;
-				if (!project || !project.name) {
-					this.logger.debug(
-						`No project name found for issue ${issueId} in repository ${repo.name}`,
-					);
-					continue;
-				}
-
-				const projectName = project.name;
-				if (repo.projectKeys.includes(projectName)) {
-					this.logger.debug(
-						`Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`,
-					);
-					return repo;
-				}
-			} catch (error) {
-				// Continue to next repository if this one fails
+			if (repo.projectKeys?.includes(projectName)) {
 				this.logger.debug(
-					`Failed to fetch project for issue ${issueId} from repository ${repo.name}:`,
-					error,
+					`Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`,
 				);
+				return repo;
 			}
+		}
+
+		// Fall back to fuzzy-matching the project name against repo names /
+		// GitHub / GitLab URLs.
+		const fuzzyMatch = findBestFuzzyRepoMatch(projectName, repos);
+		if (fuzzyMatch) {
+			this.logger.debug(
+				`Fuzzy-matched issue ${issueId} to repository ${fuzzyMatch.name} via project: ${projectName}`,
+			);
+			return fuzzyMatch;
 		}
 
 		return null;
