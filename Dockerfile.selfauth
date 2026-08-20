@@ -35,4 +35,4 @@ EXPOSE 3456
 # self-auth-linear requires an existing config.json (it errors out if the
 # file is missing) — seed a minimal one on the mounted volume if this is the
 # first run, then hand off to the actual auth command.
-CMD ["sh", "-c", "mkdir -p \"$HOME/.cyrus\" && [ -f \"$HOME/.cyrus/config.json\" ] || printf '%s' '{\"repositories\":[]}' > \"$HOME/.cyrus/config.json\"; exec node dist/src/app.js self-auth-linear"]
+CMD ["sh", "-c", "echo \"DEBUG HOME=[$HOME]\"; echo \"DEBUG whoami=[$(whoami)]\"; ls -la \"$HOME\" 2>&1; mkdir -p \"$HOME/.cyrus\" 2>&1; echo \"DEBUG mkdir_exit=$?\"; ls -la \"$HOME/.cyrus\" 2>&1; printf '%s' '{\"repositories\":[]}' > \"$HOME/.cyrus/config.json\" 2>&1; echo \"DEBUG printf_exit=$?\"; cat \"$HOME/.cyrus/config.json\" 2>&1; sleep 20"]
