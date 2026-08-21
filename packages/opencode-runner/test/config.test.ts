@@ -126,6 +126,7 @@ describe("OpenCode config translation", () => {
 
 		expect(result.config.permission).toMatchObject({
 			"*": "deny",
+			doom_loop: "allow",
 			"atlassian_*": "allow",
 			atlassian_delete_issue: "deny",
 			"linear_*": "allow",
@@ -157,6 +158,7 @@ describe("OpenCode config translation", () => {
 
 		expect(result.config.permission).toEqual({
 			"*": "deny",
+			doom_loop: "allow",
 			read: {
 				"*": "deny",
 				"**": "allow",
@@ -198,6 +200,7 @@ describe("OpenCode config translation", () => {
 
 		expect(result.config.permission).toMatchObject({
 			"*": "deny",
+			doom_loop: "allow",
 			read: {
 				"*": "deny",
 				"**": "allow",

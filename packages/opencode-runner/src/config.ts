@@ -403,7 +403,12 @@ export function buildOpenCodeConfig(
 	// OpenCode defaults to allowing tools unless permission rules say
 	// otherwise. Cyrus sessions must be deny-by-default so hosted/sandboxed
 	// runs do not inherit a permissive project or user config unexpectedly.
-	const permission: Record<string, OpenCodePermissionRule> = { "*": "deny" };
+	const permission: Record<string, OpenCodePermissionRule> = {
+		"*": "deny",
+		// OpenCode treats repeated calls as an interactive permission request.
+		// Cyrus is headless, so that request otherwise terminates the whole run.
+		doom_loop: "allow",
+	};
 
 	for (const pattern of config.allowedTools ?? []) {
 		addOpenCodePermission(permission, pattern, "allow", unsupported);
