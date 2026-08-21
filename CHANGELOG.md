@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- `cyrus check-tokens` no longer hangs forever. The command finished its work but the process never exited (Node's global `fetch` keeps keep-alive sockets that hold the event loop open), so it piled up orphaned processes and, when an uptime monitor shelled out to it, timed out and falsely reported a healthy Linear token as dead. The command now exits explicitly with a meaningful status code, bounds each token check with an internal timeout, and reports an unreachable network as "unknown" rather than "invalid".
+- `cyrus check-tokens` no longer hangs forever. The command finished its work but the process never exited (Node's global `fetch` keeps keep-alive sockets that hold the event loop open), so it piled up orphaned processes and, when an uptime monitor shelled out to it, timed out and falsely reported a healthy Linear token as dead. The command now exits explicitly with a meaningful status code, bounds each token check with an internal timeout, and reports an unreachable network as "unknown" rather than "invalid". ([#1419](https://github.com/cyrusagents/cyrus/pull/1419))
 - The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
 
 ### Security
