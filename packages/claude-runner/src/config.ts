@@ -44,6 +44,7 @@ export const availableTools = [
 	// User interaction tools
 	"SendMessage",
 	"PushNotification",
+	"ShareOnboardingGuide",
 
 	// Plan and worktree management
 	"EnterWorktree",
@@ -57,6 +58,7 @@ export const availableTools = [
 
 	// Monitoring and task lifecycle
 	"Monitor",
+	"LSP",
 	"RemoteTrigger",
 	"TaskOutput",
 	"TaskStop",
@@ -92,6 +94,8 @@ export const readOnlyTools: ToolName[] = [
 	"Task",
 	"Skill",
 	"Monitor",
+	"LSP",
+	"ShareOnboardingGuide",
 	"TaskOutput",
 	"ToolSearch",
 ];
