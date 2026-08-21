@@ -52,6 +52,26 @@ interface CyrusMcpServerConfig {
 
 const ENV_DENY_PATTERNS = ["*.env", "*.env.*"];
 
+// Cyrus shares platform tool defaults across runners. These Claude SDK tools
+// have no OpenCode equivalent, so omitting them is expected rather than a
+// configuration error worth logging for every session.
+const CLAUDE_ONLY_TOOL_NAMES = new Set([
+	"enterworktree",
+	"exitworktree",
+	"sendmessage",
+	"pushnotification",
+	"croncreate",
+	"crondelete",
+	"cronlist",
+	"schedulewakeup",
+	"monitor",
+	"remotetrigger",
+	"toolsearch",
+	"designsync",
+	"workflow",
+	"reportfindings",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -164,6 +184,9 @@ function addOpenCodePermission(
 	}
 
 	const name = parsed.name.toLowerCase();
+	if (CLAUDE_ONLY_TOOL_NAMES.has(name)) {
+		return;
+	}
 	switch (name) {
 		case "read":
 			addFileToolRule(permission, "read", parsed.argument, action);

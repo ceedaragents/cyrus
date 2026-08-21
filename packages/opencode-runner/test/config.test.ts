@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LINEAR_DEFAULT_ALLOWED_TOOLS } from "cyrus-core";
 import { describe, expect, it } from "vitest";
 import { buildOpenCodeConfig, buildOpenCodeRuntimeEnv } from "../src/config.js";
 
@@ -209,6 +210,16 @@ describe("OpenCode config translation", () => {
 				"*": "allow",
 			},
 		});
+	});
+
+	it("does not warn about Claude-only tools in the default Linear toolset", () => {
+		const result = buildOpenCodeConfig({
+			workingDirectory: "/work/repo",
+			cyrusHome: "/tmp/cyrus",
+			allowedTools: [...LINEAR_DEFAULT_ALLOWED_TOOLS],
+		});
+
+		expect(result.unsupported).toEqual([]);
 	});
 
 	it("builds inline config and inherits terminal state by default", () => {

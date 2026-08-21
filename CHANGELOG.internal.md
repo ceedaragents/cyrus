@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Stopped OpenCode sessions from repeatedly logging expected omissions for Claude-only tools in Cyrus's shared platform defaults, while preserving warnings for genuinely unsupported configuration.
+
 ### Added
 - Documented the OpenCode config validation boundary: explicit `opencode.config` inheritance is implemented and covered by runner-level fake-process validation, while real OpenCode CLI extension loading still needs an F1 config-injection path for automated validation.
 - Added OpenCode runner validation coverage with richer replay fixtures, activity timeline mapping tests, guarded live probe documentation, runner-selection assertions, empty-default tool permission regression coverage, and F1 test-drive reports.
