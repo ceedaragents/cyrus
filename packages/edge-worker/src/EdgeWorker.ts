@@ -319,6 +319,7 @@ export class EdgeWorker extends EventEmitter {
 			slackMcpConfigs: resolveList(config.slackMcpConfigs),
 			linearMcpConfigs: resolveList(config.linearMcpConfigs),
 			githubMcpConfigs: resolveList(config.githubMcpConfigs),
+			railwayMcpConfigs: resolveList(config.railwayMcpConfigs),
 		};
 	}
 
@@ -1189,7 +1190,13 @@ export class EdgeWorker extends EventEmitter {
 				},
 				// Live read so hot-reloaded config (`setConfig`) picks up new
 				// per-platform MCP paths without rebuilding the handler.
-				getPlatformMcpConfigOverrides: () => this.config.slackMcpConfigs,
+				// `railwayMcpConfigs` is a blanket list merged in alongside
+				// every platform's own list — see its doc comment in
+				// config-schemas.ts.
+				getPlatformMcpConfigOverrides: () => [
+					...(this.config.slackMcpConfigs ?? []),
+					...(this.config.railwayMcpConfigs ?? []),
+				],
 				resolveSkillsConfig: async ({ repository, repositoryPaths }) => {
 					const plugins = await this.skillsPluginResolver.resolve();
 					const skills = await this.skillsPluginResolver.discoverSkillNames(
@@ -6568,10 +6575,15 @@ ${input.userComment}
 			// `allowedTools` override (so the repo's permission rules and
 			// MCP server set travel as a unit), and only falls through to
 			// this list when the repo inherits the platform allow-list.
-			platformMcpConfigOverrides:
-				sessionPlatform === "linear"
-					? this.config.linearMcpConfigs
-					: this.config.githubMcpConfigs,
+			// `railwayMcpConfigs` IS a blanket list — merged in regardless
+			// of `sessionPlatform` (see its doc comment in
+			// config-schemas.ts).
+			platformMcpConfigOverrides: [
+				...(sessionPlatform === "linear"
+					? (this.config.linearMcpConfigs ?? [])
+					: (this.config.githubMcpConfigs ?? [])),
+				...(this.config.railwayMcpConfigs ?? []),
+			],
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
@@ -6859,11 +6871,15 @@ ${input.userComment}
 					// Warmup paths reconstruct Linear-triggered issue sessions:
 					// if the repo has its own `allowedTools` override its
 					// mcpConfigPath stays scoped to that repo, otherwise the
-					// team-level `linearMcpConfigs` list applies. Same coupling
-					// the live `buildIssueConfig` path uses.
+					// team-level `linearMcpConfigs` list applies, plus the
+					// blanket `railwayMcpConfigs` list. Same coupling the live
+					// `buildIssueConfig` path uses.
 					const mcpConfigPath = resolveIssueMcpConfigPath(
 						repo,
-						this.config.linearMcpConfigs,
+						[
+							...(this.config.linearMcpConfigs ?? []),
+							...(this.config.railwayMcpConfigs ?? []),
+						],
 						this.mcpConfigService.buildMergedMcpConfigPath.bind(
 							this.mcpConfigService,
 						),

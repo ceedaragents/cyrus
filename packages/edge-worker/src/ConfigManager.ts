@@ -243,6 +243,8 @@ export class ConfigManager extends EventEmitter {
 					parsedConfig.linearMcpConfigs || this.config.linearMcpConfigs,
 				githubMcpConfigs:
 					parsedConfig.githubMcpConfigs || this.config.githubMcpConfigs,
+				railwayMcpConfigs:
+					parsedConfig.railwayMcpConfigs || this.config.railwayMcpConfigs,
 				defaultDisallowedTools:
 					parsedConfig.defaultDisallowedTools ||
 					this.config.defaultDisallowedTools,
@@ -352,6 +354,7 @@ export class ConfigManager extends EventEmitter {
 			"slackMcpConfigs",
 			"linearMcpConfigs",
 			"githubMcpConfigs",
+			"railwayMcpConfigs",
 			"defaultDisallowedTools",
 			"promptDefaults",
 			"issueUpdateTrigger",

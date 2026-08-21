@@ -594,6 +594,12 @@
 				"type": "string"
 			}
 		},
+		"railwayMcpConfigs": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
 		"issueUpdateTrigger": {
 			"type": "boolean"
 		},

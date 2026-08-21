@@ -452,6 +452,21 @@ export const EdgeConfigSchema = z.object({
 	githubMcpConfigs: z.array(z.string()).optional(),
 
 	/**
+	 * Filesystem paths to custom-integration MCP config JSON files providing
+	 * Railway MCP server access (deploy, logs, variables, domains, etc.).
+	 * Unlike `linearMcpConfigs`/`githubMcpConfigs`, this is a blanket list:
+	 * it is merged into every session's MCP config path list — Linear,
+	 * GitHub/GitLab issue sessions, and Slack chat sessions alike — since
+	 * Railway ops tooling is broadly useful regardless of the triggering
+	 * platform. It shares the same repo-override caveat as
+	 * `linearMcpConfigs`/`githubMcpConfigs`: it is skipped for a repo that
+	 * has its own `allowedTools` override, since that repo's own
+	 * `mcpConfigPath` takes over the whole MCP server set for that session.
+	 * When omitted/empty, no Railway MCP config loads.
+	 */
+	railwayMcpConfigs: z.array(z.string()).optional(),
+
+	/**
 	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
 	 * When enabled, the agent receives context showing what changed (old vs new values).
 	 * Defaults to true if not specified.

@@ -208,6 +208,7 @@ export class WorkerService {
 			slackMcpConfigs: edgeConfig.slackMcpConfigs,
 			linearMcpConfigs: edgeConfig.linearMcpConfigs,
 			githubMcpConfigs: edgeConfig.githubMcpConfigs,
+			railwayMcpConfigs: edgeConfig.railwayMcpConfigs,
 			defaultDisallowedTools:
 				process.env.DISALLOWED_TOOLS?.split(",").map((t) => t.trim()) ||
 				edgeConfig.defaultDisallowedTools ||

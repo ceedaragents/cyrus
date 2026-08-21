@@ -82,11 +82,15 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 
 	// Workspace MCP servers — explicit, no implicit appending. Linear
 	// sessions include `mcp__slack` so Cyrus can post status updates and
-	// follow-up messages to Slack while working on an issue.
+	// follow-up messages to Slack while working on an issue. `mcp__railway`
+	// is only ever populated when `railwayMcpConfigs` loads a Railway MCP
+	// server (see config-schemas.ts) — listed here unconditionally like
+	// `mcp__slack` so it's usable the moment that config is added.
 	"mcp__linear",
 	"mcp__cyrus-tools",
 	"mcp__cyrus-docs",
 	"mcp__slack",
+	"mcp__railway",
 ] as const;
 
 /**
@@ -132,6 +136,7 @@ export const SLACK_DEFAULT_ALLOWED_TOOLS = [
 	"mcp__cyrus-tools",
 	"mcp__cyrus-docs",
 	"mcp__slack",
+	"mcp__railway",
 ] as const;
 
 /**
@@ -202,6 +207,7 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	"mcp__linear",
 	"mcp__cyrus-tools",
 	"mcp__cyrus-docs",
+	"mcp__railway",
 ] as const;
 
 /**
