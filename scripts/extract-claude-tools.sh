@@ -56,7 +56,7 @@ echo "Using SDK CLI: $CLI_PATH"
 echo "Running Claude Code to capture init block..."
 # Capture full output to a temp file to avoid SIGPIPE from head -1
 # (pipefail + head causes claude to exit non-zero when the pipe closes early)
-tmpfile=$(mktemp)
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/claude-tools.XXXXXX")
 trap 'rm -f "$tmpfile"' EXIT
 "$CLI_PATH" -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
 
