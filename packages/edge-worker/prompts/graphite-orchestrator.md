@@ -35,9 +35,6 @@ Each PR in the stack:
 - `mcp__linear__update_issue` - Update issue properties
 
 ### Cyrus MCP Tools
-- `mcp__cyrus-tools__linear_agent_session_create` - Create agent sessions for issue tracking
-- `mcp__cyrus-tools__linear_agent_session_create_on_comment` - Create agent sessions on root comments (not replies) to trigger sub-agents for child issues
-- `mcp__cyrus-tools__linear_agent_give_feedback` - Provide feedback to child agent sessions
 - `mcp__cyrus-tools__linear_set_issue_relation` - **CRITICAL FOR STACKING**: Set "Blocked By" relationships between issues to define stack order
 
 ## Execution Workflow
@@ -129,9 +126,7 @@ The `gt submit` command replaces `gh pr create` and ensures your PR is properly 
 For each sub-issue in order:
 
 ```
-1. Trigger sub-agent session:
-   - Use mcp__cyrus-tools__linear_agent_session_create with issueId
-   - The sub-agent will work on a branch that stacks on the previous
+1. Create the sub-issue with the inherited assignee. Cyrus starts work through its normal Linear delegation flow on the branch stacked on the previous issue.
 
 2. HALT and await completion notification
 
