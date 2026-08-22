@@ -38,6 +38,22 @@ describe("RunnerSelectionService GPT-5.6 model routing", () => {
 		expect(selection.reasoningEffort).toBe(effort);
 	});
 
+	it("maps a GPT-5.6 name in a [model=...] description tag", () => {
+		const selection = makeService().determineRunnerSelection(
+			[],
+			"Please look into this. [model=terra]",
+		);
+
+		expect(selection.runnerType).toBe("codex");
+		expect(selection.modelOverride).toBe(GPT56_MODEL_BY_LABEL.terra);
+	});
+
+	it("rejects conflicting reasoning effort labels", () => {
+		expect(() =>
+			makeService().determineRunnerSelection(["luna", "low", "high"]),
+		).toThrow(/Conflicting reasoning effort labels/);
+	});
+
 	it("defaults reasoning effort to medium", () => {
 		expect(
 			makeService().determineRunnerSelection(["luna"]).reasoningEffort,
