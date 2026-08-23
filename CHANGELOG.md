@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.205` to [`0.3.241`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03241) and `@anthropic-ai/sdk` from `^0.110.0` to [`^0.120.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01200-2026-08-19), restoring `LSP`, adding `ShareOnboardingGuide`, and bringing Claude sessions current with the latest Agent SDK and API capabilities. ([CYPACK-1462](https://linear.app/ceedar/issue/CYPACK-1462/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.205` to [`0.3.241`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03241) and `@anthropic-ai/sdk` from `^0.110.0` to [`^0.120.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01200-2026-08-19), restoring `LSP`, adding `ShareOnboardingGuide`, and bringing Claude sessions current with the latest Agent SDK and API capabilities. ([CYPACK-1462](https://linear.app/ceedar/issue/CYPACK-1462/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1424](https://github.com/cyrusagents/cyrus/pull/1424))
 
 ### Fixed
 - The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
