@@ -7,6 +7,8 @@ We love your input! We want to make contributing to Cyrus as easy and transparen
 - Submitting a fix
 - Proposing new features
 
+Cyrus connects AI coding agents to Linear, GitHub, GitLab and Slack, and turns assigned work into reviewed changes in isolated Git worktrees.
+
 ## Prerequisites
 
 - **Node.js** >= 22
@@ -14,7 +16,9 @@ We love your input! We want to make contributing to Cyrus as easy and transparen
 
 ## Development Process
 
-We use GitHub for issue tracking, code hosting and pull requests. We also track issues on an internal Linear workspace.
+We use GitHub for issue tracking, code hosting and pull requests. Our team also uses Linear internally, but you do not need a Linear issue to contribute.
+
+Before starting a larger change, open an issue so we can discuss the approach together.
 
 ### Getting Started
 
@@ -58,6 +62,7 @@ cyrus/
     ├── mcp-tools/                # MCP tool definitions
     ├── linear-event-transport/   # Linear webhook event handling
     ├── github-event-transport/   # GitHub event handling
+    ├── gitlab-event-transport/   # GitLab event handling
     └── slack-event-transport/    # Slack event handling
 ```
 
@@ -68,15 +73,15 @@ cyrus/
 3. Run the verification suite before submitting:
    ```bash
    pnpm test:packages:run   # Run all package tests
-   pnpm typecheck            # TypeScript type checking
-   pnpm lint                 # Biome lint check
+   pnpm typecheck           # TypeScript type checking
+   pnpm lint                # Biome lint check
    ```
 4. Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes:
    - Use subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
-   - Include the PR number/link and Linear issue identifier (e.g., `CYPACK-123`)
+   - Include the PR number/link and related GitHub issue when available
    - Focus on end-user impact, not implementation details
    - For internal-only changes, update `CHANGELOG.internal.md` instead
-5. Issue your pull request
+5. Fill out the [pull request template](./.github/PULL_REQUEST_TEMPLATE.md) and issue your pull request
 
 ## Testing
 

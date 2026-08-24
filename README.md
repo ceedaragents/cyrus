@@ -76,6 +76,12 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ---
 
+## Contributing
+
+We love your input! See the [contribution guide](./CONTRIBUTING.md) to get started.
+
+---
+
 ## License
 
 This project is licensed under the Apache 2.0 license - see the [LICENSE](LICENSE) file for details.
