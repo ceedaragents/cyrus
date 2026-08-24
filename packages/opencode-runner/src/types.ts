@@ -23,6 +23,8 @@ export interface OpenCodeRunnerConfig extends AgentRunnerConfig {
 	opencodeStateScope?: "inherit" | "shared" | "repository";
 	/** Stable key used when opencodeStateScope is repository. */
 	opencodeStateKey?: string;
+	/** Maximum time the OpenCode child may remain silent before it is terminated. */
+	inactivityTimeoutMs?: number;
 }
 
 export interface OpenCodeSessionInfo extends AgentSessionInfo {

@@ -5,6 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Fixed
+- Added an OpenCode inactivity watchdog and released same-PR GitHub queue slots from terminal runner results, with regression coverage for stalled and warm sessions.
 - Stopped OpenCode sessions from repeatedly logging expected omissions for Claude-only tools in Cyrus's shared platform defaults, while preserving warnings for genuinely unsupported configuration.
 - Removed the Cyrus MCP endpoints that let an agent create additional Linear agent sessions, preventing concurrent child sessions from being started on the same issue.
 

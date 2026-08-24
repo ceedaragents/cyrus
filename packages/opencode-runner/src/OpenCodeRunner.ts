@@ -25,6 +25,9 @@ import type {
 	OpenCodeToolUseEvent,
 } from "./types.js";
 
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const FORCE_KILL_DELAY_MS = 5_000;
+
 type SDKSystemInitMessage = Extract<
 	SDKMessage,
 	{ type: "system"; subtype: "init" }
@@ -378,6 +381,8 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 		return new Promise<OpenCodeSessionInfo>((resolve) => {
 			let stdoutBuffer = "";
+			let inactivityTimer: NodeJS.Timeout | undefined;
+			let forceKillTimer: NodeJS.Timeout | undefined;
 			const args = this.buildArgs();
 			const inputPrompt = this.buildInputPrompt(prompt);
 			const runtimeEnv = this.buildRuntimeEnv();
@@ -392,8 +397,36 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 			this.process = child;
+			const clearInactivityTimers = () => {
+				if (inactivityTimer) clearTimeout(inactivityTimer);
+				if (forceKillTimer) clearTimeout(forceKillTimer);
+			};
+			const refreshInactivityTimer = () => {
+				if (inactivityTimer) clearTimeout(inactivityTimer);
+				inactivityTimer = setTimeout(() => {
+					const timeoutMs =
+						this.config.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
+					const timeoutDescription =
+						timeoutMs >= 60_000
+							? `${Math.round(timeoutMs / 60_000)} minutes`
+							: `${timeoutMs}ms`;
+					const error = new Error(
+						`OpenCode produced no output for ${timeoutDescription} and was terminated`,
+					);
+					this.finalizeSession(error);
+					resolve(this.sessionInfo as OpenCodeSessionInfo);
+					child.kill("SIGTERM");
+					forceKillTimer = setTimeout(() => {
+						if (child.exitCode === null && child.signalCode === null) {
+							child.kill("SIGKILL");
+						}
+					}, FORCE_KILL_DELAY_MS);
+				}, this.config.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS);
+			};
+			refreshInactivityTimer();
 
 			child.stdout.on("data", (chunk: Buffer) => {
+				refreshInactivityTimer();
 				stdoutBuffer += chunk.toString("utf8");
 				const lines = stdoutBuffer.split(/\r?\n/);
 				stdoutBuffer = lines.pop() || "";
@@ -403,15 +436,18 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			});
 
 			child.stderr.on("data", (chunk: Buffer) => {
+				refreshInactivityTimer();
 				this.stderr += chunk.toString("utf8");
 			});
 
 			child.on("error", (error) => {
+				clearInactivityTimers();
 				this.finalizeSession(error);
 				resolve(this.sessionInfo as OpenCodeSessionInfo);
 			});
 
 			child.on("close", (code, signal) => {
+				clearInactivityTimers();
 				if (stdoutBuffer.trim()) {
 					this.handleLine(stdoutBuffer);
 				}

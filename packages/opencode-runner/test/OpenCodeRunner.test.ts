@@ -742,6 +742,39 @@ setTimeout(() => process.exit(0), 3000);
 		expect(result.subtype).toBe("error_during_execution");
 	});
 
+	it("terminates a child that stops producing output", async () => {
+		const dir = makeTempDir();
+		const errors: Error[] = [];
+		const opencodePath = writeFakeOpenCode(
+			dir,
+			`
+process.stdout.write(JSON.stringify({ type: "step_start", sessionID: "oc_stalled" }) + "\\n");
+setInterval(() => {}, 1000);
+`,
+		);
+		const runner = new OpenCodeRunner({
+			openCodePath: opencodePath,
+			workingDirectory: dir,
+			cyrusHome: dir,
+			inactivityTimeoutMs: 25,
+			onError: (error) => errors.push(error),
+		});
+
+		const session = await runner.start("Stalled task");
+
+		expect(session.isRunning).toBe(false);
+		expect(errors).toHaveLength(1);
+		expect(errors[0]?.message).toBe(
+			"OpenCode produced no output for 25ms and was terminated",
+		);
+		const result = runner.getMessages().at(-1) as SDKResultMessage;
+		expect(result).toMatchObject({
+			type: "result",
+			subtype: "error_during_execution",
+			is_error: true,
+		});
+	});
+
 	it("finalizes once when child error and close events both fire", async () => {
 		const dir = makeTempDir();
 		const errors: Error[] = [];

@@ -232,6 +232,9 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	// GitHub webhook handlers share a PR worktree, so only one may run per PR.
+	private activeGitHubPrSessions = new Set<string>();
+	private queuedGitHubPrEvents = new Map<string, GitHubCommentWebhookEvent[]>();
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
@@ -1210,8 +1213,12 @@ export class EdgeWorker extends EventEmitter {
 
 	private async handleGitHubWebhook(
 		event: GitHubCommentWebhookEvent,
+		reservedGitHubPrSlot = false,
 	): Promise<void> {
 		this.activeWebhookCount++;
+		let githubPrQueueKey: string | undefined;
+		let hasReservedGitHubPrSlot = reservedGitHubPrSlot;
+		let githubPrSlotReleased = false;
 
 		try {
 			// Only handle comments on pull requests
@@ -1226,6 +1233,7 @@ export class EdgeWorker extends EventEmitter {
 			const commentAuthor = extractCommentAuthor(event);
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
+			githubPrQueueKey = sessionKey;
 
 			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
 
@@ -1352,6 +1360,37 @@ export class EdgeWorker extends EventEmitter {
 
 			const agentSessionManager = this.agentSessionManager;
 
+			if (!reservedGitHubPrSlot) {
+				if (this.activeGitHubPrSessions.has(sessionKey)) {
+					const queue = this.queuedGitHubPrEvents.get(sessionKey) ?? [];
+					queue.push(event);
+					this.queuedGitHubPrEvents.set(sessionKey, queue);
+					this.logger.info(
+						`Queued GitHub webhook for ${repoFullName}#${prNumber}; ${queue.length} event(s) waiting`,
+					);
+
+					if (reactionToken && prNumber) {
+						this.gitHubCommentService
+							.postIssueComment({
+								token: reactionToken,
+								owner: extractRepoOwner(event),
+								repo: extractRepoName(event),
+								issueNumber: prNumber,
+								body: "Received your request. It is queued and will start after Cyrus finishes the current task on this PR.",
+							})
+							.catch((err: unknown) => {
+								this.logger.warn(
+									`Failed to post queued acknowledgement: ${err instanceof Error ? err.message : err}`,
+								);
+							});
+					}
+					return;
+				}
+
+				this.activeGitHubPrSessions.add(sessionKey);
+				hasReservedGitHubPrSlot = true;
+			}
+
 			// For pull_request_review events, post an instant acknowledgement comment
 			if (isPullRequestReview && reactionToken && prNumber) {
 				this.gitHubCommentService
@@ -1439,16 +1478,6 @@ export class EdgeWorker extends EventEmitter {
 
 			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
 
-			// Check if another active session is already using this branch/workspace
-			const existingSessions =
-				agentSessionManager.getActiveSessionsByBranchName(branchRef);
-			const firstExisting = existingSessions[0];
-			if (firstExisting) {
-				this.logger.warn(
-					`Reusing workspace from active session ${firstExisting.id} — concurrent writes possible`,
-				);
-			}
-
 			// Create a synthetic session for this GitHub PR comment
 			const issueMinimal: IssueMinimal = {
 				id: sessionKey,
@@ -1534,7 +1563,35 @@ export class EdgeWorker extends EventEmitter {
 					"github", // sessionPlatform → uses githubMcpConfigs override
 				);
 
-			const runner = this.createRunnerForType(runnerType, runnerConfig);
+			// A runner's start() promise can remain open after a successful turn
+			// (for example, warm Claude sessions). Advance the PR queue on the
+			// terminal result instead, so one held-open process cannot block later
+			// GitHub requests for the same worktree indefinitely.
+			const onMessage = runnerConfig.onMessage;
+			let githubReplyPosted = false;
+			let runner: IAgentRunner;
+			runnerConfig.onMessage = async (message: SDKMessage) => {
+				try {
+					await onMessage?.(message);
+				} finally {
+					if (message.type === "result" && !githubReplyPosted) {
+						githubReplyPosted = true;
+						this.postGitHubReply(event, runner, repository).catch((error) => {
+							this.logger.error(
+								`Failed to post GitHub reply to ${repoFullName}#${prNumber}`,
+								error instanceof Error ? error : new Error(String(error)),
+							);
+						});
+						runner.completeStream?.();
+						if (hasReservedGitHubPrSlot && githubPrQueueKey) {
+							this.advanceGitHubPrQueue(githubPrQueueKey);
+							githubPrSlotReleased = true;
+						}
+					}
+				}
+			};
+
+			runner = this.createRunnerForType(runnerType, runnerConfig);
 
 			// Store the runner in the session manager
 			agentSessionManager.addAgentRunner(githubSessionId, runner);
@@ -1558,8 +1615,11 @@ export class EdgeWorker extends EventEmitter {
 				const sessionInfo = await runner.start(taskInstructions);
 				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
 
-				// When session completes, post the reply back to GitHub
-				await this.postGitHubReply(event, runner, repository);
+				// A runner that exits before emitting a result still needs a reply.
+				if (!githubReplyPosted) {
+					githubReplyPosted = true;
+					await this.postGitHubReply(event, runner, repository);
+				}
 			} catch (error) {
 				this.logger.error(
 					`GitHub session error for ${repoFullName}#${prNumber}`,
@@ -1574,7 +1634,35 @@ export class EdgeWorker extends EventEmitter {
 				error instanceof Error ? error : new Error(String(error)),
 			);
 		} finally {
+			if (
+				hasReservedGitHubPrSlot &&
+				githubPrQueueKey &&
+				!githubPrSlotReleased
+			) {
+				this.advanceGitHubPrQueue(githubPrQueueKey);
+			}
 			this.activeWebhookCount--;
+		}
+	}
+
+	private advanceGitHubPrQueue(sessionKey: string): void {
+		const queue = this.queuedGitHubPrEvents.get(sessionKey);
+		const nextEvent = queue?.shift();
+		if (queue && queue.length === 0) {
+			this.queuedGitHubPrEvents.delete(sessionKey);
+		}
+
+		if (nextEvent) {
+			// Keep the slot reserved while the next event starts to prevent a newly
+			// arrived webhook from overtaking the FIFO queue.
+			this.handleGitHubWebhook(nextEvent, true).catch((error) => {
+				this.logger.error(
+					"Failed to process queued GitHub webhook",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		} else {
+			this.activeGitHubPrSessions.delete(sessionKey);
 		}
 	}
 
