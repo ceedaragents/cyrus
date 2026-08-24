@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- You can now control Claude's reasoning effort per issue by adding an `Effort:` line to a Linear issue or comment — `Effort: low`, `medium`, `high`, `xhigh`, `max`, or `ultra`. It applies to Claude sessions and can be changed mid-session by commenting a new `Effort:` line (the latest one wins). Cyrus posts a note in the session timeline when the effort changes; a mid-session `Effort: max` runs at `xhigh` and notes that `max` takes effect from a new session. `Effort: ultra` enables ultracode — `xhigh` effort plus dynamic workflow orchestration (the agent can fan work out across parallel sub-agents), which uses more tokens. ([#1343](https://github.com/cyrusagents/cyrus/pull/1343))
+
 ### Changed
 - Updated `@anthropic-ai/claude-agent-sdk` from `0.3.205` to [`0.3.241`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03241) and `@anthropic-ai/sdk` from `^0.110.0` to [`^0.120.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01200-2026-08-19), restoring `LSP`, adding `ShareOnboardingGuide`, and bringing Claude sessions current with the latest Agent SDK and API capabilities. ([CYPACK-1462](https://linear.app/ceedar/issue/CYPACK-1462/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1424](https://github.com/cyrusagents/cyrus/pull/1424))
 
