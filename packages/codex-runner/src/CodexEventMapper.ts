@@ -13,6 +13,12 @@ import type {
 } from "./backend/types.js";
 
 export const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const EMPTY_FALLBACK_CREDIT = { fallback_credit: null };
+const NOT_APPLIED_FALLBACK_CREDIT = {
+	fallback_credit: {
+		status: { type: "not_applied", reason: "not_enabled" },
+	},
+} as const;
 
 type SDKSystemInitMessage = Extract<
 	SDKMessage,
@@ -163,6 +169,7 @@ function emptyUsageBlock(): SDKAssistantMessage["message"]["usage"] {
 		output_tokens: 0,
 		cache_creation_input_tokens: 0,
 		cache_read_input_tokens: 0,
+		...EMPTY_FALLBACK_CREDIT,
 		output_tokens_details: null,
 		cache_creation: null,
 		inference_geo: null,
@@ -246,6 +253,7 @@ function createResultUsage(parsed: NormalizedUsage): SDKResultMessage["usage"] {
 		output_tokens: parsed.output_tokens,
 		cache_creation_input_tokens: 0,
 		cache_read_input_tokens: parsed.cached_input_tokens,
+		...NOT_APPLIED_FALLBACK_CREDIT,
 		output_tokens_details: { thinking_tokens: 0 },
 		cache_creation: {
 			ephemeral_1h_input_tokens: 0,
