@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
@@ -236,5 +237,109 @@ describe("EdgeWorker - PR review trigger gate (CYPACK-1273)", () => {
 				body: "Received your change request. Getting started on those changes now.",
 			}),
 		);
+	});
+
+	it("queues a second PR trigger until the running session completes", async () => {
+		edgeWorker = createWorker(true);
+		const firstEvent = createPrReviewEvent();
+		const secondEvent = {
+			...createPrReviewEvent(),
+			deliveryId: "delivery-pr-review-002",
+		};
+
+		let finishFirstRunner: (sessionInfo: { sessionId: string }) => void;
+		const firstRunner = {
+			start: vi.fn(
+				() =>
+					new Promise<{ sessionId: string }>((resolve) => {
+						finishFirstRunner = resolve;
+					}),
+			),
+		};
+		const secondRunner = {
+			start: vi.fn().mockResolvedValue({ sessionId: "second-session" }),
+		};
+
+		(edgeWorker as any).createGitHubWorkspace = vi.fn().mockResolvedValue({
+			path: "/test/workspaces/PR-42",
+			isGitWorktree: true,
+		});
+		mockAgentSessionManager.getSession.mockReturnValue({ metadata: {} });
+		(edgeWorker as any).buildAgentRunnerConfig = vi.fn().mockResolvedValue({
+			config: {},
+			runnerType: "claude",
+		});
+		(edgeWorker as any).createRunnerForType = vi
+			.fn()
+			.mockReturnValueOnce(firstRunner)
+			.mockReturnValueOnce(secondRunner);
+		(edgeWorker as any).postGitHubReply = vi.fn().mockResolvedValue(undefined);
+		(edgeWorker as any).savePersistedState = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		const firstHandling = (edgeWorker as any).handleGitHubWebhook(firstEvent);
+		await vi.waitFor(() => expect(firstRunner.start).toHaveBeenCalledOnce());
+
+		await (edgeWorker as any).handleGitHubWebhook(secondEvent);
+		expect(
+			mockAgentSessionManager.createCyrusAgentSession,
+		).toHaveBeenCalledTimes(1);
+		expect(secondRunner.start).not.toHaveBeenCalled();
+
+		finishFirstRunner!({ sessionId: "first-session" });
+		await firstHandling;
+		await vi.waitFor(() => expect(secondRunner.start).toHaveBeenCalledOnce());
+
+		expect(
+			mockAgentSessionManager.createCyrusAgentSession,
+		).toHaveBeenCalledTimes(2);
+	});
+
+	it("starts the next queued trigger when a warm runner emits a result", async () => {
+		edgeWorker = createWorker(true);
+		const firstEvent = createPrReviewEvent();
+		const secondEvent = {
+			...createPrReviewEvent(),
+			deliveryId: "delivery-pr-review-002",
+		};
+		const firstRunner = Object.assign(new EventEmitter(), {
+			supportsStreamingInput: true,
+			completeStream: vi.fn(),
+			start: vi.fn(() => new Promise(() => {})),
+		});
+		const secondRunner = {
+			start: vi.fn().mockResolvedValue({ sessionId: "second-session" }),
+		};
+
+		(edgeWorker as any).createGitHubWorkspace = vi.fn().mockResolvedValue({
+			path: "/test/workspaces/PR-42",
+			isGitWorktree: true,
+		});
+		mockAgentSessionManager.getSession.mockReturnValue({ metadata: {} });
+		(edgeWorker as any).buildAgentRunnerConfig = vi.fn().mockResolvedValue({
+			config: {},
+			runnerType: "claude",
+		});
+		(edgeWorker as any).createRunnerForType = vi
+			.fn()
+			.mockImplementationOnce((_runnerType: string, config: any) => {
+				firstRunner.on("message", config.onMessage);
+				return firstRunner;
+			})
+			.mockReturnValueOnce(secondRunner);
+		(edgeWorker as any).postGitHubReply = vi.fn().mockResolvedValue(undefined);
+		(edgeWorker as any).savePersistedState = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		void (edgeWorker as any).handleGitHubWebhook(firstEvent);
+		await vi.waitFor(() => expect(firstRunner.start).toHaveBeenCalledOnce());
+		await (edgeWorker as any).handleGitHubWebhook(secondEvent);
+
+		firstRunner.emit("message", { type: "result" });
+
+		await vi.waitFor(() => expect(secondRunner.start).toHaveBeenCalledOnce());
+		expect(firstRunner.completeStream).toHaveBeenCalledOnce();
 	});
 });

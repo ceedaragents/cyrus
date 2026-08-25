@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+_No internal-only changes._
+
 ## [0.2.68] - 2026-08-05
 
 ### Added

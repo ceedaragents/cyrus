@@ -37,6 +37,7 @@ export const releasePackages = [
 		directory: "packages/simple-agent-runner",
 		name: "cyrus-simple-agent-runner",
 	},
+	{ directory: "packages/opencode-runner", name: "cyrus-opencode-runner" },
 	{ directory: "packages/codex-runner", name: "cyrus-codex-runner" },
 	{ directory: "packages/cursor-runner", name: "cyrus-cursor-runner" },
 	{ directory: "packages/gemini-runner", name: "cyrus-gemini-runner" },
