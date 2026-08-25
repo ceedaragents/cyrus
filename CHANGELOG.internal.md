@@ -4,15 +4,7 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-### Fixed
-- Added an OpenCode inactivity watchdog and released same-PR GitHub queue slots from terminal runner results, with regression coverage for stalled and warm sessions.
-- Stopped OpenCode sessions from repeatedly logging expected omissions for Claude-only tools in Cyrus's shared platform defaults, while preserving warnings for genuinely unsupported configuration.
-- Removed the Cyrus MCP endpoints that let an agent create additional Linear agent sessions, preventing concurrent child sessions from being started on the same issue.
-
-### Added
-- Documented the OpenCode config validation boundary: explicit `opencode.config` inheritance is implemented and covered by runner-level fake-process validation, while real OpenCode CLI extension loading still needs an F1 config-injection path for automated validation.
-- Added OpenCode runner validation coverage with richer replay fixtures, activity timeline mapping tests, guarded live probe documentation, runner-selection assertions, empty-default tool permission regression coverage, and F1 test-drive reports.
-- Added `cyrus-opencode-runner`, an OpenCode CLI runner adapter package with NDJSON event parsing, Cyrus SDK-shaped message projection, tool activity mapping, resume support, formatter coverage, and replay-fixture tests.
+_No internal-only changes._
 
 ## [0.2.68] - 2026-08-05
 

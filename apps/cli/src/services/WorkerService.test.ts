@@ -16,7 +16,7 @@ const edgeWorkerInstances: Array<{
 }> = [];
 
 vi.mock("cyrus-edge-worker", () => ({
-	EdgeWorker: vi.fn().mockImplementation((config: EdgeWorkerConfig) => {
+	EdgeWorker: vi.fn().mockImplementation(function (config: EdgeWorkerConfig) {
 		const instance = {
 			config,
 			setConfigPath: vi.fn(),

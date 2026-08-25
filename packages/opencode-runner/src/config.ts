@@ -70,6 +70,8 @@ const CLAUDE_ONLY_TOOL_NAMES = new Set([
 	"designsync",
 	"workflow",
 	"reportfindings",
+	"shareonboardingguide",
+	"lsp",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
