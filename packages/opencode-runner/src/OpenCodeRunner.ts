@@ -25,7 +25,6 @@ import type {
 	OpenCodeToolUseEvent,
 } from "./types.js";
 
-const DEFAULT_INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 const FORCE_KILL_DELAY_MS = 5_000;
 
 type SDKSystemInitMessage = Extract<
@@ -383,6 +382,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			let stdoutBuffer = "";
 			let inactivityTimer: NodeJS.Timeout | undefined;
 			let forceKillTimer: NodeJS.Timeout | undefined;
+			const inactivityTimeoutMs = this.config.inactivityTimeoutMs;
 			const args = this.buildArgs();
 			const inputPrompt = this.buildInputPrompt(prompt);
 			const runtimeEnv = this.buildRuntimeEnv();
@@ -402,14 +402,15 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				if (forceKillTimer) clearTimeout(forceKillTimer);
 			};
 			const refreshInactivityTimer = () => {
+				if (!inactivityTimeoutMs || inactivityTimeoutMs <= 0) {
+					return;
+				}
 				if (inactivityTimer) clearTimeout(inactivityTimer);
 				inactivityTimer = setTimeout(() => {
-					const timeoutMs =
-						this.config.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
 					const timeoutDescription =
-						timeoutMs >= 60_000
-							? `${Math.round(timeoutMs / 60_000)} minutes`
-							: `${timeoutMs}ms`;
+						inactivityTimeoutMs >= 60_000
+							? `${Math.round(inactivityTimeoutMs / 60_000)} minutes`
+							: `${inactivityTimeoutMs}ms`;
 					const error = new Error(
 						`OpenCode produced no output for ${timeoutDescription} and was terminated`,
 					);
@@ -421,7 +422,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 							child.kill("SIGKILL");
 						}
 					}, FORCE_KILL_DELAY_MS);
-				}, this.config.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS);
+				}, inactivityTimeoutMs);
 			};
 			refreshInactivityTimer();
 

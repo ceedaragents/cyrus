@@ -775,6 +775,34 @@ setInterval(() => {}, 1000);
 		});
 	});
 
+	it("does not terminate a silent child when the inactivity timeout is disabled", async () => {
+		const dir = makeTempDir();
+		const opencodePath = writeFakeOpenCode(
+			dir,
+			`
+process.stdout.write(JSON.stringify({ type: "step_start", sessionID: "oc_silent" }) + "\\n");
+setTimeout(() => process.stdout.write(JSON.stringify({ type: "step_finish", result: "Completed" }) + "\\n"), 50);
+setTimeout(() => process.exit(0), 60);
+`,
+		);
+		const runner = new OpenCodeRunner({
+			openCodePath: opencodePath,
+			workingDirectory: dir,
+			cyrusHome: dir,
+			inactivityTimeoutMs: 0,
+		});
+
+		const session = await runner.start("Silent task");
+
+		expect(session.isRunning).toBe(false);
+		const result = runner.getMessages().at(-1) as SDKResultMessage;
+		expect(result).toMatchObject({
+			type: "result",
+			subtype: "success",
+			is_error: false,
+		});
+	});
+
 	it("finalizes once when child error and close events both fire", async () => {
 		const dir = makeTempDir();
 		const errors: Error[] = [];
