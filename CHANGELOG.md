@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- OpenCode is now a supported Cyrus runner for self-hosted sessions, including `opencode` labels and `[agent=opencode]` selectors, provider/model defaults, runtime config overrides, MCP and tool permission translation, CLI-managed auth/state handling, readable Linear activity, session resume/follow-up handling, and stalled-runner recovery. ([CYPACK-1466](https://linear.app/ceedar/issue/CYPACK-1466/create-clean-opencode-support-pr-from-pr-1263-tip), [#1263](https://github.com/cyrusagents/cyrus/pull/1263))
+- OpenCode is now a supported Cyrus runner for self-hosted sessions, including `opencode` labels and `[agent=opencode]` selectors, provider/model defaults, runtime config overrides, MCP and tool permission translation, CLI-managed auth/state handling, readable Linear activity, session resume/follow-up handling, and stalled-runner recovery. ([CYPACK-1466](https://linear.app/ceedar/issue/CYPACK-1466/create-clean-opencode-support-pr-from-pr-1263-tip), [#1426](https://github.com/cyrusagents/cyrus/pull/1426))
 
 ### Changed
 - Updated `@anthropic-ai/claude-agent-sdk` from `0.3.205` to [`0.3.241`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03241) and `@anthropic-ai/sdk` from `^0.110.0` to [`^0.120.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01200-2026-08-19), restoring `LSP`, adding `ShareOnboardingGuide`, and bringing Claude sessions current with the latest Agent SDK and API capabilities. ([CYPACK-1462](https://linear.app/ceedar/issue/CYPACK-1462/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1424](https://github.com/cyrusagents/cyrus/pull/1424))
