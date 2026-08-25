@@ -23,7 +23,12 @@ export interface OpenCodeRunnerConfig extends AgentRunnerConfig {
 	opencodeStateScope?: "inherit" | "shared" | "repository";
 	/** Stable key used when opencodeStateScope is repository. */
 	opencodeStateKey?: string;
-	/** Maximum time the OpenCode child may remain silent before it is terminated. */
+	/**
+	 * Optional maximum time the OpenCode child may remain silent before it is
+	 * terminated. Disabled by default because model requests and context
+	 * compaction can legitimately produce no CLI output for extended periods.
+	 * Set to 0 to explicitly disable it.
+	 */
 	inactivityTimeoutMs?: number;
 }
 

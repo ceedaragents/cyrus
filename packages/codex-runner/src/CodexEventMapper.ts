@@ -163,7 +163,6 @@ function emptyUsageBlock(): SDKAssistantMessage["message"]["usage"] {
 		output_tokens: 0,
 		cache_creation_input_tokens: 0,
 		cache_read_input_tokens: 0,
-		fallback_credit: null,
 		output_tokens_details: null,
 		cache_creation: null,
 		inference_geo: null,
@@ -247,9 +246,6 @@ function createResultUsage(parsed: NormalizedUsage): SDKResultMessage["usage"] {
 		output_tokens: parsed.output_tokens,
 		cache_creation_input_tokens: 0,
 		cache_read_input_tokens: parsed.cached_input_tokens,
-		fallback_credit: {
-			status: { type: "not_applied", reason: "not_enabled" },
-		},
 		output_tokens_details: { thinking_tokens: 0 },
 		cache_creation: {
 			ephemeral_1h_input_tokens: 0,
