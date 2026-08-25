@@ -4,7 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-_No internal-only changes._
+### Fixed
+- Removed obsolete synthetic `fallback_credit` usage fields so all runner packages build against the current shared SDK types. ([#1428](https://github.com/cyrusagents/cyrus/pull/1428))
 
 ## [0.2.68] - 2026-08-05
 
