@@ -164,6 +164,25 @@ describe("trusted Cyrus release workflow", () => {
 		);
 	});
 
+	it("preflights package existence before any release work or publishing", () => {
+		expect(workflow).toContain("missing_packages=()");
+		expect(workflow).toContain(
+			'npm view "$package_name" version >/dev/null 2>&1',
+		);
+		expect(workflow).toContain(
+			"Every release package must already exist on npm before this workflow runs.",
+		);
+		expect(workflow).toContain(
+			"npm trust github <package> --repo cyrusagents/cyrus --file release-cli.yml --allow-publish --yes",
+		);
+		expect(workflow.indexOf("missing_packages=()")).toBeLessThan(
+			workflow.indexOf("Install locked dependencies"),
+		);
+		expect(workflow.indexOf("missing_packages=()")).toBeLessThan(
+			workflow.indexOf('npm publish "$tarball"'),
+		);
+	});
+
 	it("finishes a live release with a tag and GitHub release", () => {
 		expect(workflow).toMatch(/git tag --annotate "v\$\{REQUESTED_VERSION\}"/);
 		expect(workflow).toMatch(/git push origin "v\$\{REQUESTED_VERSION\}"/);

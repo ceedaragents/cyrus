@@ -60,6 +60,27 @@ The validator rejects version drift, missing packages, incorrect dependency
 order, stale repository metadata, incomplete changelogs, and missing F1 release
 evidence.
 
+Before a release workflow can publish, every package listed by
+`node scripts/release-packages.mjs list` must already exist on npm. npm trusted
+publishing cannot create a package on its first publish, so adding a new public
+workspace requires a one-time bootstrap through the approved npm first-publish
+process. After that initial version exists, configure the package's GitHub
+Actions trusted publisher with the exact `cyrusagents/cyrus` repository and
+`release-cli.yml` workflow:
+
+```sh
+npm trust github <package-name> \
+  --repo cyrusagents/cyrus \
+  --file release-cli.yml \
+  --allow-publish \
+  --yes
+```
+
+The release workflow preflights package existence before installing
+dependencies or publishing anything. If a package is missing, it stops with
+the bootstrap and trusted-publisher instructions instead of partially
+publishing the dependency graph.
+
 ## Dispatch a release
 
 From GitHub, open **Actions → Release Cyrus CLI → Run workflow**, select
