@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added an enabled-by-default `strictMcpConfig` setting for Claude sessions. Set it to `false` to make ambient MCP sources—including authenticated claude.ai connectors, project and user settings, and plugins—available alongside Cyrus-configured servers; config reloads and pre-warmed sessions honor changes. ([CYHOST-1245](https://linear.app/ceedar/issue/CYHOST-1245/can-u-add-a-bevahiours-settings-page-setting-for-strict-mcp-config), [#1434](https://github.com/cyrusagents/cyrus/pull/1434))
 - OpenCode is now a supported Cyrus runner for self-hosted sessions, including `opencode` labels and `[agent=opencode]` selectors, provider/model defaults, runtime config overrides, MCP and tool permission translation, CLI-managed auth/state handling, readable Linear activity, session resume/follow-up handling, and stalled-runner recovery. Thanks @JappyMondo and @jappyjan for the original contribution. ([CYPACK-1466](https://linear.app/ceedar/issue/CYPACK-1466/create-clean-opencode-support-pr-from-pr-1263-tip), [#1426](https://github.com/cyrusagents/cyrus/pull/1426))
 
 ### Changed
