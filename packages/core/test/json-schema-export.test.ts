@@ -47,6 +47,7 @@ describe("JSON Schema export", () => {
 				"opencodeDefaultFallbackModel",
 				"inferOpenCodeRunnerFromProviderModel",
 				"defaultRunner",
+				"runnerFallbacks",
 				"defaultModel",
 				"defaultFallbackModel",
 				"global_setup_script",

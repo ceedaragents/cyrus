@@ -142,6 +142,7 @@ export class RunnerSelectionService {
 		runnerType: RunnerType;
 		modelOverride?: string;
 		fallbackModelOverride?: string;
+		selectionWasExplicit: boolean;
 	} {
 		const normalizedLabels = (labels || []).map((label) => label.toLowerCase());
 		const normalizedDescription = issueDescription || "";
@@ -381,6 +382,12 @@ export class RunnerSelectionService {
 			runnerType,
 			modelOverride: resolvedModelOverride,
 			fallbackModelOverride,
+			selectionWasExplicit: Boolean(
+				resolvedAgentFromDescription ||
+					resolvedAgentFromLabels ||
+					modelFromDescription ||
+					modelFromLabels,
+			),
 		};
 	}
 }
