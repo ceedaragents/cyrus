@@ -58,6 +58,7 @@ describe("JSON Schema export", () => {
 				"slackMcpConfigs",
 				"linearMcpConfigs",
 				"githubMcpConfigs",
+				"strictMcpConfig",
 				"issueUpdateTrigger",
 				"prReviewTrigger",
 				"userAccessControl",

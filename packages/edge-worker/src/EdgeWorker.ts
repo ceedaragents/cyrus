@@ -644,6 +644,15 @@ export class EdgeWorker extends EventEmitter {
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
+				const strictMcpConfigChanged =
+					(this.config.strictMcpConfig ?? true) !==
+					(changes.newConfig.strictMcpConfig ?? true);
+				if (strictMcpConfigChanged) {
+					for (const warmSession of this.warmInstances.values()) {
+						warmSession.close();
+					}
+					this.warmInstances.clear();
+				}
 				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
@@ -1109,6 +1118,7 @@ export class EdgeWorker extends EventEmitter {
 				// Live read so hot-reloaded config (`setConfig`) picks up new
 				// per-platform MCP paths without rebuilding the handler.
 				getPlatformMcpConfigOverrides: () => this.config.slackMcpConfigs,
+				getStrictMcpConfig: () => this.config.strictMcpConfig,
 				resolveSkillsConfig: async ({ repository, repositoryPaths }) => {
 					const plugins = await this.skillsPluginResolver.resolve();
 					const skills = await this.skillsPluginResolver.discoverSkillNames(
@@ -6596,6 +6606,7 @@ ${input.userComment}
 				sessionPlatform === "linear"
 					? this.config.linearMcpConfigs
 					: this.config.githubMcpConfigs,
+			strictMcpConfig: this.config.strictMcpConfig,
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
@@ -6937,6 +6948,7 @@ ${input.userComment}
 							...(allowedTools.length > 0 && { allowedTools }),
 							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
+							strictMcpConfig: this.config.strictMcpConfig ?? true,
 							// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not set here;
 							// see CYPACK-1108 and ClaudeRunner.start() for context.
 							env: buildBaseSessionEnv(),

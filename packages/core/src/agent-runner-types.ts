@@ -481,6 +481,11 @@ export interface AgentRunnerConfig {
 	mcpConfigPath?: string | string[];
 	/** MCP server configurations (inline) */
 	mcpConfig?: Record<string, McpServerConfig>;
+	/**
+	 * Whether Claude should use only MCP servers explicitly supplied by Cyrus.
+	 * Defaults to true for Claude sessions.
+	 */
+	strictMcpConfig?: boolean;
 	/** Global OpenCode runtime config overrides from Cyrus config */
 	opencodeGlobalConfig?: JsonObject;
 	/** Repository OpenCode runtime config overrides from Cyrus config */

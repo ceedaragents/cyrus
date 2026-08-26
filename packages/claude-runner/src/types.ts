@@ -44,6 +44,12 @@ export interface ClaudeRunnerConfig {
 	appendSystemPrompt?: string; // Additional prompt to append to the default system prompt
 	mcpConfigPath?: string | string[]; // Single path or array of paths to compose
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
+	/**
+	 * Only use MCP servers explicitly supplied by Cyrus. When false, Claude Code
+	 * may also load project/user MCP settings, plugins, and authenticated
+	 * claude.ai connectors. Defaults to true.
+	 */
+	strictMcpConfig?: boolean;
 	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
 	maxTurns?: number; // Maximum number of turns before completing the session

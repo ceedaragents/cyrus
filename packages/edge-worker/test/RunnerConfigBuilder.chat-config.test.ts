@@ -64,6 +64,29 @@ function makeIssueBuilder(
 }
 
 describe("RunnerConfigBuilder.buildChatConfig", () => {
+	it("defaults strict MCP configuration on and preserves an explicit opt-out", () => {
+		const builder = makeBuilder();
+		const baseInput = {
+			workspacePath: "/tmp/slack-workspace",
+			workspaceName: "slack-thread-x",
+			systemPrompt: "test",
+			sessionId: "sess-1",
+			cyrusHome: "/tmp/cyrus-home-test",
+			platformName: "slack",
+			logger: silentLogger,
+			onMessage: () => {},
+			onError: () => {},
+		};
+
+		expect(builder.buildChatConfig(baseInput).strictMcpConfig).toBe(true);
+		expect(
+			builder.buildChatConfig({
+				...baseInput,
+				strictMcpConfig: false,
+			}).strictMcpConfig,
+		).toBe(false);
+	});
+
 	it("includes autoMemoryDirectory in allowedDirectories so the session can read existing memory files (CYPACK-1197)", () => {
 		const builder = makeBuilder();
 		const cyrusHome = "/tmp/cyrus-home-test";

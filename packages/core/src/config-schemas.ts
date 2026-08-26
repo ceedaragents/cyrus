@@ -511,6 +511,14 @@ export const EdgeConfigSchema = z.object({
 	githubMcpConfigs: z.array(z.string()).optional(),
 
 	/**
+	 * Restrict Claude sessions to MCP servers explicitly supplied by Cyrus.
+	 * When false, Claude Code may also load servers from project/user settings,
+	 * plugins, and authenticated claude.ai connectors. Defaults to true when
+	 * omitted.
+	 */
+	strictMcpConfig: z.boolean().optional(),
+
+	/**
 	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
 	 * When enabled, the agent receives context showing what changed (old vs new values).
 	 * Defaults to true if not specified.
