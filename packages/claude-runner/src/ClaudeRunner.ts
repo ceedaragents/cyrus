@@ -716,15 +716,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					// Only use MCP servers we explicitly pass via `mcpConfig` /
-					// `mcpServers`. The flag is undertyped in the SDK's TS
-					// definition (described as "strict validation") but Claude
-					// Code's `--strict-mcp-config` CLI help is unambiguous:
-					// "Only use MCP servers from --mcp-config, ignoring all
-					// other MCP configurations." That's the contract we want
-					// for hosted sessions — never silently inherit servers
-					// from the user's `~/.claude.json`, project `.mcp.json`,
-					// or other ambient sources.
-					strictMcpConfig: true,
+					// `mcpServers` by default. Operators may opt out to let Claude
+					// Code also load project/user settings, plugins, and authenticated
+					// claude.ai connectors.
+					strictMcpConfig: this.config.strictMcpConfig ?? true,
 					hooks: this.buildHooksWithPendingWorkRecorder(),
 					...(this.config.plugins?.length && { plugins: this.config.plugins }),
 					...(this.config.skills !== undefined && {

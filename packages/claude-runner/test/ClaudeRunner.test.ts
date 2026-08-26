@@ -142,6 +142,29 @@ describe("ClaudeRunner", () => {
 			});
 		});
 
+		it("should allow ambient MCP configuration when strict mode is disabled", async () => {
+			const nonStrictRunner = new ClaudeRunner({
+				...defaultConfig,
+				strictMcpConfig: false,
+			});
+			mockQuery.mockImplementation(async function* () {
+				yield {
+					type: "assistant",
+					message: { content: [{ type: "text", text: "Hello!" }] },
+					parent_tool_use_id: null,
+					session_id: "test-session",
+				} as any;
+			});
+
+			await nonStrictRunner.start("test");
+
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					options: expect.objectContaining({ strictMcpConfig: false }),
+				}),
+			);
+		});
+
 		it("should handle workspace configuration properly", async () => {
 			const runnerWithWorkspace = new ClaudeRunner({
 				...defaultConfig,

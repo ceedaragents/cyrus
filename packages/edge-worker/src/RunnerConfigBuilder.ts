@@ -96,6 +96,8 @@ export interface ChatRunnerConfigInput {
 	 * run as usual).
 	 */
 	platformMcpConfigOverrides?: readonly string[];
+	/** Whether Claude should ignore ambient MCP configuration. Defaults to true. */
+	strictMcpConfig?: boolean;
 	/** Plugins to load for the chat session (provides managed skills). */
 	plugins?: SdkPluginConfig[];
 	/**
@@ -141,6 +143,8 @@ export interface IssueRunnerConfigInput {
 	 * (see `buildIssueConfig`).
 	 */
 	platformMcpConfigOverrides?: readonly string[];
+	/** Whether Claude should ignore ambient MCP configuration. Defaults to true. */
+	strictMcpConfig?: boolean;
 	linearWorkspaceId?: string;
 	cyrusHome: string;
 	logger: ILogger;
@@ -297,6 +301,7 @@ export class RunnerConfigBuilder {
 			),
 			...(mcpConfig ? { mcpConfig } : {}),
 			...(mcpConfigPath ? { mcpConfigPath } : {}),
+			strictMcpConfig: input.strictMcpConfig ?? true,
 			...(input.resumeSessionId
 				? { resumeSessionId: input.resumeSessionId }
 				: {}),
@@ -438,6 +443,7 @@ export class RunnerConfigBuilder {
 			cyrusHome: input.cyrusHome,
 			mcpConfigPath,
 			mcpConfig,
+			strictMcpConfig: input.strictMcpConfig ?? true,
 			appendSystemPrompt: appendCloudRuntimeAddendum(
 				appendBrowserUseAddendum(appendFailureModeAddendum(input.systemPrompt)),
 			),

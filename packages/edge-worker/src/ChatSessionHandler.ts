@@ -108,6 +108,8 @@ export interface ChatSessionHandlerDeps {
 	 * no custom files load (native MCP servers still run as usual).
 	 */
 	getPlatformMcpConfigOverrides?: () => readonly string[] | undefined;
+	/** Live read of whether Claude should ignore ambient MCP configuration. */
+	getStrictMcpConfig?: () => boolean | undefined;
 	/** Resolve managed skill plugins and scoped skill names for a chat session. */
 	resolveSkillsConfig?: (input: {
 		repository?: RepositoryConfig;
@@ -788,6 +790,7 @@ export class ChatSessionHandler<TEvent> {
 			repository,
 			repositoryPaths,
 			platformMcpConfigOverrides: this.deps.getPlatformMcpConfigOverrides?.(),
+			strictMcpConfig: this.deps.getStrictMcpConfig?.(),
 			plugins: skillsConfig.plugins,
 			skills: skillsConfig.skills,
 			opencodeGlobalConfig: this.deps.getOpenCodeGlobalConfig?.(),

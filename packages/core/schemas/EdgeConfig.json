@@ -647,6 +647,9 @@
 				"type": "string"
 			}
 		},
+		"strictMcpConfig": {
+			"type": "boolean"
+		},
 		"issueUpdateTrigger": {
 			"type": "boolean"
 		},

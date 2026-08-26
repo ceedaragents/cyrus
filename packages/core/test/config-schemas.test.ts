@@ -10,6 +10,20 @@ const baseRepository = {
 };
 
 describe("EdgeConfigSchema", () => {
+	it("accepts strict MCP configuration as a top-level boolean", () => {
+		const enabled = EdgeConfigSchema.parse({
+			repositories: [baseRepository],
+			strictMcpConfig: true,
+		});
+		const disabled = EdgeConfigSchema.parse({
+			repositories: [baseRepository],
+			strictMcpConfig: false,
+		});
+
+		expect(enabled.strictMcpConfig).toBe(true);
+		expect(disabled.strictMcpConfig).toBe(false);
+	});
+
 	it("accepts arbitrary JSON-compatible OpenCode config at global and repository levels", () => {
 		const config = {
 			repositories: [

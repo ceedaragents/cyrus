@@ -64,4 +64,32 @@ describe("ConfigManager", () => {
 			opencode,
 		);
 	});
+
+	it("reloads strictMcpConfig=false and emits it as a global config change", async () => {
+		tempDir = await mkdtemp(join(tmpdir(), "cyrus-config-manager-"));
+		const configPath = join(tempDir, "config.json");
+		const initialConfig: EdgeWorkerConfig = {
+			repositories: [repo],
+			strictMcpConfig: true,
+		};
+		const manager = new ConfigManager(
+			initialConfig,
+			logger,
+			configPath,
+			new Map([[repo.id, repo]]),
+		);
+		const onConfigChanged = vi.fn();
+		manager.on("configChanged", onConfigChanged);
+
+		await writeFile(
+			configPath,
+			JSON.stringify({ repositories: [repo], strictMcpConfig: false }),
+		);
+		await (manager as any).handleConfigChange();
+
+		expect(onConfigChanged).toHaveBeenCalledOnce();
+		expect(onConfigChanged.mock.calls[0][0].newConfig.strictMcpConfig).toBe(
+			false,
+		);
+	});
 });
