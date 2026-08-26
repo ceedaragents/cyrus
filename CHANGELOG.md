@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.69] - 2026-08-26
+
 ### Added
 - Added an enabled-by-default `strictMcpConfig` setting for Claude sessions. Set it to `false` to make ambient MCP sources—including authenticated claude.ai connectors, project and user settings, and plugins—available alongside Cyrus-configured servers; config reloads and pre-warmed sessions honor changes. ([CYHOST-1245](https://linear.app/ceedar/issue/CYHOST-1245/can-u-add-a-bevahiours-settings-page-setting-for-strict-mcp-config), [#1434](https://github.com/cyrusagents/cyrus/pull/1434))
 - OpenCode is now a supported Cyrus runner for self-hosted sessions, including `opencode` labels and `[agent=opencode]` selectors, provider/model defaults, runtime config overrides, MCP and tool permission translation, CLI-managed auth/state handling, readable Linear activity, session resume/follow-up handling, and stalled-runner recovery. Thanks @JappyMondo and @jappyjan for the original contribution. ([CYPACK-1466](https://linear.app/ceedar/issue/CYPACK-1466/create-clean-opencode-support-pr-from-pr-1263-tip), [#1426](https://github.com/cyrusagents/cyrus/pull/1426))
@@ -18,6 +20,56 @@ All notable changes to this project will be documented in this file.
 ### Security
 - Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1431](https://linear.app/ceedar/issue/CYPACK-1431/address-open-security-patches-for-cyrus-cli), [#1404](https://github.com/cyrusagents/cyrus/pull/1404))
 - Removed an unused Gemini runner reference dependency so `pnpm audit` no longer reports the `extract-zip` advisory. ([CYPACK-1443](https://linear.app/ceedar/issue/CYPACK-1443/address-open-security-patches-for-cyrus-cli), [#1409](https://github.com/cyrusagents/cyrus/pull/1409))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.69
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.69
+
+#### cyrus-core
+- cyrus-core@0.2.69
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.69
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.69
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.69
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.69
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.69
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.69
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.69
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.69
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.69
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.69
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.69
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.69
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.69
 
 ## [0.2.68] - 2026-08-05
 

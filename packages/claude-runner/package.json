@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-claude-runner",
-	"version": "0.2.68",
+	"version": "0.2.69",
 	"description": "Claude CLI execution wrapper for Cyrus",
 	"repository": {
 		"type": "git",

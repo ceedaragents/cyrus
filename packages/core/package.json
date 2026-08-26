@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-core",
-	"version": "0.2.68",
+	"version": "0.2.69",
 	"description": "Core business logic for Cyrus",
 	"repository": {
 		"type": "git",
