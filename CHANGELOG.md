@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.245` to [`0.3.247`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03247), adding per-turn message correlation, managed model pricing, per-task stop control, ambient task metadata, and live permission-mode reporting fixes. Updated `@anthropic-ai/sdk` from `^0.120.0` to [`^0.121.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01210-2026-08-26); the Claude tool allowance lists are unchanged. ([CYPACK-1476](https://linear.app/ceedar/issue/CYPACK-1476/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1438](https://github.com/cyrusagents/cyrus/pull/1438))
+
 ## [0.2.69] - 2026-08-26
 
 ### Added
