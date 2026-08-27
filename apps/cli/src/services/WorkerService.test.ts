@@ -86,6 +86,21 @@ describe("WorkerService", () => {
 		return edgeWorkerInstances[0].config;
 	}
 
+	it("forwards strictMcpConfig from the config file to EdgeWorker", async () => {
+		const config = await startService({
+			repositories: [],
+			strictMcpConfig: false,
+		});
+
+		expect(config.strictMcpConfig).toBe(false);
+	});
+
+	it("leaves strictMcpConfig undefined when not set in the config file", async () => {
+		const config = await startService({ repositories: [] });
+
+		expect(config.strictMcpConfig).toBeUndefined();
+	});
+
 	it("forwards top-level OpenCode config overrides to EdgeWorker", async () => {
 		const opencode = {
 			config: {

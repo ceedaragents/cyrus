@@ -222,6 +222,7 @@ export class WorkerService {
 			slackMcpConfigs: edgeConfig.slackMcpConfigs,
 			linearMcpConfigs: edgeConfig.linearMcpConfigs,
 			githubMcpConfigs: edgeConfig.githubMcpConfigs,
+			strictMcpConfig: edgeConfig.strictMcpConfig,
 			defaultDisallowedTools:
 				parseToolEnv(process.env.DISALLOWED_TOOLS) ??
 				edgeConfig.defaultDisallowedTools,
