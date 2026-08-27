@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- The release workflow's npm registry visibility check now waits up to 10 minutes per package instead of 60 seconds. The v0.2.70 release run aborted mid-graph because npm's publish processing exceeded the old 12×5s window even though the publish itself succeeded; the new deadline matches npm's own "may take a few minutes" guidance.
+
 ## [0.2.70] - 2026-08-27
 
 ### Added
