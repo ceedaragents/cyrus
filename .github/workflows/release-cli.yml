@@ -210,20 +210,26 @@ jobs:
             local package_name="$1"
             local published=""
             local tagged=""
+            # npm warns that a fresh publish "may take a few minutes to become
+            # available", so allow up to 10 minutes before declaring failure.
+            local deadline=$((SECONDS + 600))
+            local attempt=0
 
-            for attempt in {1..12}; do
+            while true; do
+              attempt=$((attempt + 1))
               published="$(npm view "${package_name}@${REQUESTED_VERSION}" version 2>/dev/null || true)"
               tagged="$(npm view "$package_name" "dist-tags.${DIST_TAG}" 2>/dev/null || true)"
               if [[ "$published" == "$REQUESTED_VERSION" && "$tagged" == "$REQUESTED_VERSION" ]]; then
                 return 0
               fi
-              if [[ "$attempt" -lt 12 ]]; then
-                echo "Waiting for ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG} to become visible (attempt ${attempt}/12)."
-                sleep 5
+              if [[ "$SECONDS" -ge "$deadline" ]]; then
+                break
               fi
+              echo "Waiting for ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG} to become visible (attempt ${attempt}, retrying for up to 10 minutes)."
+              sleep 10
             done
 
-            echo "${package_name}@${REQUESTED_VERSION} is not consistently visible with npm tag ${DIST_TAG}." >&2
+            echo "${package_name}@${REQUESTED_VERSION} is not consistently visible with npm tag ${DIST_TAG} after 10 minutes." >&2
             return 1
           }
 
