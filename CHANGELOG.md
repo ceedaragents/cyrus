@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`CYRUS_SERVER_HOST` sets the address Cyrus listens on.** Leave it unset and the bind address is derived from `CYRUS_HOST_EXTERNAL` as before. Set it when a tunnel or reverse proxy on the same host fronts Cyrus: `CYRUS_SERVER_HOST=127.0.0.1` with `CYRUS_HOST_EXTERNAL=true` keeps the port off your public interfaces without switching webhook verification into proxy mode. A non-loopback address requires `CYRUS_HOST_EXTERNAL=true`; otherwise Cyrus rejects the configuration at startup. ([#1408](https://github.com/cyrusagents/cyrus/issues/1408), [#1411](https://github.com/cyrusagents/cyrus/pull/1411))
+
 ## [0.2.69] - 2026-08-26
 
 ### Added
