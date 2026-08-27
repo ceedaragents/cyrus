@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.70] - 2026-08-27
+
 ### Added
 - Guardrails against silently dropped `EdgeConfig` fields (the CYPACK-1478 / CYHOST-967 bug class): `WorkerService.startEdgeWorker` now spreads the entire file config so pass-through fields forward automatically, `ConfigManager`'s hot-reload merge and global-change watch are driven by a single `RELOAD_MERGED_KEYS` list with a compile-time exhaustiveness check that names any unclassified schema key, and a schema-complete CLI test asserts every `EdgeConfig` field survives into the `EdgeWorkerConfig`. ([CYPACK-1478](https://linear.app/ceedar/issue/CYPACK-1478/if-a-mcp-server-has-no-enabled-tools-will-it-not-be-allowed-as-an-mcp), [#1440](https://github.com/cyrusagents/cyrus/pull/1440))
 

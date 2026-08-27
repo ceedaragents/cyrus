@@ -4,12 +4,64 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.70] - 2026-08-27
+
 ### Fixed
 - `strictMcpConfig: false` in `~/.cyrus/config.json` now actually takes effect at startup. Previously the CLI dropped the setting when assembling the worker configuration, so sessions were still launched in strict MCP mode and ambient MCP sources (claude.ai connectors, settings-file servers, plugins) never loaded despite the opt-out. ([CYPACK-1478](https://linear.app/ceedar/issue/CYPACK-1478/if-a-mcp-server-has-no-enabled-tools-will-it-not-be-allowed-as-an-mcp), [#1440](https://github.com/cyrusagents/cyrus/pull/1440))
 - An audit prompted by the same bug found and fixed other silently dropped settings: `cursorDefaultModel` / `cursorDefaultFallbackModel` were ignored at startup, and edits to `userAccessControl`, `global_setup_script`, and Cursor model defaults in `~/.cyrus/config.json` were not picked up by live config reloads. ([CYPACK-1478](https://linear.app/ceedar/issue/CYPACK-1478/if-a-mcp-server-has-no-enabled-tools-will-it-not-be-allowed-as-an-mcp), [#1440](https://github.com/cyrusagents/cyrus/pull/1440))
 
 ### Changed
 - Updated `@anthropic-ai/claude-agent-sdk` from `0.3.245` to [`0.3.247`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03247), adding per-turn message correlation, managed model pricing, per-task stop control, ambient task metadata, and live permission-mode reporting fixes. Updated `@anthropic-ai/sdk` from `^0.120.0` to [`^0.121.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01210-2026-08-26); the Claude tool allowance lists are unchanged. ([CYPACK-1476](https://linear.app/ceedar/issue/CYPACK-1476/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1438](https://github.com/cyrusagents/cyrus/pull/1438))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.70
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.70
+
+#### cyrus-core
+- cyrus-core@0.2.70
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.70
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.70
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.70
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.70
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.70
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.70
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.70
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.70
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.70
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.70
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.70
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.70
+
+#### cyrus-ai
+- cyrus-ai@0.2.70
 
 ## [0.2.69] - 2026-08-26
 
