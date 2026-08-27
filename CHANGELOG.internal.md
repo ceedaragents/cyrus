@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Release workflows now preflight npm package existence before running release work, with actionable first-publish and trusted-publisher guidance for newly added packages ([#1436](https://github.com/cyrusagents/cyrus/pull/1436)).
+
 ## [0.2.69] - 2026-08-26
 
 ### Fixed

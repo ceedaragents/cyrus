@@ -91,6 +91,21 @@ jobs:
             fi
           fi
 
+          missing_packages=()
+          while IFS=$'\t' read -r directory package_name; do
+            if ! npm view "$package_name" version >/dev/null 2>&1; then
+              missing_packages+=("$package_name")
+            fi
+          done < <(node scripts/release-packages.mjs list)
+
+          if (( ${#missing_packages[@]} > 0 )); then
+            echo "::error title=Unpublished npm package(s)::Every release package must already exist on npm before this workflow runs."
+            printf '  - %s\n' "${missing_packages[@]}"
+            echo "Bootstrap each missing package through the approved npm first-publish process, then configure its GitHub Actions trusted publisher."
+            echo "Trusted publisher command: npm trust github <package> --repo cyrusagents/cyrus --file release-cli.yml --allow-publish --yes"
+            exit 1
+          fi
+
           while IFS=$'\t' read -r directory package_name; do
             if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
               if [[ "$DRY_RUN" == "true" ]]; then
