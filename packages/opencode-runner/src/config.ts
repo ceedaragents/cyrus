@@ -70,7 +70,10 @@ const CLAUDE_ONLY_TOOL_NAMES = new Set([
 	"designsync",
 	"workflow",
 	"reportfindings",
-	"shareonboardingguide",
+	"listagents",
+	"listmcpresourcestool",
+	"readmcpresourcedirtool",
+	"readmcpresourcetool",
 	"lsp",
 ]);
 

@@ -38,6 +38,7 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 	// Execution
 	"Bash",
 	"Task",
+	"ListAgents",
 
 	// Web
 	"WebFetch",
@@ -50,7 +51,6 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 	// User interaction
 	"SendMessage",
 	"PushNotification",
-	"ShareOnboardingGuide",
 
 	// Task lifecycle
 	"TaskCreate",
@@ -71,6 +71,9 @@ export const LINEAR_DEFAULT_ALLOWED_TOOLS = [
 	"LSP",
 	"RemoteTrigger",
 	"ToolSearch",
+	"ListMcpResourcesTool",
+	"ReadMcpResourceDirTool",
+	"ReadMcpResourceTool",
 	"Skill",
 
 	// Design sync
@@ -158,6 +161,7 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	// Execution
 	"Bash",
 	"Task",
+	"ListAgents",
 
 	// Web
 	"WebFetch",
@@ -170,7 +174,6 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	// User interaction
 	"SendMessage",
 	"PushNotification",
-	"ShareOnboardingGuide",
 
 	// Task lifecycle
 	"TaskCreate",
@@ -191,6 +194,9 @@ export const GITHUB_DEFAULT_ALLOWED_TOOLS = [
 	"LSP",
 	"RemoteTrigger",
 	"ToolSearch",
+	"ListMcpResourcesTool",
+	"ReadMcpResourceDirTool",
+	"ReadMcpResourceTool",
 	"Skill",
 
 	// Design sync

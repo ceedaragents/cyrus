@@ -23,6 +23,7 @@ export const availableTools = [
 	// Execution tools
 	"Bash",
 	"Task",
+	"ListAgents",
 
 	// Web tools
 	"WebFetch",
@@ -44,7 +45,6 @@ export const availableTools = [
 	// User interaction tools
 	"SendMessage",
 	"PushNotification",
-	"ShareOnboardingGuide",
 
 	// Plan and worktree management
 	"EnterWorktree",
@@ -63,8 +63,11 @@ export const availableTools = [
 	"TaskOutput",
 	"TaskStop",
 
-	// Tool discovery
+	// Tool and MCP resource discovery
 	"ToolSearch",
+	"ListMcpResourcesTool",
+	"ReadMcpResourceDirTool",
+	"ReadMcpResourceTool",
 
 	// Design sync
 	"DesignSync",
@@ -92,12 +95,15 @@ export const readOnlyTools: ToolName[] = [
 	"TaskGet",
 	"TaskList",
 	"Task",
+	"ListAgents",
 	"Skill",
 	"Monitor",
 	"LSP",
-	"ShareOnboardingGuide",
 	"TaskOutput",
 	"ToolSearch",
+	"ListMcpResourcesTool",
+	"ReadMcpResourceDirTool",
+	"ReadMcpResourceTool",
 ];
 
 /**
