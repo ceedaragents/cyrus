@@ -19,6 +19,7 @@ describe("config", () => {
 				"Write(**)",
 				"Bash",
 				"Task",
+				"ListAgents",
 				"WebFetch",
 				"WebSearch",
 				"TaskCreate",
@@ -29,7 +30,6 @@ describe("config", () => {
 				"Skill",
 				"SendMessage",
 				"PushNotification",
-				"ShareOnboardingGuide",
 				"EnterWorktree",
 				"ExitWorktree",
 				"CronCreate",
@@ -42,11 +42,14 @@ describe("config", () => {
 				"TaskOutput",
 				"TaskStop",
 				"ToolSearch",
+				"ListMcpResourcesTool",
+				"ReadMcpResourceDirTool",
+				"ReadMcpResourceTool",
 				"DesignSync",
 				"Workflow",
 				"ReportFindings",
 			]);
-			expect(availableTools).toHaveLength(31);
+			expect(availableTools).toHaveLength(34);
 		});
 
 		it("should define read-only tools", () => {
@@ -59,14 +62,17 @@ describe("config", () => {
 				"TaskGet",
 				"TaskList",
 				"Task",
+				"ListAgents",
 				"Skill",
 				"Monitor",
 				"LSP",
-				"ShareOnboardingGuide",
 				"TaskOutput",
 				"ToolSearch",
+				"ListMcpResourcesTool",
+				"ReadMcpResourceDirTool",
+				"ReadMcpResourceTool",
 			]);
-			expect(readOnlyTools).toHaveLength(14);
+			expect(readOnlyTools).toHaveLength(17);
 		});
 
 		it("should define write tools", () => {
