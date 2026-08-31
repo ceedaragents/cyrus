@@ -97,9 +97,15 @@ export class LinearActivitySink implements IActivitySink {
 			}),
 		});
 
-		if (result.success && result.agentActivity) {
-			const agentActivity = await result.agentActivity;
-			return { activityId: agentActivity.id };
+		// `result.agentActivity` is an unmemoized getter: every access constructs
+		// a fresh AgentActivityQuery and issues another round trip to read back
+		// the activity we just created. Only the id was ever consumed, and
+		// `result.agentActivityId` returns it from the mutation response the SDK
+		// is already holding, at no request cost.
+		const activityId = result.agentActivityId;
+
+		if (result.success && activityId) {
+			return { activityId };
 		}
 
 		return {};

@@ -29,10 +29,15 @@ export class ActivityPoster {
 		try {
 			const result = await issueTracker.createAgentActivity(input);
 			if (result.success) {
-				if (result.agentActivity) {
-					const activity = await result.agentActivity;
-					this.logger.debug(`Created ${label} activity ${activity.id}`);
-					return activity.id;
+				// `result.agentActivity` is an unmemoized getter: every access
+				// constructs a fresh AgentActivityQuery and issues another round trip
+				// to read back the activity we just created. Only the id was ever
+				// consumed, and `result.agentActivityId` returns it from the mutation
+				// response the SDK is already holding, at no request cost.
+				const activityId = result.agentActivityId;
+				if (activityId) {
+					this.logger.debug(`Created ${label} activity ${activityId}`);
+					return activityId;
 				}
 				this.logger.debug(`Created ${label}`);
 				return null;
