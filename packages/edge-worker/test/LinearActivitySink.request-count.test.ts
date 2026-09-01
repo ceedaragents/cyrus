@@ -14,6 +14,7 @@ import { LinearActivitySink } from "../src/sinks/LinearActivitySink.js";
 import {
 	countingCreateAgentActivity,
 	createAgentActivityPayload,
+	createCLIAdapterAgentActivityPayload,
 	createRequestLog,
 	type RequestLog,
 } from "./agent-activity-payload-double.js";
@@ -105,6 +106,31 @@ describe("LinearActivitySink request count", () => {
 		const result = await sink.postActivity(mockSessionId, activity);
 
 		expect(result).toEqual({});
+		expect(log.operations).toEqual(["mutation:agentActivityCreate"]);
+	});
+
+	it("should not touch the read-back getter when the id the payload carries is empty", async () => {
+		// Distinguishes `??` from `||`. Both short-circuit on a populated id, so
+		// only a falsy-but-present id tells them apart: `??` keeps it and skips
+		// the getter, `||` falls through and pays for a read-back.
+		respondWith(createAgentActivityPayload(log, ""));
+
+		const result = await sink.postActivity(mockSessionId, activity);
+
+		expect(result).toEqual({});
+		expect(log.operations).toEqual(["mutation:agentActivityCreate"]);
+	});
+
+	it("should return the id when the payload comes from the CLI issue-tracker adapter", async () => {
+		// CLIIssueTrackerService carries the id only on `agentActivity`, as an
+		// already-resolved promise property, and omits `agentActivityId`. Reading
+		// `agentActivityId` alone drops the id on that adapter.
+		respondWith(createCLIAdapterAgentActivityPayload("activity-cli"));
+
+		const result = await sink.postActivity(mockSessionId, activity);
+
+		expect(result).toEqual({ activityId: "activity-cli" });
+		// Awaiting an already-resolved promise is not a round trip.
 		expect(log.operations).toEqual(["mutation:agentActivityCreate"]);
 	});
 

@@ -58,6 +58,31 @@ export function createAgentActivityPayload(
 }
 
 /**
+ * Build a payload double shaped like the one CLIIssueTrackerService returns:
+ *
+ *   return {
+ *     agentActivity: Promise.resolve({ id: activityId }),
+ *     success: true,
+ *     lastSyncId: Date.now(),
+ *   } as AgentActivityPayload;
+ *
+ * `agentActivity` is a plain, already-resolved promise *property* -- not the
+ * SDK's lazy getter -- and `agentActivityId` is absent entirely. The `as` cast
+ * in the adapter is why the compiler accepts the omission, so only a test can
+ * catch a caller that reads `agentActivityId` alone.
+ *
+ * Nothing is logged for the read here: awaiting a promise that is already
+ * resolved is not a round trip. The mutation remains the only operation.
+ */
+export function createCLIAdapterAgentActivityPayload(activityId: string) {
+	return {
+		agentActivity: Promise.resolve({ id: activityId }),
+		success: true,
+		lastSyncId: 1,
+	};
+}
+
+/**
  * A `createAgentActivity` implementation that counts the mutation itself, so
  * the request count for a call under test is `log.operations.length`.
  *
