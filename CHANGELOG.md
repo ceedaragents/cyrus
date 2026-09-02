@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Cross-runner handoff: write `@Cyrus /handoff codex` or `@Cyrus /handoff claude` on a Linear issue — either in the opening mention or as a follow-up comment — to run/continue the work with the other runner. The target runner reuses the same worktree, branch, and PR, so it picks up the existing files, commits, and PR state. When handing off from a still-active runner, Cyrus stops it first and never runs both at once; if the active runner can't be stopped, it posts a comment explaining the handoff is blocked. ([#1348](https://github.com/cyrusagents/cyrus/pull/1348))
+
 ### Fixed
 - EdgeWorker state saves are now atomic, preventing a process interrupted during a save from leaving a truncated state file that strands in-flight sessions; empty and legacy-truncated state files also recover cleanly. Thanks @connor-tembo for the contribution. ([CYPACK-1486](https://linear.app/ceedar/issue/CYPACK-1486/can-you-add-a-changelog-entry-for-this), [#1444](https://github.com/cyrusagents/cyrus/pull/1444))
 
