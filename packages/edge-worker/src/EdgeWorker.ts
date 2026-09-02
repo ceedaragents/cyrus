@@ -4337,17 +4337,6 @@ ${taskSection}`;
 		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
-		const agentSessionId = webhook.agentSession?.id;
-		const parentSessionId = agentSessionId
-			? this.globalSessionRegistry.getParentSessionId(agentSessionId)
-			: undefined;
-
-		if (agentSessionId && parentSessionId) {
-			this.logger.info(
-				`Handling child agent session created webhook for ${agentSessionId}; parent session is ${parentSessionId}`,
-			);
-		}
-
 		const issueId = webhook.agentSession?.issue?.id;
 
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
@@ -4444,6 +4433,15 @@ ${taskSection}`;
 		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
+
+		// If this issue is a sub-issue of an issue Cyrus has a session on, link the
+		// two so the parent is resumed when this session completes. Done before the
+		// blocked-by check so a parked child is linked as well.
+		await this.linkChildSessionToParentIssueSession(
+			agentSession.id,
+			agentSession.issue,
+			linearWorkspaceId,
+		);
 
 		// Check for blocked-by dependencies before starting work
 		const blockResult = await this.checkBlockedByDependencies(
@@ -4869,6 +4867,14 @@ ${taskSection}`;
 
 		log.debug(
 			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
+		);
+
+		// The created webhook returned early to ask for a repository, so the
+		// parent-issue link has not been established yet for this session.
+		await this.linkChildSessionToParentIssueSession(
+			agentSessionId,
+			agentSession.issue,
+			webhook.organizationId,
 		);
 
 		// Initialize agent runner with the selected repository (wrapped in array)
@@ -6042,6 +6048,86 @@ ${taskSection}`;
 		console.log(
 			`[EdgeWorker] Parent-child mapping registered in GlobalSessionRegistry`,
 		);
+	}
+
+	/**
+	 * Link a newly created agent session to the most recent Cyrus session on its
+	 * parent issue, so that when this (child) session completes, the parent
+	 * session is resumed with the child's result.
+	 *
+	 * Parent-child *issue* relationships are the channel for child completion
+	 * messages. Any issue whose parent has a Cyrus session is linked, regardless
+	 * of whether that parent session is currently running: an orchestrator that
+	 * has halted to wait for its sub-issue has status "complete" and is exactly
+	 * the parent that must be woken, so this deliberately does not filter to
+	 * active sessions. The resume path handles both a still-running parent
+	 * (streams the message in) and an exited one (resumes from its stored
+	 * runner session id).
+	 *
+	 * This replaces the mapping that used to be established by the removed
+	 * `linear_agent_session_create*` cyrus-tools. Linear delegation creates
+	 * exactly one session per issue, so deriving the link from the issue
+	 * hierarchy does not reintroduce concurrent child sessions on one issue.
+	 *
+	 * Never throws: a failed lookup only means the parent is not notified.
+	 */
+	private async linkChildSessionToParentIssueSession(
+		agentSessionId: string,
+		issue: { id: string; identifier: string } | null | undefined,
+		linearWorkspaceId: string,
+	): Promise<void> {
+		if (!issue) {
+			return;
+		}
+
+		// Already mapped (e.g. restored from persisted state) — leave it alone.
+		if (this.globalSessionRegistry.getParentSessionId(agentSessionId)) {
+			return;
+		}
+
+		const log = this.logger.withContext({
+			sessionId: agentSessionId,
+			issueIdentifier: issue.identifier,
+		});
+
+		try {
+			// The webhook's issue payload does not carry the parent, so fetch it.
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				linearWorkspaceId,
+			);
+			const parentIssue = await fullIssue?.parent;
+			const parentIssueId = parentIssue?.id;
+			if (!parentIssueId) {
+				return;
+			}
+
+			const parentSessions =
+				this.agentSessionManager.getSessionsByIssueId(parentIssueId);
+			if (parentSessions.length === 0) {
+				log.debug(
+					`Parent issue ${parentIssueId} has no Cyrus session; no parent callback will be sent`,
+				);
+				return;
+			}
+
+			const parentSession = parentSessions.reduce((latest, candidate) =>
+				candidate.updatedAt > latest.updatedAt ? candidate : latest,
+			);
+
+			this.globalSessionRegistry.setParentSession(
+				agentSessionId,
+				parentSession.id,
+			);
+			log.info(
+				`Linked to parent session ${parentSession.id} via parent issue ${parentIssueId}; parent will be resumed when this session completes`,
+			);
+		} catch (error) {
+			log.warn(
+				`Failed to link session to a parent issue session; continuing without parent callback`,
+				error,
+			);
+		}
 	}
 
 	private async handleFeedbackDeliveryToChildSession(
