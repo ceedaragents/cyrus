@@ -511,6 +511,95 @@ describe("GitService", () => {
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);
 		});
+
+		it("adopts a remote-only branch by tracking origin/<branch>", async () => {
+			const issue = makeIssue();
+			const repository = makeRepository();
+
+			const commands: string[] = [];
+			mockExecSync.mockImplementation((cmd: any) => {
+				const cmdStr = String(cmd);
+				commands.push(cmdStr);
+				if (cmdStr === "git rev-parse --git-dir") {
+					return Buffer.from(".git\n");
+				}
+				if (cmdStr === "git worktree list --porcelain") {
+					return "";
+				}
+				if (
+					cmdStr.includes(
+						'git rev-parse --verify "cyrustester/eng-97-fix-shader"',
+					)
+				) {
+					// Branch does NOT exist locally
+					throw new Error("fatal: Needed a single revision");
+				}
+				if (
+					cmdStr.includes(
+						'git ls-remote --heads origin "cyrustester/eng-97-fix-shader"',
+					)
+				) {
+					// ...but it exists on the remote (externally pushed PR branch)
+					return Buffer.from(
+						"abc123\trefs/heads/cyrustester/eng-97-fix-shader\n",
+					);
+				}
+				return Buffer.from("");
+			});
+
+			const result = await gitService.createGitWorktree(issue, [repository]);
+
+			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(commands).toContain(
+				'git worktree add --track -b "cyrustester/eng-97-fix-shader" "/home/user/.cyrus/worktrees/ENG-97" "origin/cyrustester/eng-97-fix-shader"',
+			);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("exists on remote, creating worktree tracking"),
+			);
+		});
+
+		it("creates a fresh branch from base when the branch exists neither locally nor remotely", async () => {
+			const issue = makeIssue();
+			const repository = makeRepository();
+
+			const commands: string[] = [];
+			mockExecSync.mockImplementation((cmd: any) => {
+				const cmdStr = String(cmd);
+				commands.push(cmdStr);
+				if (cmdStr === "git rev-parse --git-dir") {
+					return Buffer.from(".git\n");
+				}
+				if (cmdStr === "git worktree list --porcelain") {
+					return "";
+				}
+				if (
+					cmdStr.includes(
+						'git rev-parse --verify "cyrustester/eng-97-fix-shader"',
+					)
+				) {
+					throw new Error("fatal: Needed a single revision");
+				}
+				if (
+					cmdStr.includes(
+						'git ls-remote --heads origin "cyrustester/eng-97-fix-shader"',
+					)
+				) {
+					// Not on the remote either
+					return Buffer.from("");
+				}
+				if (cmdStr.includes('git ls-remote --heads origin "main"')) {
+					return Buffer.from("def456\trefs/heads/main\n");
+				}
+				return Buffer.from("");
+			});
+
+			const result = await gitService.createGitWorktree(issue, [repository]);
+
+			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(commands).toContain(
+				'git worktree add --track -b "cyrustester/eng-97-fix-shader" "/home/user/.cyrus/worktrees/ENG-97" "origin/main"',
+			);
+		});
 	});
 
 	describe("createGitWorktree - repo setup hook discovery", () => {

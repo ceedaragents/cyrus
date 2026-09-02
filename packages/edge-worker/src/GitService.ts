@@ -842,9 +842,34 @@ export class GitService {
 				hasRemote = false;
 			}
 
+			// If the branch doesn't exist locally, it may still exist on the
+			// remote (e.g. a PR branch pushed outside Cyrus). Adopt it rather
+			// than shadowing it with a fresh branch cut from the base branch.
+			let adoptRemoteBranch = false;
+			if (createBranch && hasRemote) {
+				try {
+					const remoteOutput = execSync(
+						`git ls-remote --heads origin "${branchName}"`,
+						{
+							cwd: repository.repositoryPath,
+							stdio: "pipe",
+						},
+					);
+					adoptRemoteBranch =
+						remoteOutput !== null && remoteOutput.toString().trim().length > 0;
+				} catch {
+					// ls-remote failed; fall through to normal branch creation
+				}
+			}
+
 			// Create the worktree - use determined base branch
 			let worktreeCmd: string;
-			if (createBranch) {
+			if (adoptRemoteBranch) {
+				this.logger.info(
+					`Branch '${branchName}' exists on remote, creating worktree tracking origin/${branchName}`,
+				);
+				worktreeCmd = `git worktree add --track -b "${branchName}" "${workspacePath}" "origin/${branchName}"`;
+			} else if (createBranch) {
 				if (hasRemote) {
 					// Check if the base branch exists remotely
 					let useRemoteBranch = false;
