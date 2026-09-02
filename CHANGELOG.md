@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Faster session startup: Cyrus's own tools (session and feedback management, file uploads, issue relations, and docs search) now load immediately at the start of a session instead of being deferred behind an on-demand tool search. Previously the large Linear tool catalog could push the session over an internal limit that silently deferred *every* tool, adding a noticeable stall — sometimes close to a minute of Linear round-trips — before Cyrus could act on the issue. The essentials Cyrus needs are now available up front, while the full Linear toolset remains available on demand. ([#1369](https://github.com/cyrusagents/cyrus/pull/1369))
+
 ### Fixed
 - EdgeWorker state saves are now atomic, preventing a process interrupted during a save from leaving a truncated state file that strands in-flight sessions; empty and legacy-truncated state files also recover cleanly. Thanks @connor-tembo for the contribution. ([CYPACK-1486](https://linear.app/ceedar/issue/CYPACK-1486/can-you-add-a-changelog-entry-for-this), [#1444](https://github.com/cyrusagents/cyrus/pull/1444))
 
