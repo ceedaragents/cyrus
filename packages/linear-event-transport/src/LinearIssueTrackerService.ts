@@ -52,6 +52,10 @@ import type {
 } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import { LinearEventTransport } from "./LinearEventTransport.js";
+import {
+	describeGraphQLOperation,
+	withLinearRateLimitRetry,
+} from "./rateLimitRetry.js";
 
 /**
  * Linear implementation of IIssueTrackerService.
@@ -117,16 +121,21 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			);
 		}
 
-		// Only patch if oauthConfig is provided AND linearClient.client exists
-		// (the .client property may not exist in test mocks)
-		if (oauthConfig && linearClient.client) {
+		// Patch the transport whenever the underlying GraphQL client exists (the
+		// .client property may not exist in test mocks): rate-limit backoff on the
+		// outside, 401 token refresh (only when oauthConfig is provided) on the
+		// inside.
+		if (linearClient.client) {
 			const client = linearClient.client;
 			const originalRequest = client.request.bind(client);
 
 			// Track the current refresh promise - coalesces concurrent 401 errors.
 			// Cleared when refresh fails or when setAccessToken() is called.
 
-			client.request = async <Data, Variables extends Record<string, unknown>>(
+			const requestWithTokenRefresh = async <
+				Data,
+				Variables extends Record<string, unknown>,
+			>(
 				document: string,
 				variables?: Variables,
 				requestHeaders?: RequestInit["headers"],
@@ -139,9 +148,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						requestHeaders,
 					)) as Data;
 				} catch (error) {
-					// Don't retry if this is already a retry attempt (prevents infinite loops)
+					// Don't retry if this is already a retry attempt (prevents infinite loops),
+					// if there is no OAuth config to refresh with,
 					// or if it's not a token expiration error
-					if (isRetry || !this.isTokenExpiredError(error)) throw error;
+					if (isRetry || !this.oauthConfig || !this.isTokenExpiredError(error))
+						throw error;
 
 					// Coalesce concurrent refresh attempts - everyone shares the same promise.
 					if (!this.refreshPromise) {
@@ -162,12 +173,12 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						this.refreshPromise = null;
 						client.setHeader("Authorization", `Bearer ${newToken}`);
 
-						// Retry the request with the new token (marked as retry to prevent loops)
-						return (await (client.request as any)(
+						// Retry with the new token via originalRequest, so the retry does not
+						// re-enter this wrapper (and does not start a nested backoff budget).
+						return (await originalRequest(
 							document,
 							variables,
 							requestHeaders,
-							true, // isRetry flag
 						)) as Data;
 					} catch (_refreshError) {
 						// If refresh failed, throw the original 401 error for clarity
@@ -175,6 +186,26 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					}
 				}
 			};
+
+			client.request = <Data, Variables extends Record<string, unknown>>(
+				document: string,
+				variables?: Variables,
+				requestHeaders?: RequestInit["headers"],
+				isRetry = false,
+			): Promise<Data> =>
+				withLinearRateLimitRetry(
+					() =>
+						requestWithTokenRefresh<Data, Variables>(
+							document,
+							variables,
+							requestHeaders,
+							isRetry,
+						),
+					{
+						logger: this.logger,
+						operationName: describeGraphQLOperation(document),
+					},
+				);
 		}
 	}
 
