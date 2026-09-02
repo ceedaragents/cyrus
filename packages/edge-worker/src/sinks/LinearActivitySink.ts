@@ -97,9 +97,26 @@ export class LinearActivitySink implements IActivitySink {
 			}),
 		});
 
-		if (result.success && result.agentActivity) {
-			const agentActivity = await result.agentActivity;
-			return { activityId: agentActivity.id };
+		// `result.agentActivity` is an unmemoized getter on the Linear SDK
+		// payload: every access constructs a fresh AgentActivityQuery and issues
+		// another round trip to read back the activity we just created. Only the
+		// id was ever consumed, and `result.agentActivityId` returns it from the
+		// mutation response the SDK is already holding, at no request cost.
+		//
+		// The fallback is for CLIIssueTrackerService, whose payload carries the id
+		// only on `agentActivity`, as an already-resolved promise property, and
+		// omits `agentActivityId` entirely. `??` short-circuits on the SDK path, so
+		// the getter is never touched there; on the CLI adapter it awaits a settled
+		// promise, which is not a request. Keeping the getter out of the `if` is
+		// what stops an unawaited read-back from being orphaned when it rejects,
+		// and reading it only once `success` holds keeps failed mutations free.
+		if (result.success) {
+			const activityId =
+				result.agentActivityId ?? (await result.agentActivity)?.id;
+
+			if (activityId) {
+				return { activityId };
+			}
 		}
 
 		return {};
