@@ -97,9 +97,8 @@ export class LinearActivitySink implements IActivitySink {
 			}),
 		});
 
-		if (result.success && result.agentActivity) {
-			const agentActivity = await result.agentActivity;
-			return { activityId: agentActivity.id };
+		if (result.success && result.agentActivityId) {
+			return { activityId: result.agentActivityId };
 		}
 
 		return {};
@@ -125,14 +124,12 @@ export class LinearActivitySink implements IActivitySink {
 			);
 		}
 
-		// Extract session ID from the result
-		// Result has `agentSession` property that may be a Promise
-		const session = await result.agentSession;
-		if (!session) {
+		const sessionId = result.agentSessionId;
+		if (!sessionId) {
 			throw new Error(
 				`Failed to create agent session for issue ${issueId}: session is undefined`,
 			);
 		}
-		return session.id;
+		return sessionId;
 	}
 }

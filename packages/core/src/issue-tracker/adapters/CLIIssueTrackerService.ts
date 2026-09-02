@@ -965,6 +965,7 @@ export class CLIIssueTrackerService
 			success: true,
 			lastSyncId,
 			agentSession: Promise.resolve(agentSession),
+			agentSessionId: agentSession.id,
 		};
 
 		return payload;
@@ -1356,6 +1357,7 @@ export class CLIIssueTrackerService
 		// AgentSessionManager expects result.agentActivity to be promise-like
 		return {
 			agentActivity: Promise.resolve({ id: activityId }),
+			agentActivityId: activityId,
 			success: true,
 			lastSyncId: Date.now(),
 		} as AgentActivityPayload;

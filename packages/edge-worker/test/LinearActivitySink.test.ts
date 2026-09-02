@@ -49,7 +49,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -71,7 +71,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-2" }),
+				agentActivityId: "activity-2",
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -91,7 +91,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-3" }),
+				agentActivityId: "activity-3",
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -107,7 +107,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-4" }),
+				agentActivityId: "activity-4",
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -123,7 +123,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-5" }),
+				agentActivityId: "activity-5",
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -145,7 +145,7 @@ describe("LinearActivitySink", () => {
 			);
 		});
 
-		it("should return empty result when success but no agentActivity", async () => {
+		it("should return empty result when success but no agentActivityId", async () => {
 			const activity: AgentActivityContent = {
 				type: "thought",
 				body: "Test",
@@ -153,7 +153,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: undefined,
+				agentActivityId: undefined,
 			} as any);
 
 			const result = await sink.postActivity(mockSessionId, activity);
@@ -184,7 +184,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity);
@@ -201,7 +201,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-eph" }),
+				agentActivityId: "activity-eph",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, options);
@@ -225,7 +225,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-sig" }),
+				agentActivityId: "activity-sig",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, options);
@@ -246,7 +246,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-sel" }),
+				agentActivityId: "activity-sel",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, { signal: "select" });
@@ -266,7 +266,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-stop" }),
+				agentActivityId: "activity-stop",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, { signal: "stop" });
@@ -286,7 +286,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-cont" }),
+				agentActivityId: "activity-cont",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, {
@@ -309,7 +309,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-meta" }),
+				agentActivityId: "activity-meta",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, {
@@ -333,7 +333,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-no-eph" }),
+				agentActivityId: "activity-no-eph",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity, {});
@@ -350,7 +350,7 @@ describe("LinearActivitySink", () => {
 			const expectedSessionId = "new-session-123";
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
 				success: true,
-				agentSession: Promise.resolve({ id: expectedSessionId }),
+				agentSessionId: expectedSessionId,
 			} as any);
 
 			const sessionId = await sink.createAgentSession(mockIssueId);
@@ -364,7 +364,7 @@ describe("LinearActivitySink", () => {
 		it("should throw when result.success is false", async () => {
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
 				success: false,
-				agentSession: Promise.resolve({ id: "should-not-reach" }),
+				agentSessionId: "should-not-reach",
 			} as any);
 
 			await expect(sink.createAgentSession(mockIssueId)).rejects.toThrow(
@@ -383,24 +383,29 @@ describe("LinearActivitySink", () => {
 			);
 		});
 
-		it("should await agentSession promise before extracting ID", async () => {
+		it("should read the id off the payload without fetching agentSession", async () => {
 			const expectedSessionId = "new-session-456";
-			const agentSessionPromise = Promise.resolve({ id: expectedSessionId });
+			let agentSessionReads = 0;
 
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
 				success: true,
-				agentSession: agentSessionPromise,
+				agentSessionId: expectedSessionId,
+				get agentSession() {
+					agentSessionReads++;
+					return Promise.resolve({ id: expectedSessionId });
+				},
 			} as any);
 
 			const sessionId = await sink.createAgentSession(mockIssueId);
 
 			expect(sessionId).toBe(expectedSessionId);
+			expect(agentSessionReads).toBe(0);
 		});
 
 		it("should call createAgentSessionOnIssue exactly once", async () => {
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
 				success: true,
-				agentSession: Promise.resolve({ id: "session-123" }),
+				agentSessionId: "session-123",
 			} as any);
 
 			await sink.createAgentSession(mockIssueId);
@@ -415,7 +420,7 @@ describe("LinearActivitySink", () => {
 		it("should handle multiple activity posts to the same session", async () => {
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, {
@@ -438,7 +443,7 @@ describe("LinearActivitySink", () => {
 		it("should handle creating multiple sessions", async () => {
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
 				success: true,
-				agentSession: Promise.resolve({ id: "session-1" }),
+				agentSessionId: "session-1",
 			} as any);
 
 			await sink.createAgentSession("issue-1");
@@ -474,7 +479,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, {
@@ -495,7 +500,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity);
@@ -514,7 +519,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity);
@@ -534,7 +539,7 @@ describe("LinearActivitySink", () => {
 
 			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
 				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
+				agentActivityId: "activity-1",
 			} as any);
 
 			await sink.postActivity(mockSessionId, activity);
@@ -543,6 +548,29 @@ describe("LinearActivitySink", () => {
 				agentSessionId: mockSessionId,
 				content: activity,
 			});
+		});
+	});
+
+	describe("Linear API request amplification", () => {
+		it("should not touch the agentActivity getter when posting an activity", async () => {
+			let agentActivityReads = 0;
+
+			vi.mocked(mockIssueTracker.createAgentActivity).mockResolvedValue({
+				success: true,
+				agentActivityId: "activity-1",
+				get agentActivity() {
+					agentActivityReads++;
+					return Promise.resolve({ id: "activity-1" });
+				},
+			} as any);
+
+			const result = await sink.postActivity(mockSessionId, {
+				type: "thought",
+				body: "Analyzing...",
+			});
+
+			expect(result).toEqual({ activityId: "activity-1" });
+			expect(agentActivityReads).toBe(0);
 		});
 	});
 });
