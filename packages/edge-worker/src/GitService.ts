@@ -731,8 +731,9 @@ export class GitService {
 		const ownerRepo = this.resolveOwnerRepoSlug(repository);
 		if (!ownerRepo) return null;
 
-		// Collect candidate PR numbers referencing this repository, keeping
-		// discovery order: attachments first, then description references.
+		// Collect candidate PR numbers referencing this repository. Description
+		// references come first: they are user-stated intent, while attachments
+		// accumulate automatically (e.g. Cyrus attaches every PR it creates).
 		const prNumbers: string[] = [];
 		const addCandidate = (
 			slug: string | undefined,
@@ -742,6 +743,21 @@ export class GitService {
 			if (slug.toLowerCase() !== ownerRepo.toLowerCase()) return;
 			if (!prNumbers.includes(num)) prNumbers.push(num);
 		};
+
+		const description = issue.description ?? "";
+		// GitHub PR URLs pasted into the description
+		for (const match of description.matchAll(
+			/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/gi,
+		)) {
+			addCandidate(match[1], match[2]);
+		}
+		// owner/repo#123 references. This is also how Linear's API renders a
+		// synced-PR embed in issue markdown: [owner/repo#123](https://linear.app/...)
+		for (const match of description.matchAll(
+			/(?:^|[^\w/])([\w.-]+\/[\w.-]+)#(\d+)\b/g,
+		)) {
+			addCandidate(match[1], match[2]);
+		}
 
 		try {
 			const attachments = await issue.attachments?.();
@@ -755,19 +771,6 @@ export class GitService {
 			this.logger.debug(
 				`Failed to fetch attachments for ${issue.identifier}: ${(error as Error).message}`,
 			);
-		}
-
-		const description = issue.description ?? "";
-		// Linear renders synced PRs as <pull-request ...>owner/repo#123</pull-request>
-		for (const match of description.matchAll(
-			/<pull-request\b[^>]*>\s*([\w.-]+\/[\w.-]+)#(\d+)\s*<\/pull-request>/gi,
-		)) {
-			addCandidate(match[1], match[2]);
-		}
-		for (const match of description.matchAll(
-			/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/gi,
-		)) {
-			addCandidate(match[1], match[2]);
 		}
 
 		// Look the PRs up via the GitHub REST API: works unauthenticated for

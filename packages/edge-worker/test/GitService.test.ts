@@ -674,6 +674,67 @@ describe("GitService", () => {
 			);
 		});
 
+		it("adopts the head branch of a PR referenced as a markdown link (Linear synced-PR embed)", async () => {
+			const issue = makeIssue({
+				description:
+					"Fix it.\n\n[acme/widgets#254](https://linear.app/acme/review/feat-pi-provider-abc123)",
+			});
+			const repository = makeRepository();
+			const commands = mockGitEnvironment();
+			const fetchMock = mockPrFetch(openPr);
+
+			await gitService.createGitWorktree(issue, [repository]);
+
+			expect(fetchMock).toHaveBeenCalledWith(
+				"https://api.github.com/repos/acme/widgets/pulls/254",
+				expect.anything(),
+			);
+			expect(commands).toContain(
+				'git worktree add --track -b "feat/pi-provider" "/home/user/.cyrus/worktrees/ENG-97" "origin/feat/pi-provider"',
+			);
+		});
+
+		it("prefers a description PR reference over an attached PR", async () => {
+			const issue = makeIssue({
+				description: "[acme/widgets#254](https://linear.app/acme/review/x)",
+				attachments: () =>
+					Promise.resolve({
+						nodes: [{ url: "https://github.com/acme/widgets/pull/296" }],
+					}),
+			});
+			const repository = makeRepository();
+			const commands = mockGitEnvironment();
+			const fetchMock = vi.fn().mockImplementation((url: string) =>
+				Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve(
+							url.endsWith("/254")
+								? openPr
+								: {
+										state: "open",
+										head: {
+											ref: "wrong-branch",
+											repo: { full_name: "acme/widgets" },
+										},
+									},
+						),
+				}),
+			);
+			vi.stubGlobal("fetch", fetchMock);
+
+			await gitService.createGitWorktree(issue, [repository]);
+
+			expect(fetchMock).toHaveBeenCalledWith(
+				"https://api.github.com/repos/acme/widgets/pulls/254",
+				expect.anything(),
+			);
+			expect(commands).toContain(
+				'git worktree add --track -b "feat/pi-provider" "/home/user/.cyrus/worktrees/ENG-97" "origin/feat/pi-provider"',
+			);
+		});
+
 		it("adopts the head branch of a PR referenced via issue attachment URL", async () => {
 			const issue = makeIssue({
 				attachments: () =>
