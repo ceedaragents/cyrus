@@ -21,6 +21,9 @@ All notable changes to this project will be documented in this file.
 - Updated `@anthropic-ai/claude-agent-sdk` from `0.3.250` to [`0.3.251`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03251), bringing Claude sessions to parity with Claude Code 2.1.251. `@anthropic-ai/sdk` remains current at [`^0.122.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01220-2026-08-27), and the refreshed Claude tool allowances remove the retired MCP resource-discovery tools. ([CYPACK-1482](https://linear.app/ceedar/issue/CYPACK-1482/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1446](https://github.com/cyrusagents/cyrus/pull/1446))
 - Updated `@anthropic-ai/claude-agent-sdk` from `0.3.247` to [`0.3.250`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03250), adding per-server SDK-hosted MCP timeouts and parity with Claude Code 2.1.250. Updated `@anthropic-ai/sdk` from `^0.121.0` to [`^0.122.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01220-2026-08-27), and refreshed the Claude tool allowances to add agent/resource discovery tools and remove the retired onboarding-guide tool. ([CYPACK-1481](https://linear.app/ceedar/issue/CYPACK-1481/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1443](https://github.com/cyrusagents/cyrus/pull/1443))
 
+### Security
+- Patched eight newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities, while replacing the redundant `fast-uri` override with upstream-compatible direct dependency updates. ([CYPACK-1492](https://linear.app/ceedar/issue/CYPACK-1492/address-open-security-patches-for-cyrus-cli), [#1456](https://github.com/cyrusagents/cyrus/pull/1456))
+
 ## [0.2.70] - 2026-08-27
 
 ### Fixed
