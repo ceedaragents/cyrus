@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Sessions now work directly on a pull request referenced on the issue. If an issue links an open PR for the routed repository — as a link/attachment, a PR embed in the description, or a plain PR URL — the session checks out that PR's head branch instead of creating a new branch, so its pushes update the existing PR. Closed and cross-fork PRs are ignored; private repos need a `GH_TOKEN`/`GITHUB_TOKEN` in the environment for the lookup.
-- Sessions now pick up existing remote branches. When a Linear issue's branch name matches a branch that already exists on the remote (for example a PR branch pushed outside Cyrus), the session checks out that branch and continues the work on it — instead of creating a fresh branch of the same name that shadowed the remote one and caused push conflicts.
+- Sessions now work directly on a pull request referenced on the issue. If an issue links an open PR for the routed repository — as a link/attachment, a PR embed in the description, or a plain PR URL — the session checks out that PR's head branch instead of creating a new branch, so its pushes update the existing PR. Closed and cross-fork PRs are ignored; private repos need a `GH_TOKEN`/`GITHUB_TOKEN` in the environment for the lookup. ([#1457](https://github.com/cyrusagents/cyrus/pull/1457))
+- Sessions now pick up existing remote branches. When a Linear issue's branch name matches a branch that already exists on the remote (for example a PR branch pushed outside Cyrus), the session checks out that branch and continues the work on it — instead of creating a fresh branch of the same name that shadowed the remote one and caused push conflicts. ([#1457](https://github.com/cyrusagents/cyrus/pull/1457))
 
 ### Added
 - Every agent session now explains how to attach local images and videos to GitHub issues, pull requests, and comments with GitHub CLI v2.99.0 or newer, independently of optional browser tooling. ([CYPACK-1490](https://linear.app/ceedar/issue/CYPACK-1490/add-this-to-the-system-prompt), [#1453](https://github.com/cyrusagents/cyrus/pull/1453))
