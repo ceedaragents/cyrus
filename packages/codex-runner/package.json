@@ -21,8 +21,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@openai/codex": "^0.144.4",
-		"@openai/codex-sdk": "^0.144.4",
+		"@openai/codex": "^0.153.3",
+		"@openai/codex-sdk": "^0.153.3",
 		"cyrus-core": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*"
 	},
