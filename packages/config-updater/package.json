@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-config-updater",
-	"version": "0.2.70",
+	"version": "0.2.71",
 	"description": "Configuration update handlers for Cyrus agent",
 	"repository": {
 		"type": "git",
