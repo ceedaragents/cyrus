@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.71] - 2026-09-04
+
 ### Added
 - Every agent session now explains how to attach local images and videos to GitHub issues, pull requests, and comments with GitHub CLI v2.99.0 or newer, independently of optional browser tooling. ([CYPACK-1490](https://linear.app/ceedar/issue/CYPACK-1490/add-this-to-the-system-prompt), [#1453](https://github.com/cyrusagents/cyrus/pull/1453))
 
@@ -28,6 +30,56 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 - Patched eight newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities, while replacing the redundant `fast-uri` override with upstream-compatible direct dependency updates. ([CYPACK-1492](https://linear.app/ceedar/issue/CYPACK-1492/address-open-security-patches-for-cyrus-cli), [#1456](https://github.com/cyrusagents/cyrus/pull/1456))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.71
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.71
+
+#### cyrus-core
+- cyrus-core@0.2.71
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.71
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.71
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.71
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.71
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.71
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.71
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.71
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.71
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.71
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.71
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.71
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.71
+
+#### cyrus-ai
+- cyrus-ai@0.2.71 ([CYPACK-1495](https://linear.app/ceedar/issue/CYPACK-1495/run-a-release), [#1461](https://github.com/cyrusagents/cyrus/pull/1461))
 
 ## [0.2.70] - 2026-08-27
 

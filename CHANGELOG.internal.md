@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.71] - 2026-09-04
+
 ### Changed
 - Recorded, after the fact, why #1426 removed the `linear_agent_session_create` and `linear_agent_session_create_on_comment` cyrus-tools: they allowed concurrent child sessions to be started on the same issue. That removal also silently dropped the only runtime caller of `GlobalSessionRegistry.setParentSession`, breaking parent resumption. `EdgeWorker.linkChildSessionToParentIssueSession` now derives the child-to-parent session link from Linear's issue hierarchy on `AgentSessionEvent/created` (and after repository selection), so the removed tools stay removed. ([#1454](https://github.com/cyrusagents/cyrus/pull/1454))
 
