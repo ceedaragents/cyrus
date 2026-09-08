@@ -135,8 +135,34 @@ describe("ClaudeRunner", () => {
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 					}),
 					strictMcpConfig: true,
+					// Internal pending-work recorder Stop hook is always registered
+					// (CYPACK-1310)
+					hooks: { Stop: [expect.objectContaining({ matcher: ".*" })] },
 				},
 			});
+		});
+
+		it("should allow ambient MCP configuration when strict mode is disabled", async () => {
+			const nonStrictRunner = new ClaudeRunner({
+				...defaultConfig,
+				strictMcpConfig: false,
+			});
+			mockQuery.mockImplementation(async function* () {
+				yield {
+					type: "assistant",
+					message: { content: [{ type: "text", text: "Hello!" }] },
+					parent_tool_use_id: null,
+					session_id: "test-session",
+				} as any;
+			});
+
+			await nonStrictRunner.start("test");
+
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					options: expect.objectContaining({ strictMcpConfig: false }),
+				}),
+			);
 		});
 
 		it("should handle workspace configuration properly", async () => {
@@ -171,6 +197,9 @@ describe("ClaudeRunner", () => {
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 					}),
 					strictMcpConfig: true,
+					// Internal pending-work recorder Stop hook is always registered
+					// (CYPACK-1310)
+					hooks: { Stop: [expect.objectContaining({ matcher: ".*" })] },
 				},
 			});
 		});
@@ -207,6 +236,9 @@ describe("ClaudeRunner", () => {
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 					}),
 					strictMcpConfig: true,
+					// Internal pending-work recorder Stop hook is always registered
+					// (CYPACK-1310)
+					hooks: { Stop: [expect.objectContaining({ matcher: ".*" })] },
 				},
 			});
 		});

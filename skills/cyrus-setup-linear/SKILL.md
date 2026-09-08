@@ -38,7 +38,70 @@ grep '^CYRUS_BASE_URL=' ~/.cyrus/.env | cut -d= -f2-
 
 This is needed for the callback and webhook URLs.
 
-## Step 3: Create Linear OAuth App
+## Step 3: Create Linear OAuth App From Manifest
+
+Linear OAuth apps must be created from a manifest-backed setup URL. Do not create the app from scratch or fill each field manually. The manifest flow keeps the app configuration reproducible and avoids drift in callback, webhook, and event type settings.
+
+### 3a. Build the manifest URL
+
+Generate a JSON OAuth app manifest and encode it into Linear's `manifest` query parameter:
+
+```bash
+CYRUS_BASE_URL="<CYRUS_BASE_URL>" \
+AGENT_NAME="<AGENT_NAME>" \
+AGENT_DESCRIPTION="<AGENT_DESCRIPTION>" \
+node <<'NODE'
+const fs = require("node:fs");
+
+const baseUrl = process.env.CYRUS_BASE_URL.replace(/\/+$/, "");
+const agentName = process.env.AGENT_NAME || "Cyrus";
+const agentDescription =
+	process.env.AGENT_DESCRIPTION || "AI coding agent for automated development";
+
+const manifest = {
+	$schema: "https://linear.app/.well-known/oauth-app-manifest.schema.json",
+	schemaVersion: "1.0.0",
+	distribution: "private",
+	display: {
+		description: agentDescription,
+	},
+	developer: {
+		name: "Self-hosted",
+	},
+	oauth: {
+		client_name: agentName,
+		client_uri: "https://github.com/ceedaragents/cyrus",
+		redirect_uris: [`${baseUrl}/callback`],
+		grant_types: ["authorization_code"],
+	},
+	webhook: {
+		enabled: true,
+		url: `${baseUrl}/linear-webhook`,
+		resourceTypes: [
+			"AgentSessionEvent",
+			"AppUserNotification",
+			"PermissionChange",
+			"Issue",
+		],
+	},
+};
+
+const manifestJson = JSON.stringify(manifest, null, 2);
+const manifestUrl = `https://linear.app/settings/api/applications/new?manifest=${encodeURIComponent(JSON.stringify(manifest))}`;
+
+fs.writeFileSync("/tmp/cyrus-linear-oauth-app-manifest.json", `${manifestJson}\n`);
+fs.writeFileSync("/tmp/cyrus-linear-oauth-app-url.txt", `${manifestUrl}\n`);
+
+console.log(manifestJson);
+console.log(`\n${manifestUrl}`);
+NODE
+
+LINEAR_MANIFEST_URL="$(cat /tmp/cyrus-linear-oauth-app-url.txt)"
+```
+
+The same URL is now stored in `LINEAR_MANIFEST_URL` for automation commands and in `/tmp/cyrus-linear-oauth-app-url.txt` for manual copy/paste. The JSON is stored in `/tmp/cyrus-linear-oauth-app-manifest.json` for review/debugging only; do not ask the user to fill the OAuth app form manually from it.
+
+If `<AGENT_NAME>` contains the word "Linear" or a URL, choose a different OAuth application name before building the manifest. Linear rejects OAuth client names with those values.
 
 Determine which browser automation mode to use (see orchestrator rules):
 
@@ -50,53 +113,37 @@ Determine which browser automation mode to use (see orchestrator rules):
 
 Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser. The user is likely already signed in to Linear.
 
-Navigate to the Linear API settings page and proceed with form filling and credential capture using the chrome MCP tools (navigate, click, fill, screenshot, javascript_tool, etc.). Follow the same form fields and credential scraping logic as Path A-2 below, but using MCP tools instead of CLI commands.
+Navigate to `LINEAR_MANIFEST_URL`. The page should open with the manifest-applied OAuth app configuration already populated.
+
+Review only non-secret fields:
+
+- Application name matches `<AGENT_NAME>`
+- Developer name is `Self-hosted`
+- Developer URL is `https://github.com/ceedaragents/cyrus`
+- Redirect callback URLs contains `<CYRUS_BASE_URL>/callback`
+- Webhook is enabled with URL `<CYRUS_BASE_URL>/linear-webhook`
+- Event types include Agent session events, Inbox notifications, Permission changes, and Issues
+- Public/distribution is private or disabled
+
+If the user is not signed in, pause and ask them to sign in. After review, click **Create**. **Do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 4.
 
 ### Path A-2: agent-browser Automation
 
 If `agent-browser` is connected to a Chrome debug session, automate the Linear app creation.
 
-#### 3a. Navigate to Linear API settings
+#### 3b. Navigate to the manifest URL
 
 ```bash
-agent-browser navigate "https://linear.app/settings/api/applications/new"
+agent-browser navigate "$LINEAR_MANIFEST_URL"
 ```
 
 Wait for page to load. Take a screenshot to verify you're on the right page and logged in.
 
-#### 3b. Fill the form
+#### 3c. Review and create
 
-```bash
-agent-browser fill "input[name='name']" "<AGENT_NAME>"
-agent-browser fill "input[name='developerName']" "Self-hosted"
-agent-browser fill "input[name='developerUrl']" "https://github.com/ceedaragents/cyrus"
-```
-
-For the callback URL field:
-```bash
-agent-browser fill "input[name='redirectUrls']" "<CYRUS_BASE_URL>/callback"
-```
-
-Enable webhooks and fill webhook URL:
-```bash
-agent-browser fill "input[name='webhookUrl']" "<CYRUS_BASE_URL>/linear-webhook"
-```
-
-Check the required event types:
-- Agent session events (REQUIRED)
-- Inbox notifications
-- Permission changes
-- Issues
-
-Click "Create".
+Review the same non-secret manifest-applied fields listed in Path A-1. If the page asks the user to sign in, pause and let them complete sign-in. Click **Create**.
 
 After creation, Linear redirects to the app settings page. **Do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 4.
-
-### Path A-1: claude-in-chrome Automation
-
-Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser.
-
-Navigate to the Linear API settings page (`https://linear.app/settings/api/applications/new`) and fill in the form with the same fields as Path A-2 above. Click "Create". **Do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 4.
 
 ### Path B: Manual Guided Setup
 
@@ -104,14 +151,13 @@ Guide the user through manual creation:
 
 > ### Create a Linear OAuth Application
 >
-> 1. Go to your **Linear workspace settings**:
->    - Click your workspace name (top-left) → **Settings**
->    - Navigate to **API** in the left sidebar
->    - Scroll to **OAuth Applications** → Click **Create new**
+> 1. Open this manifest-backed Linear app creation URL:
 >
-> 2. Fill in the form:
+>    `<LINEAR_MANIFEST_URL>`
+>
+> 2. Sign in to Linear if prompted, then review the pre-filled settings:
 >    - **Application name:** `<AGENT_NAME>`
->    - **Developer name:** Your name or org
+>    - **Developer name:** `Self-hosted`
 >    - **Developer URL:** `https://github.com/ceedaragents/cyrus`
 >    - **Redirect callback URLs:** `<CYRUS_BASE_URL>/callback`
 >    - **Webhook URL:** `<CYRUS_BASE_URL>/linear-webhook`

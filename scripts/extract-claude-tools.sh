@@ -56,9 +56,12 @@ echo "Using SDK CLI: $CLI_PATH"
 echo "Running Claude Code to capture init block..."
 # Capture full output to a temp file to avoid SIGPIPE from head -1
 # (pipefail + head causes claude to exit non-zero when the pipe closes early)
-tmpfile=$(mktemp)
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/claude-tools.XXXXXX")
 trap 'rm -f "$tmpfile"' EXIT
-"$CLI_PATH" -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
+# SDK 0.3.233+ hides the task-tracking tools from newer models unless they are
+# explicitly enabled. Cyrus intentionally opts into those tools, so include
+# them while extracting the complete supported tool surface.
+CLAUDE_CODE_ENABLE_TODO_TOOLS=1 "$CLI_PATH" -p "say hi" --output-format stream-json --verbose 2>/dev/null > "$tmpfile" || true
 
 # The init message (subtype: "init") contains the tool list — it's on line 2 since
 # SDK >=0.2.113 emits a session_state_changed line first before the init.

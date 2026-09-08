@@ -1,7 +1,104 @@
 import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
-import type { EdgeWorkerConfig, ILogger, RepositoryConfig } from "cyrus-core";
+import type {
+	EdgeConfig,
+	EdgeWorkerConfig,
+	ILogger,
+	RepositoryConfig,
+} from "cyrus-core";
+
+// ------------------------------------------------------------------
+// Exhaustiveness guard for hot-reload key handling
+// ------------------------------------------------------------------
+
+/**
+ * Every persisted `EdgeConfig` key that `loadConfigSafely()` explicitly
+ * merges from the reloaded file. `detectGlobalConfigChanges()` also watches
+ * this same list (minus a small exempt set), so merge and watch can never
+ * drift apart again.
+ *
+ * Hand-maintained config-copy sites silently dropping new EdgeConfigSchema
+ * fields has bitten us repeatedly (`slackAllowedTools` & friends in
+ * CYHOST-967, `strictMcpConfig` in CYPACK-1478). The
+ * `_everyEdgeConfigKeyClassified` check below turns that mistake into a
+ * compile error: every top-level EdgeConfig key MUST appear in exactly one
+ * of RELOAD_MERGED_KEYS or RELOAD_EXEMPT_KEYS. When you add a field to
+ * EdgeConfigSchema, the build breaks here until you either merge it in
+ * `loadConfigSafely()` (and list it here) or consciously exempt it.
+ */
+const RELOAD_MERGED_KEYS = [
+	"repositories",
+	"ngrokAuthToken",
+	"stripeCustomerId",
+	"global_setup_script",
+	"linearWorkspaces",
+	"claudeDefaultModel",
+	"claudeDefaultFallbackModel",
+	"geminiDefaultModel",
+	"codexDefaultModel",
+	"cursorDefaultModel",
+	"cursorDefaultFallbackModel",
+	"opencodeDefaultModel",
+	"opencodeDefaultFallbackModel",
+	"opencode",
+	"inferOpenCodeRunnerFromProviderModel",
+	"defaultRunner",
+	"promptDefaults",
+	"defaultModel",
+	"defaultFallbackModel",
+	"linearAllowedTools",
+	"slackAllowedTools",
+	"githubAllowedTools",
+	"slackMcpConfigs",
+	"linearMcpConfigs",
+	"githubMcpConfigs",
+	"strictMcpConfig",
+	"defaultDisallowedTools",
+	"issueUpdateTrigger",
+	"slackThreadFollowing",
+	"prReviewTrigger",
+	"userAccessControl",
+	"sandbox",
+] as const satisfies readonly (keyof EdgeConfig)[];
+
+/**
+ * EdgeConfig keys deliberately NOT merged on hot reload — deprecated fields
+ * whose replacements are merged instead (`defaultAllowedTools` is folded
+ * into `linearAllowedTools` by `migrateEdgeConfig` at startup;
+ * `linearWorkspaceSlug` migrated into `linearWorkspaces` entries).
+ */
+const RELOAD_EXEMPT_KEYS = [
+	"linearWorkspaceSlug",
+	"defaultAllowedTools",
+] as const satisfies readonly (keyof EdgeConfig)[];
+
+/**
+ * Keys merged on reload but excluded from `detectGlobalConfigChanges()`:
+ * `repositories` has its own add/modify/remove diff pipeline, and the two
+ * startup-only credentials are not consumed by any hot-reload listener.
+ */
+const GLOBAL_WATCH_EXEMPT_KEYS: ReadonlySet<keyof EdgeConfig> = new Set([
+	"repositories",
+	"ngrokAuthToken",
+	"stripeCustomerId",
+]);
+
+type ClassifiedReloadKey =
+	| (typeof RELOAD_MERGED_KEYS)[number]
+	| (typeof RELOAD_EXEMPT_KEYS)[number];
+type UnclassifiedReloadKey = Exclude<keyof EdgeConfig, ClassifiedReloadKey>;
+/**
+ * Compile error on this line = a new EdgeConfigSchema field needs to be
+ * classified into RELOAD_MERGED_KEYS (and merged in `loadConfigSafely()`)
+ * or RELOAD_EXEMPT_KEYS above.
+ */
+const _everyEdgeConfigKeyClassified: UnclassifiedReloadKey extends never
+	? true
+	: {
+			"Unclassified EdgeConfig key(s) — see RELOAD_MERGED_KEYS doc": UnclassifiedReloadKey;
+		} = true;
+void _everyEdgeConfigKeyClassified;
 
 /**
  * Describes the set of repository-level changes detected after a config
@@ -224,6 +321,15 @@ export class ConfigManager extends EventEmitter {
 				cursorDefaultFallbackModel:
 					parsedConfig.cursorDefaultFallbackModel ||
 					this.config.cursorDefaultFallbackModel,
+				opencodeDefaultModel:
+					parsedConfig.opencodeDefaultModel || this.config.opencodeDefaultModel,
+				opencodeDefaultFallbackModel:
+					parsedConfig.opencodeDefaultFallbackModel ||
+					this.config.opencodeDefaultFallbackModel,
+				opencode: parsedConfig.opencode ?? this.config.opencode,
+				inferOpenCodeRunnerFromProviderModel:
+					parsedConfig.inferOpenCodeRunnerFromProviderModel ??
+					this.config.inferOpenCodeRunnerFromProviderModel,
 				defaultRunner: parsedConfig.defaultRunner || this.config.defaultRunner,
 				promptDefaults:
 					parsedConfig.promptDefaults || this.config.promptDefaults,
@@ -243,6 +349,8 @@ export class ConfigManager extends EventEmitter {
 					parsedConfig.linearMcpConfigs || this.config.linearMcpConfigs,
 				githubMcpConfigs:
 					parsedConfig.githubMcpConfigs || this.config.githubMcpConfigs,
+				strictMcpConfig:
+					parsedConfig.strictMcpConfig ?? this.config.strictMcpConfig,
 				defaultDisallowedTools:
 					parsedConfig.defaultDisallowedTools ||
 					this.config.defaultDisallowedTools,
@@ -258,6 +366,12 @@ export class ConfigManager extends EventEmitter {
 				// otherwise keep current or default to true
 				prReviewTrigger:
 					parsedConfig.prReviewTrigger ?? this.config.prReviewTrigger,
+				userAccessControl:
+					parsedConfig.userAccessControl ?? this.config.userAccessControl,
+				stripeCustomerId:
+					parsedConfig.stripeCustomerId ?? this.config.stripeCustomerId,
+				global_setup_script:
+					parsedConfig.global_setup_script ?? this.config.global_setup_script,
 				// Sandbox / egress proxy config
 				sandbox: parsedConfig.sandbox ?? this.config.sandbox,
 			};
@@ -336,33 +450,13 @@ export class ConfigManager extends EventEmitter {
 	 * `defaultRunner`, `claudeDefaultModel`, `promptDefaults`, etc.
 	 */
 	private detectGlobalConfigChanges(newConfig: EdgeWorkerConfig): boolean {
-		const globalKeys: Array<keyof EdgeWorkerConfig> = [
-			"defaultRunner",
-			"claudeDefaultModel",
-			"claudeDefaultFallbackModel",
-			"geminiDefaultModel",
-			"codexDefaultModel",
-			"cursorDefaultModel",
-			"cursorDefaultFallbackModel",
-			"defaultModel",
-			"defaultFallbackModel",
-			"linearAllowedTools",
-			"slackAllowedTools",
-			"githubAllowedTools",
-			"slackMcpConfigs",
-			"linearMcpConfigs",
-			"githubMcpConfigs",
-			"defaultDisallowedTools",
-			"promptDefaults",
-			"issueUpdateTrigger",
-			"slackThreadFollowing",
-			"prReviewTrigger",
-			"linearWorkspaces",
-			"userAccessControl",
-			"sandbox",
-		];
-
-		for (const key of globalKeys) {
+		// Watch everything we merge on reload (single source of truth — see
+		// RELOAD_MERGED_KEYS), except the keys with their own pipeline or no
+		// hot-reload consumer (GLOBAL_WATCH_EXEMPT_KEYS).
+		for (const key of RELOAD_MERGED_KEYS) {
+			if (GLOBAL_WATCH_EXEMPT_KEYS.has(key)) {
+				continue;
+			}
 			if (!this.deepEqual(this.config[key], newConfig[key])) {
 				return true;
 			}

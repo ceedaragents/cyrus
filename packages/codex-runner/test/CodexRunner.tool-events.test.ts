@@ -1,34 +1,37 @@
 import type { SDKAssistantMessage, SDKUserMessage } from "cyrus-core";
 import { describe, expect, it } from "vitest";
-import { CodexRunner } from "../src/CodexRunner.js";
-import type { CodexJsonEvent } from "../src/types.js";
+import type { NormalizedCodexEvent } from "../src/backend/types.js";
+import {
+	CodexEventMapper,
+	type MapperContext,
+} from "../src/CodexEventMapper.js";
 
-function createRunner(
+function createMapper(
 	workingDirectory = "/Users/connor/code/cyrus",
-): CodexRunner {
-	const runner = new CodexRunner({
+): CodexEventMapper {
+	const ctx: MapperContext = {
 		workingDirectory,
-	});
-
-	(runner as any).sessionInfo = {
-		sessionId: "session-1",
-		startedAt: new Date(),
-		isRunning: true,
+		model: "gpt-5.5",
+		getSessionId: () => "session-1",
+		getStagedSkillNames: () => [],
+		emitMessage: () => {},
+		onThreadStarted: () => {},
 	};
-
-	return runner;
+	const mapper = new CodexEventMapper(ctx);
+	mapper.reset();
+	return mapper;
 }
 
-function handleEvent(runner: CodexRunner, event: CodexJsonEvent): void {
-	(runner as any).handleEvent(event);
+function handle(mapper: CodexEventMapper, event: NormalizedCodexEvent): void {
+	mapper.handle(event);
 }
 
-describe("CodexRunner tool event mapping", () => {
+describe("CodexEventMapper tool event mapping", () => {
 	it("emits Grep tool_use and tool_result for command executions", () => {
-		const runner = createRunner();
+		const mapper = createMapper();
 
-		handleEvent(runner, {
-			type: "item.completed",
+		handle(mapper, {
+			kind: "item-completed",
 			item: {
 				id: "cmd_1",
 				type: "command_execution",
@@ -39,7 +42,7 @@ describe("CodexRunner tool event mapping", () => {
 			},
 		});
 
-		const messages = runner.getMessages();
+		const messages = mapper.getMessages();
 		expect(messages).toHaveLength(2);
 
 		const assistant = messages[0] as SDKAssistantMessage;
@@ -61,11 +64,11 @@ describe("CodexRunner tool event mapping", () => {
 		expect(userBlock.content).toContain("CodexRunner.ts");
 	});
 
-	it("emits tool_use only once when item.start and item.completed share the same id", () => {
-		const runner = createRunner();
+	it("emits tool_use only once when item-started and item-completed share the same id", () => {
+		const mapper = createMapper();
 
-		handleEvent(runner, {
-			type: "item.started",
+		handle(mapper, {
+			kind: "item-started",
 			item: {
 				id: "cmd_2",
 				type: "command_execution",
@@ -75,8 +78,8 @@ describe("CodexRunner tool event mapping", () => {
 			},
 		});
 
-		handleEvent(runner, {
-			type: "item.completed",
+		handle(mapper, {
+			kind: "item-completed",
 			item: {
 				id: "cmd_2",
 				type: "command_execution",
@@ -87,7 +90,7 @@ describe("CodexRunner tool event mapping", () => {
 			},
 		});
 
-		const messages = runner.getMessages();
+		const messages = mapper.getMessages();
 		expect(messages).toHaveLength(2);
 
 		const assistantMessages = messages.filter((m) => m.type === "assistant");
@@ -97,10 +100,10 @@ describe("CodexRunner tool event mapping", () => {
 	});
 
 	it("maps file_change events to Edit tool entries with normalized paths", () => {
-		const runner = createRunner("/Users/connor/code/cyrus");
+		const mapper = createMapper("/Users/connor/code/cyrus");
 
-		handleEvent(runner, {
-			type: "item.completed",
+		handle(mapper, {
+			kind: "item-completed",
 			item: {
 				id: "patch_1",
 				type: "file_change",
@@ -114,7 +117,7 @@ describe("CodexRunner tool event mapping", () => {
 			},
 		});
 
-		const messages = runner.getMessages();
+		const messages = mapper.getMessages();
 		const assistantBlock = ((messages[0] as SDKAssistantMessage).message as any)
 			.content[0];
 		const userBlock = ((messages[1] as SDKUserMessage).message as any)
@@ -130,10 +133,10 @@ describe("CodexRunner tool event mapping", () => {
 	});
 
 	it("maps open_page web_search events to WebFetch tool entries", () => {
-		const runner = createRunner();
+		const mapper = createMapper();
 
-		handleEvent(runner, {
-			type: "item.completed",
+		handle(mapper, {
+			kind: "item-completed",
 			item: {
 				id: "ws_1",
 				type: "web_search",
@@ -143,9 +146,9 @@ describe("CodexRunner tool event mapping", () => {
 					url: "https://uuithub.com/openai/codex/tree/main/sdk/typescript/src",
 				},
 			},
-		} as unknown as CodexJsonEvent);
+		});
 
-		const messages = runner.getMessages();
+		const messages = mapper.getMessages();
 		const assistantBlock = ((messages[0] as SDKAssistantMessage).message as any)
 			.content[0];
 

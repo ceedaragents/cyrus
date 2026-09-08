@@ -2,8 +2,10 @@ import { join } from "node:path";
 import { getReadOnlyTools } from "cyrus-claude-runner";
 import type { RepositoryConfig } from "cyrus-core";
 import {
+	type SlackMessageAttachment,
 	SlackMessageService,
 	SlackReactionService,
+	type SlackWebhookEvent,
 } from "cyrus-slack-event-transport";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatRepositoryProvider } from "../src/ChatRepositoryProvider.js";
@@ -21,12 +23,14 @@ import {
 import { TEST_CYRUS_CHAT } from "./test-dirs.js";
 
 function createMockRunnerConfigBuilder(): RunnerConfigBuilder {
+	let defaultRunner: "claude" | "opencode" = "claude";
 	return {
 		buildChatConfig: (input: any) => {
 			const repositoryPaths = Array.from(
 				new Set((input.repositoryPaths ?? []).filter(Boolean)),
 			);
 			return {
+				runnerType: input.runnerType ?? defaultRunner,
 				workingDirectory: input.workspacePath,
 				allowedTools: [
 					...new Set([...getReadOnlyTools(), "Bash(git -C * pull)"]),
@@ -39,11 +43,16 @@ function createMockRunnerConfigBuilder(): RunnerConfigBuilder {
 				...(input.resumeSessionId
 					? { resumeSessionId: input.resumeSessionId }
 					: {}),
+				...(input.plugins ? { plugins: input.plugins } : {}),
+				...(input.skills !== undefined ? { skills: input.skills } : {}),
 				logger: input.logger,
 				maxTurns: 200,
 				onMessage: input.onMessage,
 				onError: input.onError,
 			};
+		},
+		setDefaultRunner: (runnerType: "claude" | "opencode") => {
+			defaultRunner = runnerType;
 		},
 		buildIssueConfig: vi.fn(),
 	} as unknown as RunnerConfigBuilder;
@@ -65,6 +74,8 @@ function createStaticProvider(
 interface TestEvent {
 	eventId: string;
 	threadKey: string;
+	/** Thread position, used by adapters that support catch-up */
+	ts?: string;
 }
 
 class TestChatAdapter implements ChatPlatformAdapter<TestEvent> {
@@ -156,6 +167,69 @@ describe("ChatSessionHandler chat session permissions", () => {
 		for (const path of chatRepositoryPaths) {
 			expect(capturedConfig.allowedDirectories).toContain(path);
 		}
+	});
+
+	it("passes scoped managed skills to chat runner configs", async () => {
+		const event: TestEvent = {
+			eventId: "test-event",
+			threadKey: "test-thread",
+		};
+		const cyrusHome = TEST_CYRUS_CHAT;
+		const repository = {
+			id: "repo-a",
+			name: "Repo A",
+			repositoryPath: "/repo/chat-one",
+			allowedTools: [],
+		} as unknown as RepositoryConfig;
+		const chatRepositoryPaths = ["/repo/chat-one"];
+		const plugins = [{ type: "local" as const, path: "/cyrus/user-skills" }];
+		let capturedConfig: any;
+
+		const adapter = new TestChatAdapter("thread-key");
+		const createRunner = vi.fn((config: any) => {
+			capturedConfig = config;
+			return {
+				supportsStreamingInput: false,
+				start: vi.fn().mockResolvedValue({ sessionId: "session-1" }),
+				stop: vi.fn(),
+				isRunning: vi.fn().mockReturnValue(false),
+				isStreaming: vi.fn().mockReturnValue(false),
+				addStreamMessage: vi.fn(),
+				getMessages: vi.fn().mockReturnValue([]),
+			} as any;
+		});
+		const resolveSkillsConfig = vi.fn().mockResolvedValue({
+			plugins,
+			skills: ["agent-browser", "test-user-skills"],
+		});
+
+		const handler = new ChatSessionHandler(adapter, {
+			cyrusHome,
+			chatRepositoryProvider: createStaticProvider(
+				chatRepositoryPaths,
+				repository,
+				"workspace-1",
+			),
+			runnerConfigBuilder: createMockRunnerConfigBuilder(),
+			createRunner,
+			resolveSkillsConfig,
+			onWebhookStart: vi.fn(),
+			onWebhookEnd: vi.fn(),
+			onStateChange: vi.fn().mockResolvedValue(undefined),
+			onClaudeError: vi.fn(),
+		});
+
+		await handler.handleEvent(event as any);
+
+		expect(resolveSkillsConfig).toHaveBeenCalledWith({
+			repository,
+			repositoryPaths: chatRepositoryPaths,
+		});
+		expect(capturedConfig.plugins).toEqual(plugins);
+		expect(capturedConfig.skills).toEqual([
+			"agent-browser",
+			"test-user-skills",
+		]);
 	});
 });
 
@@ -340,6 +414,75 @@ describe("ChatSessionHandler processed acknowledgement", () => {
 	});
 });
 
+describe("ChatSessionHandler busy follow-up queueing", () => {
+	it("queues a follow-up that can't be streamed and delivers it after the turn", async () => {
+		const adapter: ChatPlatformAdapter<TestEvent> = new TestChatAdapter(
+			"busy-thread",
+		);
+		const notifyBusy = vi
+			.spyOn(adapter, "notifyBusy")
+			.mockResolvedValue(undefined);
+		vi.spyOn(adapter, "postReply").mockResolvedValue(undefined);
+
+		let running = false;
+		let capturedConfig: any;
+		const createRunner = vi.fn((config: any) => {
+			capturedConfig = config;
+			running = true; // a freshly created runner is running
+			return {
+				supportsStreamingInput: false,
+				start: vi.fn().mockResolvedValue({ sessionId: "session-1" }),
+				startStreaming: vi.fn().mockResolvedValue({ sessionId: "session-1" }),
+				stop: vi.fn(),
+				// Running, but NOT streamable (exec-style backend) — follow-ups
+				// can't be injected mid-turn.
+				isRunning: vi.fn(() => running),
+				isStreaming: vi.fn().mockReturnValue(false),
+				addStreamMessage: vi.fn(),
+				getMessages: vi.fn().mockReturnValue([]),
+			} as any;
+		});
+		const handler = new ChatSessionHandler(adapter, {
+			cyrusHome: TEST_CYRUS_CHAT,
+			chatRepositoryProvider: createStaticProvider([]),
+			runnerConfigBuilder: createMockRunnerConfigBuilder(),
+			createRunner,
+			onWebhookStart: vi.fn(),
+			onWebhookEnd: vi.fn(),
+			onStateChange: vi.fn().mockResolvedValue(undefined),
+			onClaudeError: vi.fn(),
+		});
+
+		// First message starts the session (running).
+		await handler.handleEvent({
+			eventId: "msg-a",
+			threadKey: "busy-thread",
+		} as any);
+		expect(createRunner).toHaveBeenCalledTimes(1);
+
+		// Second message arrives mid-turn → queued (not dropped) + user notified.
+		await handler.handleEvent({
+			eventId: "msg-b",
+			threadKey: "busy-thread",
+		} as any);
+		expect(notifyBusy).toHaveBeenCalledTimes(1);
+		expect(createRunner).toHaveBeenCalledTimes(1); // not yet delivered
+
+		// Turn completes → the queued follow-up is re-dispatched as a new turn.
+		running = false;
+		await capturedConfig.onMessage({
+			type: "result",
+			subtype: "success",
+			is_error: false,
+			result: "done",
+			session_id: "session-1",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(createRunner).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe("SlackChatAdapter session initiation", () => {
 	it("treats app_mention as session-initiating", () => {
 		const adapter = new SlackChatAdapter(createStaticProvider([]));
@@ -366,6 +509,63 @@ describe("SlackChatAdapter session initiation", () => {
 				upstreamGated: true,
 			} as any),
 		).toBe(true);
+	});
+});
+
+describe("SlackChatAdapter task instructions", () => {
+	const mentionEvent = (
+		text: string,
+		attachments?: SlackMessageAttachment[],
+	): SlackWebhookEvent => ({
+		eventType: "app_mention",
+		eventId: "Ev1",
+		teamId: "T1",
+		payload: {
+			type: "app_mention",
+			user: "U1",
+			channel: "C1",
+			text,
+			ts: "1700000000.000200",
+			event_ts: "1700000000.000200",
+			attachments,
+		},
+	});
+
+	it("folds a forwarded attachment body in alongside the comment", () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		expect(
+			adapter.extractTaskInstructions(
+				mentionEvent("<@U0BOT> please look", [
+					{
+						is_share: true,
+						author_name: "Sentry",
+						text: "[frontend] Error: page resources not found",
+					},
+				]),
+			),
+		).toBe(
+			"please look\n\n" +
+				"[Attachment from Sentry]\n" +
+				"[frontend] Error: page resources not found",
+		);
+	});
+
+	it("uses the forwarded attachment as the whole prompt when there is no comment", () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		expect(
+			adapter.extractTaskInstructions(
+				mentionEvent("<@U0BOT>", [
+					{ is_share: true, author_name: "Sentry", text: "alert body" },
+				]),
+			),
+		).toBe("[Attachment from Sentry]\nalert body");
+	});
+
+	it("falls back to the placeholder when neither comment nor attachment has content", () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		expect(adapter.extractTaskInstructions(mentionEvent("<@U0BOT>"))).toBe(
+			"Ask the user for more context",
+		);
 	});
 });
 
@@ -531,6 +731,7 @@ describe("SlackChatAdapter system prompt", () => {
 		expect(systemPrompt).toContain("mcp__linear__get_user");
 		expect(systemPrompt).toContain('query: "me"');
 		expect(systemPrompt).toContain("linear_get_agent_sessions");
+		expect(systemPrompt).toContain("[agent=opencode]");
 	});
 
 	const appMentionEvent = {
@@ -717,6 +918,65 @@ describe("ChatRepositoryProvider runtime updates", () => {
 	});
 });
 
+describe("ChatSessionHandler session resume", () => {
+	it("resumes with the stored OpenCode session id even if the default runner changes", async () => {
+		const cyrusHome = TEST_CYRUS_CHAT;
+		const builder = createMockRunnerConfigBuilder() as RunnerConfigBuilder & {
+			setDefaultRunner: (runnerType: "claude" | "opencode") => void;
+		};
+		builder.setDefaultRunner("opencode");
+
+		const runnerStates = [false, false];
+		const capturedConfigs: any[] = [];
+		const createRunner = vi.fn((config: any) => {
+			capturedConfigs.push(config);
+			return {
+				supportsStreamingInput: false,
+				start: vi.fn().mockResolvedValue({
+					sessionId:
+						config.runnerType === "opencode"
+							? "opencode-chat-session"
+							: "claude-chat-session",
+				}),
+				stop: vi.fn(),
+				isRunning: vi.fn(() => runnerStates.shift() ?? false),
+				isStreaming: vi.fn().mockReturnValue(false),
+				addStreamMessage: vi.fn(),
+				getMessages: vi.fn().mockReturnValue([]),
+			} as any;
+		});
+
+		const adapter = new TestChatAdapter("resume-thread");
+		const handler = new ChatSessionHandler(adapter, {
+			cyrusHome,
+			chatRepositoryProvider: createStaticProvider([]),
+			runnerConfigBuilder: builder,
+			createRunner,
+			onWebhookStart: vi.fn(),
+			onWebhookEnd: vi.fn(),
+			onStateChange: vi.fn().mockResolvedValue(undefined),
+			onClaudeError: vi.fn(),
+		});
+
+		await handler.handleEvent({
+			eventId: "initial-event",
+			threadKey: "resume-thread",
+		} as any);
+		const sessionId = handler.listThreads()[0]!.sessionId;
+		(handler as any).sessionManager.getSession(sessionId).opencodeSessionId =
+			"opencode-chat-session";
+
+		builder.setDefaultRunner("claude");
+		await handler.handleEvent({
+			eventId: "followup-event",
+			threadKey: "resume-thread",
+		} as any);
+
+		expect(capturedConfigs[1].runnerType).toBe("opencode");
+		expect(capturedConfigs[1].resumeSessionId).toBe("opencode-chat-session");
+	});
+});
+
 describe("LiveChatRepositoryProvider", () => {
 	function makeRepo(id: string, path: string): RepositoryConfig {
 		return {
@@ -770,5 +1030,540 @@ describe("LiveChatRepositoryProvider", () => {
 		const provider = new LiveChatRepositoryProvider(repos, () => workspaces);
 
 		expect(provider.getDefaultLinearWorkspaceId()).toBe("ws1");
+	});
+});
+
+describe("SlackChatAdapter thread catch-up", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		delete process.env.SLACK_BOT_TOKEN;
+	});
+
+	const TRIGGER_TS = "1700000000.000500";
+	const PARENT_TS = "1700000000.000100";
+
+	const mentionEvent = (thread = true): SlackWebhookEvent =>
+		({
+			eventType: "app_mention",
+			eventId: "Ev2",
+			teamId: "T1",
+			slackBotToken: "xoxb-test",
+			payload: {
+				type: "app_mention",
+				user: "U1",
+				channel: "C1",
+				text: "<@U0BOT> where were we?",
+				ts: TRIGGER_TS,
+				...(thread ? { thread_ts: PARENT_TS } : {}),
+				event_ts: TRIGGER_TS,
+			},
+		}) as SlackWebhookEvent;
+
+	const mockIdentity = () =>
+		vi
+			.spyOn(SlackMessageService.prototype, "getIdentity")
+			.mockResolvedValue({ bot_id: "B0BOT" } as any);
+
+	it("returns nothing for a message outside a thread", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(false), "1"),
+		).resolves.toBe("");
+	});
+
+	it("falls back to the full thread window when no cursor is known", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		const fetchSpy = vi
+			.spyOn(SlackMessageService.prototype, "fetchThreadMessages")
+			.mockResolvedValue([
+				{ user: "U1", text: "original ask", ts: PARENT_TS },
+			] as any);
+
+		const result = await adapter.fetchThreadContext(mentionEvent());
+
+		// Delegates to the full-window fetch — no `oldest`, no catch-up preamble.
+		expect(fetchSpy.mock.calls[0]?.[0]).not.toHaveProperty("oldest");
+		expect(result).toBe(
+			`<slack_thread_context>
+  <message>
+    <author>U1</author>
+    <timestamp>${PARENT_TS}</timestamp>
+    <content>
+original ask
+    </content>
+  </message>
+</slack_thread_context>`,
+		);
+	});
+
+	it("asks Slack for messages after the cursor and drops the ones already known", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		const fetchSpy = vi
+			.spyOn(SlackMessageService.prototype, "fetchThreadMessages")
+			.mockResolvedValue([
+				// Slack returns the thread parent regardless of `oldest`
+				{ user: "U1", text: "original ask", ts: PARENT_TS },
+				// our own earlier reply — already in the session's memory
+				{ text: "on it", ts: "1700000000.000300", bot_id: "B0BOT" },
+				// the inter-tag discussion we actually want
+				{
+					user: "U2",
+					text: "we decided to use redis",
+					ts: "1700000000.000400",
+				},
+				// the triggering message — already in the task instructions
+				{ user: "U1", text: "<@U0BOT> where were we?", ts: TRIGGER_TS },
+			] as any);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		expect(fetchSpy).toHaveBeenCalledWith({
+			token: "xoxb-test",
+			channel: "C1",
+			thread_ts: PARENT_TS,
+			limit: 2000,
+			oldest: "1700000000.000200",
+		});
+		expect(result).toContain("since you last had context");
+		expect(result).toContain("we decided to use redis");
+		expect(result).not.toContain("original ask");
+		expect(result).not.toContain("on it");
+		expect(result).not.toContain("where were we?");
+	});
+
+	it("returns an empty string when nothing new was said", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue([
+			{ user: "U1", text: "original ask", ts: PARENT_TS },
+			{ user: "U1", text: "<@U0BOT> where were we?", ts: TRIGGER_TS },
+		] as any);
+
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
+		).resolves.toBe("");
+	});
+
+	it("drops a message sitting exactly on the cursor", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue([
+			// Slack can echo the cursor message back when `inclusive` is honoured
+			{ user: "U2", text: "already seen", ts: "1700000000.000200" },
+			{ user: "U2", text: "genuinely new", ts: "1700000000.000400" },
+		] as any);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		expect(result).toContain("genuinely new");
+		expect(result).not.toContain("already seen");
+	});
+
+	it("returns null when there is no bot token", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		const event = mentionEvent();
+		delete (event as any).slackBotToken;
+
+		await expect(
+			adapter.fetchThreadContext(event, "1700000000.000200"),
+		).resolves.toBeNull();
+	});
+
+	it("keeps only the newest messages of an over-long gap", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		// 60 new messages, more than a single context read carries
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockResolvedValue(
+			Array.from({ length: 60 }, (_, i) => ({
+				user: "U2",
+				text: `msg ${i}`,
+				ts: `1700000000.00${String(1000 + i)}`,
+			})) as any,
+		);
+
+		const result = await adapter.fetchThreadContext(
+			mentionEvent(),
+			"1700000000.000200",
+		);
+
+		// Trimmed to the last 50, so the stalest go and the freshest stay
+		expect(result).not.toContain("msg 9\n");
+		expect(result).toContain("msg 10");
+		expect(result).toContain("msg 59");
+	});
+
+	it("returns null whether the read fails with a cursor or without one", async () => {
+		const adapter = new SlackChatAdapter(createStaticProvider([]));
+		mockIdentity();
+		vi.spyOn(
+			SlackMessageService.prototype,
+			"fetchThreadMessages",
+		).mockRejectedValue(new Error("ratelimited"));
+
+		await expect(
+			adapter.fetchThreadContext(mentionEvent()),
+		).resolves.toBeNull();
+		await expect(
+			adapter.fetchThreadContext(mentionEvent(), "1700000000.000200"),
+		).resolves.toBeNull();
+	});
+});
+
+describe("ChatSessionHandler thread catch-up", () => {
+	/** Adapter that supports catch-up, with a scripted queue of delta results */
+	class CatchupAdapter extends TestChatAdapter {
+		public sinceArgs: Array<string | undefined> = [];
+
+		constructor(
+			threadKey: string,
+			private readonly deltas: Array<string | null>,
+		) {
+			super(threadKey);
+		}
+
+		getThreadContextTs(event: TestEvent): string | undefined {
+			return event.ts;
+		}
+
+		async fetchThreadContext(
+			_event: TestEvent,
+			sinceTs?: string,
+		): Promise<string | null> {
+			this.sinceArgs.push(sinceTs);
+			// Not `?? ""` — a scripted null means a fetch failure
+			return this.deltas.length > 0
+				? (this.deltas.shift() as string | null)
+				: "";
+		}
+	}
+
+	/**
+	 * Handler whose runner is idle between events, so follow-ups resume it.
+	 * With `streaming`, the runner stays live and follow-ups inject mid-turn.
+	 */
+	function buildHandler(
+		adapter: ChatPlatformAdapter<TestEvent>,
+		{ streaming = false } = {},
+	) {
+		const prompts: string[] = [];
+		let running = false;
+		let capturedConfig: any;
+
+		const capture = async (prompt: string) => {
+			prompts.push(prompt);
+			return { sessionId: "session-1" };
+		};
+
+		const createRunner = vi.fn((config: any) => {
+			capturedConfig = config;
+			running = streaming;
+			return {
+				supportsStreamingInput: streaming,
+				start: vi.fn(capture),
+				startStreaming: vi.fn(capture),
+				stop: vi.fn(),
+				isRunning: vi.fn(() => running),
+				isStreaming: vi.fn(() => streaming),
+				addStreamMessage: vi.fn((prompt: string) => prompts.push(prompt)),
+				getMessages: vi.fn().mockReturnValue([]),
+			} as any;
+		});
+
+		const handler = new ChatSessionHandler(adapter, {
+			cyrusHome: TEST_CYRUS_CHAT,
+			chatRepositoryProvider: createStaticProvider([]),
+			runnerConfigBuilder: createMockRunnerConfigBuilder(),
+			createRunner,
+			onWebhookStart: vi.fn(),
+			onWebhookEnd: vi.fn(),
+			onStateChange: vi.fn().mockResolvedValue(undefined),
+			onClaudeError: vi.fn(),
+		});
+
+		/** Give the session a runner session id so follow-ups resume it */
+		const bindResumableSession = async () => {
+			await capturedConfig.onMessage({
+				type: "system",
+				subtype: "init",
+				session_id: "session-1",
+				model: "claude-test",
+				tools: [],
+				permissionMode: "default",
+				apiKeySource: "test",
+			});
+			await new Promise((resolve) => setImmediate(resolve));
+		};
+
+		return {
+			handler,
+			prompts,
+			createRunner,
+			bindResumableSession,
+			setRunning: (value: boolean) => {
+				running = value;
+			},
+		};
+	}
+
+	const TASK = "Inspect repository configuration";
+
+	it("prefixes the resumed prompt with what was said between mentions", async () => {
+		const adapter = new CatchupAdapter("catchup-thread", ["", "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "mention-1",
+			threadKey: "catchup-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+
+		await handler.handleEvent({
+			eventId: "mention-2",
+			threadKey: "catchup-thread",
+			ts: "200",
+		} as any);
+
+		// New session reads the full window; the second back-reads from there
+		expect(adapter.sinceArgs).toEqual([undefined, "100"]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("advances the cursor on a successful fetch even when nothing was said", async () => {
+		const adapter = new CatchupAdapter("empty-thread", ["", "", "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "empty-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "empty-thread",
+			ts: "200",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m3",
+			threadKey: "empty-thread",
+			ts: "300",
+		} as any);
+
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "200"]);
+		// An empty catch-up leaves the prompt untouched.
+		expect(prompts[1]).toBe(TASK);
+	});
+
+	it("holds the cursor when the catch-up fetch fails, retrying the window later", async () => {
+		const adapter = new CatchupAdapter("failed-thread", [
+			"",
+			null,
+			"<catch-up/>",
+		]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "failed-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "failed-thread",
+			ts: "200",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m3",
+			threadKey: "failed-thread",
+			ts: "300",
+		} as any);
+
+		// The failed window is retried rather than skipped.
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "100"]);
+		expect(prompts[1]).toBe(TASK);
+		expect(prompts[2]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("holds the cursor when the initial full-window read fails", async () => {
+		const adapter = new CatchupAdapter("cold-thread", [null, "<catch-up/>"]);
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "cold-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "cold-thread",
+			ts: "200",
+		} as any);
+
+		// No cursor was set, so the next mention re-reads the whole thread
+		expect(adapter.sinceArgs).toEqual([undefined, undefined]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("still delivers the message when the catch-up read throws", async () => {
+		class ThrowingAdapter extends TestChatAdapter {
+			getThreadContextTs(event: TestEvent): string | undefined {
+				return event.ts;
+			}
+
+			async fetchThreadContext(
+				_event: TestEvent,
+				sinceTs?: string,
+			): Promise<string | null> {
+				if (sinceTs === undefined) {
+					return "";
+				}
+				throw new Error("adapter blew up");
+			}
+		}
+
+		const adapter = new ThrowingAdapter("throwing-thread");
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "throwing-thread",
+			ts: "100",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "throwing-thread",
+			ts: "200",
+		} as any);
+
+		// A throwing context read degrades to the bare task rather than losing it
+		expect(prompts[1]).toBe(TASK);
+	});
+
+	it("never lets a concurrent mention move the cursor backwards", async () => {
+		const releases: Array<() => void> = [];
+
+		class GatedAdapter extends TestChatAdapter {
+			public sinceArgs: Array<string | undefined> = [];
+
+			getThreadContextTs(event: TestEvent): string | undefined {
+				return event.ts;
+			}
+
+			async fetchThreadContext(
+				_event: TestEvent,
+				sinceTs?: string,
+			): Promise<string | null> {
+				this.sinceArgs.push(sinceTs);
+				// Gate only the two mentions raced below, to finish them out of order
+				if (this.sinceArgs.length === 2 || this.sinceArgs.length === 3) {
+					await new Promise<void>((resolve) => {
+						releases.push(resolve);
+					});
+				}
+				return "";
+			}
+		}
+
+		const adapter = new GatedAdapter("racy-thread");
+		const { handler } = buildHandler(adapter, { streaming: true });
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "racy-thread",
+			ts: "100",
+		} as any);
+
+		// Two mentions in flight at once, both reading the same cursor
+		const second = handler.handleEvent({
+			eventId: "m2",
+			threadKey: "racy-thread",
+			ts: "200",
+		} as any);
+		const third = handler.handleEvent({
+			eventId: "m3",
+			threadKey: "racy-thread",
+			ts: "300",
+		} as any);
+		// Wait until both are parked on their gated read
+		for (let i = 0; i < 100 && releases.length < 2; i++) {
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		expect(releases).toHaveLength(2);
+
+		// Resolve them out of order: the newer mention lands first
+		releases[1]();
+		releases[0]();
+		await Promise.all([second, third]);
+
+		await handler.handleEvent({
+			eventId: "m4",
+			threadKey: "racy-thread",
+			ts: "400",
+		} as any);
+
+		// The straggler must not drag the cursor back to its own ts
+		expect(adapter.sinceArgs).toEqual([undefined, "100", "100", "300"]);
+	});
+
+	it("catches up when the follow-up is injected mid-turn", async () => {
+		const adapter = new CatchupAdapter("live-thread", ["", "<catch-up/>"]);
+		const { handler, prompts, createRunner } = buildHandler(adapter, {
+			streaming: true,
+		});
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "live-thread",
+			ts: "100",
+		} as any);
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "live-thread",
+			ts: "200",
+		} as any);
+
+		expect(createRunner).toHaveBeenCalledTimes(1);
+		expect(adapter.sinceArgs).toEqual([undefined, "100"]);
+		expect(prompts[1]).toBe(`<catch-up/>\n\n${TASK}`);
+	});
+
+	it("leaves adapters without catch-up support untouched", async () => {
+		const adapter = new TestChatAdapter("plain-thread");
+		const { handler, prompts, bindResumableSession } = buildHandler(adapter);
+
+		await handler.handleEvent({
+			eventId: "m1",
+			threadKey: "plain-thread",
+		} as any);
+		await bindResumableSession();
+		await handler.handleEvent({
+			eventId: "m2",
+			threadKey: "plain-thread",
+		} as any);
+
+		expect(prompts).toEqual([TASK, TASK]);
 	});
 });

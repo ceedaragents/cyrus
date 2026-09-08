@@ -2,7 +2,6 @@ import type {
 	ApprovalMode,
 	ModelReasoningEffort,
 	SandboxMode,
-	ThreadEvent,
 	WebSearchMode,
 } from "@openai/codex-sdk";
 import type {
@@ -10,6 +9,7 @@ import type {
 	AgentSessionInfo,
 	SDKMessage,
 } from "cyrus-core";
+import type { CyrusSandboxFilesystem } from "./config/sandboxPolicy.js";
 
 export type CodexConfigValue =
 	| string
@@ -19,11 +19,6 @@ export type CodexConfigValue =
 	| { [key: string]: CodexConfigValue };
 
 export type CodexConfigOverrides = { [key: string]: CodexConfigValue };
-
-/**
- * Typed event shape emitted by Codex SDK thread streams.
- */
-export type CodexJsonEvent = ThreadEvent;
 
 /**
  * Configuration for CodexRunner.
@@ -53,8 +48,14 @@ export interface CodexRunnerConfig extends AgentRunnerConfig {
 	skipGitRepoCheck?: boolean;
 	/** Additional global Codex config overrides passed through SDK `config` */
 	configOverrides?: CodexConfigOverrides;
-	/** JSON Schema for structured output (passed to thread.runStreamed as outputSchema) */
+	/** JSON Schema for structured output (passed to turn/start as outputSchema) */
 	outputSchema?: unknown;
+	/**
+	 * Filesystem sandbox intent (allow/deny read, allow write). When present, the
+	 * session runs under a granular per-thread sandbox policy instead of the
+	 * coarse default mode. Paths must be absolute.
+	 */
+	sandboxSettings?: CyrusSandboxFilesystem;
 }
 
 /**
@@ -71,5 +72,4 @@ export interface CodexRunnerEvents {
 	message: (message: SDKMessage) => void;
 	error: (error: Error) => void;
 	complete: (messages: SDKMessage[]) => void;
-	streamEvent: (event: CodexJsonEvent) => void;
 }

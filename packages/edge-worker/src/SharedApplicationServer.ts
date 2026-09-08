@@ -3,6 +3,9 @@ import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
 import { createLogger, type ILogger } from "cyrus-core";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 
+const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
+const ROBOTS_HEADER = "noindex, nofollow";
+
 /**
  * OAuth callback state for tracking flows
  */
@@ -77,6 +80,18 @@ export class SharedApplicationServer {
 		this.app = Fastify({
 			logger: false,
 			trustProxy: true,
+		});
+
+		this.app.addHook("onRequest", (_request, reply, done) => {
+			reply.header("X-Robots-Tag", ROBOTS_HEADER);
+			done();
+		});
+
+		this.app.get("/robots.txt", async (_request, reply) => {
+			return reply
+				.type("text/plain; charset=utf-8")
+				.header("Cache-Control", "public, max-age=3600")
+				.send(ROBOTS_TXT);
 		});
 
 		// Preserve raw request body for webhook signature verification (GitHub HMAC-SHA256).
@@ -178,7 +193,9 @@ export class SharedApplicationServer {
 			// Start the tunnel
 			this.tunnelClient.startTunnel().catch(reject);
 
-			// Timeout after 30 seconds
+			// Timeout after 120 seconds (slow DNS resolvers can delay cloudflared
+			// connection registration past 30s, e.g. on cloud Macs with dead
+			// IPv6 nameservers ahead of the working resolver)
 			setTimeout(() => {
 				if (connectionCount < requiredConnections) {
 					reject(
@@ -187,7 +204,7 @@ export class SharedApplicationServer {
 						),
 					);
 				}
-			}, 30000);
+			}, 120000);
 		});
 	}
 

@@ -33,9 +33,8 @@ vi.mock("cyrus-claude-runner", () => ({
 		"Monitor",
 		"TaskOutput",
 		"TaskStop",
-		"TeamCreate",
-		"TeamDelete",
 		"ToolSearch",
+		"DesignSync",
 		"Workflow",
 	]),
 	getReadOnlyTools: vi.fn(() => [
@@ -86,9 +85,8 @@ vi.mock("cyrus-claude-runner", () => ({
 		"Monitor",
 		"TaskOutput",
 		"TaskStop",
-		"TeamCreate",
-		"TeamDelete",
 		"ToolSearch",
+		"DesignSync",
 		"Workflow",
 	]),
 	getCoordinatorTools: vi.fn(() => [
@@ -115,9 +113,8 @@ vi.mock("cyrus-claude-runner", () => ({
 		"Monitor",
 		"TaskOutput",
 		"TaskStop",
-		"TeamCreate",
-		"TeamDelete",
 		"ToolSearch",
+		"DesignSync",
 		"Workflow",
 	]),
 }));
@@ -351,6 +348,23 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 			const ew = new EdgeWorker(configNoDefaults);
 			const buildAllowedTools = getBuildAllowedTools(ew);
 			const tools = buildAllowedTools([]);
+
+			expect(tools).toEqual([...LINEAR_DEFAULT_ALLOWED_TOOLS]);
+		});
+
+		it("should treat empty global defaults as unset for repository sessions", () => {
+			const configEmptyDefaults: EdgeWorkerConfig = {
+				...mockConfig,
+				linearAllowedTools: [],
+			};
+			const ew = new EdgeWorker(configEmptyDefaults);
+			const buildAllowedTools = getBuildAllowedTools(ew);
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				allowedTools: undefined,
+			};
+
+			const tools = buildAllowedTools(repository);
 
 			expect(tools).toEqual([...LINEAR_DEFAULT_ALLOWED_TOOLS]);
 		});

@@ -164,6 +164,16 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		serverHost: "localhost",
 		claudeDefaultModel: "sonnet",
 		claudeDefaultFallbackModel: "haiku",
+		// Env-gated runner selection for harness validation (default unchanged).
+		// e.g. CYRUS_DEFAULT_RUNNER=codex to exercise the Codex (app-server) path.
+		...(process.env.CYRUS_DEFAULT_RUNNER && {
+			defaultRunner: process.env.CYRUS_DEFAULT_RUNNER as
+				| "claude"
+				| "gemini"
+				| "codex"
+				| "cursor",
+		}),
+		codexDefaultModel: process.env.CODEX_MODEL || "gpt-5.5",
 		// Enable all tools including Edit(**), Bash, etc. for full testing capability
 		linearAllowedTools: getAllTools(),
 		// CLI platform needs a linearWorkspaces entry so the CLIIssueTrackerService

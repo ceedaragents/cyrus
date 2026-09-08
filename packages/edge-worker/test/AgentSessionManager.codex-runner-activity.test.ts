@@ -1,11 +1,15 @@
-import { CodexRunner } from "cyrus-codex-runner";
+import {
+	CodexEventMapper,
+	CodexRunner,
+	type MapperContext,
+} from "cyrus-codex-runner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
 import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 describe("AgentSessionManager - Codex tool activity mapping", () => {
 	let manager: AgentSessionManager;
-	let runner: CodexRunner;
+	let mapper: CodexEventMapper;
 	let mockActivitySink: IActivitySink;
 	let postActivitySpy: ReturnType<typeof vi.fn>;
 	const sessionId = "test-session-codex";
@@ -20,9 +24,24 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 
 		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
 		manager = new AgentSessionManager();
-		runner = new CodexRunner({
+
+		// A CodexRunner supplies the Codex message formatter the manager uses to
+		// render tool activities; the event→message mapping itself is driven
+		// directly through CodexEventMapper.
+		const runner = new CodexRunner({
 			workingDirectory: "/Users/connor/code/cyrus",
 		});
+
+		const ctx: MapperContext = {
+			workingDirectory: "/Users/connor/code/cyrus",
+			model: "gpt-5.5",
+			getSessionId: () => "codex-session-1",
+			getStagedSkillNames: () => [],
+			emitMessage: () => {},
+			onThreadStarted: () => {},
+		};
+		mapper = new CodexEventMapper(ctx);
+		mapper.reset();
 
 		manager.createCyrusAgentSession(
 			sessionId,
@@ -41,17 +60,11 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 		);
 		manager.setActivitySink(sessionId, mockActivitySink);
 		manager.addAgentRunner(sessionId, runner);
-
-		(runner as any).sessionInfo = {
-			sessionId: "codex-session-1",
-			startedAt: new Date(),
-			isRunning: true,
-		};
 	});
 
 	it("creates Linear action entries for Codex file_change events", async () => {
-		(runner as any).handleEvent({
-			type: "item.completed",
+		mapper.handle({
+			kind: "item-completed",
 			item: {
 				id: "patch_1",
 				type: "file_change",
@@ -65,7 +78,7 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 			},
 		});
 
-		for (const message of runner.getMessages()) {
+		for (const message of mapper.getMessages()) {
 			await manager.handleClaudeMessage(sessionId, message);
 		}
 

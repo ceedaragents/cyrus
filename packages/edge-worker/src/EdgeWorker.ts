@@ -140,6 +140,7 @@ import {
 	type FailureModesHttpClient,
 	type ResolvedSession,
 } from "cyrus-mcp-tools";
+import { OpenCodeRunner } from "cyrus-opencode-runner";
 import {
 	SlackEventTransport,
 	type SlackWebhookEvent,
@@ -169,7 +170,10 @@ import {
 	RepositoryRouter,
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
-import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
+import {
+	RunnerConfigBuilder,
+	resolveIssueMcpConfigPath,
+} from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import {
@@ -235,6 +239,9 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	// GitHub webhook handlers share a PR worktree, so only one may run per PR.
+	private activeGitHubPrSessions = new Set<string>();
+	private queuedGitHubPrEvents = new Map<string, GitHubCommentWebhookEvent[]>();
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
@@ -664,6 +671,15 @@ export class EdgeWorker extends EventEmitter {
 		this.configManager.on(
 			"configChanged",
 			async (changes: RepositoryChanges) => {
+				const strictMcpConfigChanged =
+					(this.config.strictMcpConfig ?? true) !==
+					(changes.newConfig.strictMcpConfig ?? true);
+				if (strictMcpConfigChanged) {
+					for (const warmSession of this.warmInstances.values()) {
+						warmSession.close();
+					}
+					this.warmInstances.clear();
+				}
 				this.updateLinearWorkspaceTokens(changes.newConfig);
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
@@ -1117,8 +1133,9 @@ export class EdgeWorker extends EventEmitter {
 				cyrusHome: this.cyrusHome,
 				chatRepositoryProvider,
 				runnerConfigBuilder: this.runnerConfigBuilder,
-				createRunner: (config) => {
-					const runnerType = this.runnerSelectionService.getDefaultRunner();
+				createRunner: (config, chatRunnerType) => {
+					const runnerType =
+						chatRunnerType ?? this.runnerSelectionService.getDefaultRunner();
 					return this.createRunnerForType(runnerType, {
 						...config,
 						model: this.getDefaultModelForRunner(runnerType),
@@ -1128,6 +1145,20 @@ export class EdgeWorker extends EventEmitter {
 				// Live read so hot-reloaded config (`setConfig`) picks up new
 				// per-platform MCP paths without rebuilding the handler.
 				getPlatformMcpConfigOverrides: () => this.config.slackMcpConfigs,
+				getStrictMcpConfig: () => this.config.strictMcpConfig,
+				resolveSkillsConfig: async ({ repository, repositoryPaths }) => {
+					const plugins = await this.skillsPluginResolver.resolve();
+					const skills = await this.skillsPluginResolver.discoverSkillNames(
+						plugins,
+						{
+							repositoryId: repository?.id,
+							repoPaths: repositoryPaths,
+						},
+					);
+					return { plugins, skills };
+				},
+				getOpenCodeGlobalConfig: () => this.config.opencode?.config,
+				getOpenCodeGlobalStateScope: () => this.config.opencode?.stateScope,
 				onWebhookStart: () => {
 					this.activeWebhookCount++;
 				},
@@ -1228,8 +1259,12 @@ export class EdgeWorker extends EventEmitter {
 
 	private async handleGitHubWebhook(
 		event: GitHubCommentWebhookEvent,
+		reservedGitHubPrSlot = false,
 	): Promise<void> {
 		this.activeWebhookCount++;
+		let githubPrQueueKey: string | undefined;
+		let hasReservedGitHubPrSlot = reservedGitHubPrSlot;
+		let githubPrSlotReleased = false;
 
 		try {
 			// Only handle comments on pull requests
@@ -1244,6 +1279,7 @@ export class EdgeWorker extends EventEmitter {
 			const commentAuthor = extractCommentAuthor(event);
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
+			githubPrQueueKey = sessionKey;
 
 			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
 
@@ -1373,6 +1409,37 @@ export class EdgeWorker extends EventEmitter {
 
 			const agentSessionManager = this.agentSessionManager;
 
+			if (!reservedGitHubPrSlot) {
+				if (this.activeGitHubPrSessions.has(sessionKey)) {
+					const queue = this.queuedGitHubPrEvents.get(sessionKey) ?? [];
+					queue.push(event);
+					this.queuedGitHubPrEvents.set(sessionKey, queue);
+					this.logger.info(
+						`Queued GitHub webhook for ${repoFullName}#${prNumber}; ${queue.length} event(s) waiting`,
+					);
+
+					if (reactionToken && prNumber) {
+						this.gitHubCommentService
+							.postIssueComment({
+								token: reactionToken,
+								owner: extractRepoOwner(event),
+								repo: extractRepoName(event),
+								issueNumber: prNumber,
+								body: "Received your request. It is queued and will start after Cyrus finishes the current task on this PR.",
+							})
+							.catch((err: unknown) => {
+								this.logger.warn(
+									`Failed to post queued acknowledgement: ${err instanceof Error ? err.message : err}`,
+								);
+							});
+					}
+					return;
+				}
+
+				this.activeGitHubPrSessions.add(sessionKey);
+				hasReservedGitHubPrSlot = true;
+			}
+
 			// For pull_request_review events, post an instant acknowledgement comment
 			if (isPullRequestReview && reactionToken && prNumber) {
 				this.gitHubCommentService
@@ -1460,16 +1527,6 @@ export class EdgeWorker extends EventEmitter {
 
 			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
 
-			// Check if another active session is already using this branch/workspace
-			const existingSessions =
-				agentSessionManager.getActiveSessionsByBranchName(branchRef);
-			const firstExisting = existingSessions[0];
-			if (firstExisting) {
-				this.logger.warn(
-					`Reusing workspace from active session ${firstExisting.id} — concurrent writes possible`,
-				);
-			}
-
 			// Create a synthetic session for this GitHub PR comment
 			const issueMinimal: IssueMinimal = {
 				id: sessionKey,
@@ -1555,7 +1612,35 @@ export class EdgeWorker extends EventEmitter {
 					"github", // sessionPlatform → uses githubMcpConfigs override
 				);
 
-			const runner = this.createRunnerForType(runnerType, runnerConfig);
+			// A runner's start() promise can remain open after a successful turn
+			// (for example, warm Claude sessions). Advance the PR queue on the
+			// terminal result instead, so one held-open process cannot block later
+			// GitHub requests for the same worktree indefinitely.
+			const onMessage = runnerConfig.onMessage;
+			let githubReplyPosted = false;
+			let runner: IAgentRunner;
+			runnerConfig.onMessage = async (message: SDKMessage) => {
+				try {
+					await onMessage?.(message);
+				} finally {
+					if (message.type === "result" && !githubReplyPosted) {
+						githubReplyPosted = true;
+						this.postGitHubReply(event, runner, repository).catch((error) => {
+							this.logger.error(
+								`Failed to post GitHub reply to ${repoFullName}#${prNumber}`,
+								error instanceof Error ? error : new Error(String(error)),
+							);
+						});
+						runner.completeStream?.();
+						if (hasReservedGitHubPrSlot && githubPrQueueKey) {
+							this.advanceGitHubPrQueue(githubPrQueueKey);
+							githubPrSlotReleased = true;
+						}
+					}
+				}
+			};
+
+			runner = this.createRunnerForType(runnerType, runnerConfig);
 
 			// Store the runner in the session manager
 			agentSessionManager.addAgentRunner(githubSessionId, runner);
@@ -1579,8 +1664,11 @@ export class EdgeWorker extends EventEmitter {
 				const sessionInfo = await runner.start(taskInstructions);
 				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
 
-				// When session completes, post the reply back to GitHub
-				await this.postGitHubReply(event, runner, repository);
+				// A runner that exits before emitting a result still needs a reply.
+				if (!githubReplyPosted) {
+					githubReplyPosted = true;
+					await this.postGitHubReply(event, runner, repository);
+				}
 			} catch (error) {
 				this.logger.error(
 					`GitHub session error for ${repoFullName}#${prNumber}`,
@@ -1595,7 +1683,35 @@ export class EdgeWorker extends EventEmitter {
 				error instanceof Error ? error : new Error(String(error)),
 			);
 		} finally {
+			if (
+				hasReservedGitHubPrSlot &&
+				githubPrQueueKey &&
+				!githubPrSlotReleased
+			) {
+				this.advanceGitHubPrQueue(githubPrQueueKey);
+			}
 			this.activeWebhookCount--;
+		}
+	}
+
+	private advanceGitHubPrQueue(sessionKey: string): void {
+		const queue = this.queuedGitHubPrEvents.get(sessionKey);
+		const nextEvent = queue?.shift();
+		if (queue && queue.length === 0) {
+			this.queuedGitHubPrEvents.delete(sessionKey);
+		}
+
+		if (nextEvent) {
+			// Keep the slot reserved while the next event starts to prevent a newly
+			// arrived webhook from overtaking the FIFO queue.
+			this.handleGitHubWebhook(nextEvent, true).catch((error) => {
+				this.logger.error(
+					"Failed to process queued GitHub webhook",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		} else {
+			this.activeGitHubPrSessions.delete(sessionKey);
 		}
 	}
 
@@ -1682,11 +1798,20 @@ Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Co
 				existingRunner?.supportsStreamingInput &&
 				existingRunner.addStreamMessage
 			) {
-				existingRunner.addStreamMessage(notification);
-				this.logger.debug(
-					`[base-branch-update] Streamed notification to session ${session.id} for branch ${branchName}`,
-				);
-				break;
+				// Best-effort notification; a steer-only backend may reject it if no
+				// turn is active. Don't let that throw out of the update handler.
+				try {
+					existingRunner.addStreamMessage(notification);
+					this.logger.debug(
+						`[base-branch-update] Streamed notification to session ${session.id} for branch ${branchName}`,
+					);
+					break;
+				} catch (error) {
+					this.logger.debug(
+						`[base-branch-update] Stream rejected for session ${session.id}; skipping`,
+						{ error: error instanceof Error ? error.message : String(error) },
+					);
+				}
 			}
 		}
 	}
@@ -3707,12 +3832,20 @@ ${taskSection}`;
 				existingRunner?.supportsStreamingInput &&
 				existingRunner.addStreamMessage
 			) {
-				existingRunner.addStreamMessage(fullPrompt);
-				delivered = true;
-				this.logger.debug(
-					`[issue-update] Streamed update to session ${sessionId} (key=${webhookKey}, changed=[${changedFields.join(", ")}])`,
-				);
-				break;
+				// Best-effort; a steer-only backend may reject when no turn is active.
+				try {
+					existingRunner.addStreamMessage(fullPrompt);
+					delivered = true;
+					this.logger.debug(
+						`[issue-update] Streamed update to session ${sessionId} (key=${webhookKey}, changed=[${changedFields.join(", ")}])`,
+					);
+					break;
+				} catch (error) {
+					this.logger.debug(
+						`[issue-update] Stream rejected for session ${sessionId}; skipping (key=${webhookKey})`,
+						{ error: error instanceof Error ? error.message : String(error) },
+					);
+				}
 			} else if (isRunning) {
 				this.logger.debug(
 					`[issue-update] Session ${sessionId} is running but doesn't support streaming input, skipping (key=${webhookKey})`,
@@ -4090,9 +4223,21 @@ ${taskSection}`;
 		const workspace = this.config.handlers?.createWorkspace
 			? await this.config.handlers.createWorkspace(fullIssue, repositories, {
 					baseBranchOverrides,
+					onRepoSetupHookEvent: (activity) =>
+						this.activityPoster.postRepoSetupHookActivity(
+							sessionId,
+							linearWorkspaceId,
+							activity,
+						),
 				})
 			: await this.gitService.createGitWorktree(fullIssue, repositories, {
 					baseBranchOverrides,
+					onRepoSetupHookEvent: (activity) =>
+						this.activityPoster.postRepoSetupHookActivity(
+							sessionId,
+							linearWorkspaceId,
+							activity,
+						),
 				});
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
@@ -4327,6 +4472,15 @@ ${taskSection}`;
 		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
+
+		// If this issue is a sub-issue of an issue Cyrus has a session on, link the
+		// two so the parent is resumed when this session completes. Done before the
+		// blocked-by check so a parked child is linked as well.
+		await this.linkChildSessionToParentIssueSession(
+			agentSession.id,
+			agentSession.issue,
+			linearWorkspaceId,
+		);
 
 		// Check for blocked-by dependencies before starting work
 		const blockResult = await this.checkBlockedByDependencies(
@@ -4752,6 +4906,14 @@ ${taskSection}`;
 
 		log.debug(
 			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
+		);
+
+		// The created webhook returned early to ask for a repository, so the
+		// parent-issue link has not been established yet for this session.
+		await this.linkChildSessionToParentIssueSession(
+			agentSessionId,
+			agentSession.issue,
+			webhook.organizationId,
 		);
 
 		// Initialize agent runner with the selected repository (wrapped in array)
@@ -5312,7 +5474,7 @@ ${taskSection}`;
 	 * Resolve default model for a given runner from config with sensible built-in defaults.
 	 * Supports legacy config keys for backwards compatibility.
 	 */
-	private getDefaultModelForRunner(runnerType: RunnerType): string {
+	private getDefaultModelForRunner(runnerType: RunnerType): string | undefined {
 		return this.runnerSelectionService.getDefaultModelForRunner(runnerType);
 	}
 
@@ -5320,7 +5482,9 @@ ${taskSection}`;
 	 * Resolve default fallback model for a given runner from config with sensible built-in defaults.
 	 * Supports legacy Claude fallback key for backwards compatibility.
 	 */
-	private getDefaultFallbackModelForRunner(runnerType: RunnerType): string {
+	private getDefaultFallbackModelForRunner(
+		runnerType: RunnerType,
+	): string | undefined {
 		return this.runnerSelectionService.getDefaultFallbackModelForRunner(
 			runnerType,
 		);
@@ -5330,7 +5494,7 @@ ${taskSection}`;
 	 * Instantiate the appropriate runner for the given type.
 	 */
 	private createRunnerForType(
-		runnerType: "claude" | "gemini" | "codex" | "cursor",
+		runnerType: RunnerType,
 		config: AgentRunnerConfig,
 	): IAgentRunner {
 		switch (runnerType) {
@@ -5348,6 +5512,8 @@ ${taskSection}`;
 				return new CodexRunner(config);
 			case "cursor":
 				return new CursorRunner(config);
+			case "opencode":
+				return new OpenCodeRunner(config);
 			default:
 				throw new Error(`Unknown runner type: ${runnerType satisfies never}`);
 		}
@@ -5846,12 +6012,15 @@ ${taskSection}`;
 					? "codex"
 					: session.cursorSessionId
 						? "cursor"
-						: null;
+						: session.opencodeSessionId
+							? "opencode"
+							: null;
 		const runnerSessionId =
 			session.claudeSessionId ??
 			session.geminiSessionId ??
 			session.codexSessionId ??
 			session.cursorSessionId ??
+			session.opencodeSessionId ??
 			null;
 
 		const sessionSource = session.id.startsWith("github-")
@@ -5918,6 +6087,86 @@ ${taskSection}`;
 		console.log(
 			`[EdgeWorker] Parent-child mapping registered in GlobalSessionRegistry`,
 		);
+	}
+
+	/**
+	 * Link a newly created agent session to the most recent Cyrus session on its
+	 * parent issue, so that when this (child) session completes, the parent
+	 * session is resumed with the child's result.
+	 *
+	 * Parent-child *issue* relationships are the channel for child completion
+	 * messages. Any issue whose parent has a Cyrus session is linked, regardless
+	 * of whether that parent session is currently running: an orchestrator that
+	 * has halted to wait for its sub-issue has status "complete" and is exactly
+	 * the parent that must be woken, so this deliberately does not filter to
+	 * active sessions. The resume path handles both a still-running parent
+	 * (streams the message in) and an exited one (resumes from its stored
+	 * runner session id).
+	 *
+	 * This replaces the mapping that used to be established by the removed
+	 * `linear_agent_session_create*` cyrus-tools. Linear delegation creates
+	 * exactly one session per issue, so deriving the link from the issue
+	 * hierarchy does not reintroduce concurrent child sessions on one issue.
+	 *
+	 * Never throws: a failed lookup only means the parent is not notified.
+	 */
+	private async linkChildSessionToParentIssueSession(
+		agentSessionId: string,
+		issue: { id: string; identifier: string } | null | undefined,
+		linearWorkspaceId: string,
+	): Promise<void> {
+		if (!issue) {
+			return;
+		}
+
+		// Already mapped (e.g. restored from persisted state) — leave it alone.
+		if (this.globalSessionRegistry.getParentSessionId(agentSessionId)) {
+			return;
+		}
+
+		const log = this.logger.withContext({
+			sessionId: agentSessionId,
+			issueIdentifier: issue.identifier,
+		});
+
+		try {
+			// The webhook's issue payload does not carry the parent, so fetch it.
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				linearWorkspaceId,
+			);
+			const parentIssue = await fullIssue?.parent;
+			const parentIssueId = parentIssue?.id;
+			if (!parentIssueId) {
+				return;
+			}
+
+			const parentSessions =
+				this.agentSessionManager.getSessionsByIssueId(parentIssueId);
+			if (parentSessions.length === 0) {
+				log.debug(
+					`Parent issue ${parentIssueId} has no Cyrus session; no parent callback will be sent`,
+				);
+				return;
+			}
+
+			const parentSession = parentSessions.reduce((latest, candidate) =>
+				candidate.updatedAt > latest.updatedAt ? candidate : latest,
+			);
+
+			this.globalSessionRegistry.setParentSession(
+				agentSessionId,
+				parentSession.id,
+			);
+			log.info(
+				`Linked to parent session ${parentSession.id} via parent issue ${parentIssueId}; parent will be resumed when this session completes`,
+			);
+		} catch (error) {
+			log.warn(
+				`Failed to link session to a parent issue session; continuing without parent callback`,
+				error,
+			);
+		}
 	}
 
 	private async handleFeedbackDeliveryToChildSession(
@@ -6482,6 +6731,7 @@ ${input.userComment}
 				sessionPlatform === "linear"
 					? this.config.linearMcpConfigs
 					: this.config.githubMcpConfigs,
+			strictMcpConfig: this.config.strictMcpConfig,
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			// Org-matched GitHub App installation token (pushed by cyrus-hosted):
@@ -6494,6 +6744,8 @@ ${input.userComment}
 				: undefined,
 			logger: log,
 			plugins,
+			opencodeGlobalConfig: this.config.opencode?.config,
+			opencodeGlobalStateScope: this.config.opencode?.stateScope,
 			skills: allowedSkillNames,
 			sandboxSettings: this.sdkSandboxSettings ?? undefined,
 			egressCaCertPath: this.egressCaCertPath ?? undefined,
@@ -6779,16 +7031,13 @@ ${input.userComment}
 					// mcpConfigPath stays scoped to that repo, otherwise the
 					// team-level `linearMcpConfigs` list applies. Same coupling
 					// the live `buildIssueConfig` path uses.
-					const repoHasAllowedToolsOverride =
-						Array.isArray(repo.allowedTools) && repo.allowedTools.length > 0;
-					const mcpConfigPath = repoHasAllowedToolsOverride
-						? this.mcpConfigService.buildMergedMcpConfigPath(repo)
-						: this.config.linearMcpConfigs &&
-								this.config.linearMcpConfigs.length > 0
-							? this.config.linearMcpConfigs.length === 1
-								? this.config.linearMcpConfigs[0]
-								: [...this.config.linearMcpConfigs]
-							: undefined;
+					const mcpConfigPath = resolveIssueMcpConfigPath(
+						repo,
+						this.config.linearMcpConfigs,
+						this.mcpConfigService.buildMergedMcpConfigPath.bind(
+							this.mcpConfigService,
+						),
+					);
 					let mcpServers: Record<string, McpServerConfig> = { ...mcpConfig };
 					if (mcpConfigPath) {
 						const paths = Array.isArray(mcpConfigPath)
@@ -6832,6 +7081,7 @@ ${input.userComment}
 							...(allowedTools.length > 0 && { allowedTools }),
 							...(disallowedTools.length > 0 && { disallowedTools }),
 							settingSources: ["user", "project", "local"],
+							strictMcpConfig: this.config.strictMcpConfig ?? true,
 							// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is intentionally not set here;
 							// see CYPACK-1108 and ClaudeRunner.start() for context.
 							env: buildBaseSessionEnv(),
@@ -7071,11 +7321,23 @@ ${input.userComment}
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
 
-			existingRunner.addStreamMessage(fullPrompt);
-			return true; // Message added to stream
+			// `addStreamMessage` can reject the message if the turn ended in the
+			// race window between "still running" and "turn finished" (e.g. the
+			// Codex app-server backend, which only steers an active turn). Fall
+			// through to the resume path so the comment is never dropped. Claude's
+			// streaming input never throws here, so this is a no-op for Claude.
+			try {
+				existingRunner.addStreamMessage(fullPrompt);
+				return true; // Message added to stream
+			} catch (error) {
+				log.warn(
+					`Streaming message rejected for ${sessionId}; falling back to resume (${logContext})`,
+					{ error: error instanceof Error ? error.message : String(error) },
+				);
+			}
 		}
 
-		// Not streaming - resume/start session
+		// Not streaming (or streaming was rejected) - resume/start session
 		log.debug(`Resuming Claude session for ${sessionId} (${logContext})`);
 
 		await this.resumeAgentSession(
@@ -7152,8 +7414,18 @@ ${input.userComment}
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			existingRunner.addStreamMessage(fullPrompt);
-			return;
+			// See handlePromptWithStreamingCheck: a steer-only backend can reject
+			// the message if the turn just ended. Fall through to a fresh resume
+			// turn rather than dropping the comment. No-op for Claude.
+			try {
+				existingRunner.addStreamMessage(fullPrompt);
+				return;
+			} catch (error) {
+				log.warn(
+					`Streaming message rejected for ${sessionId}; falling back to resume`,
+					{ error: error instanceof Error ? error.message : String(error) },
+				);
+			}
 		}
 
 		// Stop existing runner if it's not running
@@ -7190,12 +7462,15 @@ ${input.userComment}
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
 		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const hasCursorSession = !isNewSession && Boolean(session.cursorSessionId);
+		const hasOpenCodeSession =
+			!isNewSession && Boolean(session.opencodeSessionId);
 		const needsNewSession =
 			isNewSession ||
 			(!hasClaudeSession &&
 				!hasGeminiSession &&
 				!hasCodexSession &&
-				!hasCursorSession);
+				!hasCursorSession &&
+				!hasOpenCodeSession);
 
 		// Fetch system prompt based on labels
 
@@ -7238,7 +7513,9 @@ ${input.userComment}
 					? session.geminiSessionId
 					: session.codexSessionId
 						? session.codexSessionId
-						: session.cursorSessionId;
+						: session.cursorSessionId
+							? session.cursorSessionId
+							: session.opencodeSessionId;
 
 		console.log(
 			`[resumeAgentSession] needsNewSession=${needsNewSession}, resumeSessionId=${resumeSessionId ?? "none"}`,

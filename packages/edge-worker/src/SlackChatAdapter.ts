@@ -1,11 +1,11 @@
 import type { IAgentRunner, ILogger } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import {
+	buildPromptText,
 	SlackMessageService,
 	SlackReactionService,
 	type SlackThreadMessage,
 	type SlackWebhookEvent,
-	stripMention as stripSlackMention,
 } from "cyrus-slack-event-transport";
 import type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import type { ChatPlatformAdapter } from "./ChatSessionHandler.js";
@@ -27,6 +27,15 @@ export const SLACK_NO_RESPONSE_SENTINEL = "<<NO_RESPONSE>>";
  * base URL) where automatic Slack thread listening can be turned off.
  */
 export const BEHAVIOURS_PAGE_ROUTE = "/settings/behaviours";
+
+/** How many thread messages a single context or catch-up read carries. */
+const THREAD_CONTEXT_MESSAGE_LIMIT = 50;
+
+/**
+ * How deep a catch-up read scans before trimming to the newest messages. A
+ * thread paginates from its head, so reaching the tail means walking past it.
+ */
+const THREAD_CATCHUP_SCAN_LIMIT = 2000;
 
 /** Reaction added when a message is received and queued for processing (👀) */
 export const RECEIPT_REACTION = "eyes";
@@ -106,9 +115,7 @@ export class SlackChatAdapter
 	}
 
 	extractTaskInstructions(event: SlackWebhookEvent): string {
-		return (
-			stripSlackMention(event.payload.text) || "Ask the user for more context"
-		);
+		return buildPromptText(event.payload) || "Ask the user for more context";
 	}
 
 	/**
@@ -202,6 +209,8 @@ ${this.repositoryRoutingContext ? `\n\n${this.repositoryRoutingContext}` : ""}
   - First run \`mcp__linear__get_user\` with \`query: "me"\` to get your Linear identity.
   - Create an Issue in the user's tracker for the requested work (for example using \`mcp__linear__save_issue\`), including enough context and acceptance criteria to execute it. Default the issue status/state to "Backlog". **IMPORTANT: Never set the status to "Triage".**
   - To route the issue to a specific repository, add \`[repo=repo-name]\` to the issue description. To target a specific branch, use \`[repo=repo-name#branch-name]\`. For multiple repos: \`repos=repo1,repo2\`.
+  - To choose a specific execution harness, add \`[agent=claude]\`, \`[agent=gemini]\`, \`[agent=codex]\`, \`[agent=cursor]\`, or \`[agent=opencode]\` to the issue description.
+  - To choose both execution harness and model from Linear labels, apply a \`<provider>/<model>\` label such as \`openai/gpt-5.5\`. For OpenCode, use \`opencode/<provider>/<model>\`, such as \`opencode/openai/gpt-5.5\`.
   - Assign that Issue to that same user (your own Linear user).
   - That assignment is what immediately kicks off work in your own agent session.
   - Track execution progress by searching \`mcp__cyrus-tools__linear_get_agent_sessions\` for the active session, then opening it with \`mcp__cyrus-tools__linear_get_agent_session\`.
@@ -228,7 +237,22 @@ Supported mrkdwn syntax:
 - Lists: use plain numbered lines (1. item) or dashes (- item) with newlines`;
 	}
 
-	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
+	getThreadContextTs(event: SlackWebhookEvent): string | undefined {
+		return event.payload.ts;
+	}
+
+	/**
+	 * Whole thread when `sinceTs` is absent, otherwise just what followed it.
+	 * With thread following disabled, untagged messages never reach us, so
+	 * everything said between two @mentions is invisible unless back-read here.
+	 *
+	 * "" when there is nothing to add, `null` when the read failed — the caller
+	 * only advances its cursor on a non-null result.
+	 */
+	async fetchThreadContext(
+		event: SlackWebhookEvent,
+		sinceTs?: string,
+	): Promise<string | null> {
 		// Only fetch context for threaded messages
 		if (!event.payload.thread_ts) {
 			return "";
@@ -239,7 +263,7 @@ Supported mrkdwn syntax:
 			this.logger.warn(
 				"Cannot fetch Slack thread context: no slackBotToken available",
 			);
-			return "";
+			return null;
 		}
 
 		try {
@@ -249,23 +273,52 @@ Supported mrkdwn syntax:
 					token,
 					channel: event.payload.channel,
 					thread_ts: event.payload.thread_ts,
-					limit: 50,
+					limit: sinceTs
+						? THREAD_CATCHUP_SCAN_LIMIT
+						: THREAD_CONTEXT_MESSAGE_LIMIT,
+					...(sinceTs ? { oldest: sinceTs } : {}),
 				}),
 				this.getSelfBotId(token),
 			]);
 
-			if (messages.length === 0) {
+			if (!sinceTs) {
+				// Include all messages (user and bot) so follow-up sessions retain
+				// full conversation history, especially when the runner type changes.
+				return messages.length === 0
+					? ""
+					: this.formatThreadContext(messages, selfBotId);
+			}
+
+			const delta = messages
+				.filter((msg) => {
+					// conversations.replies returns the parent regardless of `oldest`.
+					// Slack ts is zero-padded, so string ordering is chronological.
+					if (msg.ts <= sinceTs) {
+						return false;
+					}
+					// Already in the task instructions
+					if (msg.ts === event.payload.ts) {
+						return false;
+					}
+					// Already in the resumed session's memory
+					return !this.isSelfMessage(msg, selfBotId);
+				})
+				// An over-long gap should lose its stalest messages, not its newest
+				.slice(-THREAD_CONTEXT_MESSAGE_LIMIT);
+
+			if (delta.length === 0) {
 				return "";
 			}
 
-			// Include all messages (user and bot) so follow-up sessions retain
-			// full conversation history, especially when the runner type changes.
-			return this.formatThreadContext(messages, selfBotId);
+			return `The following messages were posted in this thread since you last had context. Read them for background before responding.\n\n${this.formatThreadContext(
+				delta,
+				selfBotId,
+			)}`;
 		} catch (error) {
 			this.logger.warn(
 				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
 			);
-			return "";
+			return null;
 		}
 	}
 
@@ -402,14 +455,19 @@ Supported mrkdwn syntax:
 		});
 	}
 
+	private isSelfMessage(msg: SlackThreadMessage, selfBotId?: string): boolean {
+		return Boolean(selfBotId && msg.bot_id === selfBotId);
+	}
+
 	private formatThreadContext(
 		messages: SlackThreadMessage[],
 		selfBotId?: string,
 	): string {
 		const formattedMessages = messages
 			.map((msg) => {
-				const isSelf = selfBotId && msg.bot_id === selfBotId;
-				const author = isSelf ? "assistant (you)" : (msg.user ?? "unknown");
+				const author = this.isSelfMessage(msg, selfBotId)
+					? "assistant (you)"
+					: (msg.user ?? "unknown");
 				return `  <message>
     <author>${author}</author>
     <timestamp>${msg.ts}</timestamp>

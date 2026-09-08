@@ -4,6 +4,521 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.261` to [`0.3.263`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03263), bringing Claude sessions to parity with Claude Code 2.1.263. `@anthropic-ai/sdk` remains current at [`^0.124.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01240-2026-09-04), and the refreshed 31-tool Claude allowance lists are unchanged. ([CYPACK-1498](https://linear.app/ceedar/issue/CYPACK-1498/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1463](https://github.com/cyrusagents/cyrus/pull/1463), [cyrus-hosted#1063](https://github.com/cyrusagents/cyrus-hosted/pull/1063))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.260` to [`0.3.261`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03261), adding initialization-time plugin delivery to avoid Windows launch failures with many plugins, fixing `query()` in runtimes without native `Symbol.dispose`, and bringing Claude sessions to parity with Claude Code 2.1.261. Updated `@anthropic-ai/sdk` from `^0.123.0` to [`^0.124.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01240-2026-09-04), adding expanded usage-report breakdowns, organization compliance-setting types, broader workspace-ID support, and safer agent-toolset filesystem permissions. The refreshed 31-tool Claude allowance lists are unchanged. ([CYPACK-1497](https://linear.app/ceedar/issue/CYPACK-1497/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1462](https://github.com/cyrusagents/cyrus/pull/1462), [cyrus-hosted#1062](https://github.com/cyrusagents/cyrus-hosted/pull/1062))
+
+## [0.2.71] - 2026-09-04
+
+### Added
+- Every agent session now explains how to attach local images and videos to GitHub issues, pull requests, and comments with GitHub CLI v2.99.0 or newer, independently of optional browser tooling. ([CYPACK-1490](https://linear.app/ceedar/issue/CYPACK-1490/add-this-to-the-system-prompt), [#1453](https://github.com/cyrusagents/cyrus/pull/1453))
+
+### Fixed
+- Cloudflare tunnel startup now waits up to 120 seconds (previously 30) before giving up, so Cyrus starts reliably on hosts with slow DNS or slow first-time tunnel establishment. ([#1458](https://github.com/cyrusagents/cyrus/pull/1458))
+- Stopping Cyrus no longer stalls when a sandbox egress-proxy tunnel is still open or hung: open proxy connections are force-closed on shutdown, and tunnel sockets are torn down when either side closes instead of only on error. ([#1458](https://github.com/cyrusagents/cyrus/pull/1458))
+- Orchestrator sessions are resumed again as soon as a delegated sub-issue's session completes. Since v0.2.69 the parent-to-child link was never created for sub-issues started through Linear delegation, so orchestrators only advanced when their own scheduled wake-up fired, paying the full timer interval on every hand-off. Cyrus now links a new session to the most recent session on its parent issue, whether or not that parent session is still running, so parent-child issue relationships carry child completion results in general. ([#1454](https://github.com/cyrusagents/cyrus/pull/1454))
+- A child session that ends a turn with a scheduled wake-up or a background task still pending no longer resumes its parent early. Previously the parent received a non-final result and was resumed a second time when the child actually finished; the callback now waits for the result that ends the child session. ([#1454](https://github.com/cyrusagents/cyrus/pull/1454))
+
+### Changed
+- Updated the bundled Codex CLI and SDK from `0.144.4` to [`0.153.3`](https://github.com/openai/codex/releases/tag/rust-v0.153.3), enabling Codex sessions to use GPT-6 Astra via the `gpt-6-astra` model selector. ([CYPACK-1494](https://linear.app/ceedar/issue/CYPACK-1494/update-codex-to-latest-specifically-so-that-we-support-gpt-6), [#1460](https://github.com/cyrusagents/cyrus/pull/1460))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.259` to [`0.3.260`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03260), bringing Claude sessions to parity with Claude Code 2.1.260 plus improved remote-session latency and rate-limit reporting, stricter rewind failure handling, and clearer structured-output validation errors. `@anthropic-ai/sdk` remains current at [`^0.123.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01230-2026-09-01), and the refreshed 31-tool Claude allowance lists are unchanged. ([CYPACK-1493](https://linear.app/ceedar/issue/CYPACK-1493/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1459](https://github.com/cyrusagents/cyrus/pull/1459), [cyrus-hosted#1060](https://github.com/cyrusagents/cyrus-hosted/pull/1060))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.258` to [`0.3.259`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03259), adding multi-message reply correlation, unattended permission-prompt denial, and parity with Claude Code 2.1.259. `@anthropic-ai/sdk` remains current at [`^0.123.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01230-2026-09-01), and the refreshed 31-tool Claude allowance lists are unchanged. ([CYPACK-1491](https://linear.app/ceedar/issue/CYPACK-1491/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1455](https://github.com/cyrusagents/cyrus/pull/1455), [cyrus-hosted#1057](https://github.com/cyrusagents/cyrus-hosted/pull/1057))
+- The `orchestrator` and `graphite-orchestrator` prompts now instruct Cyrus to delegate each sub-issue to itself when creating it. The previous guidance said the inherited assignee was enough to start the child session, which stopped being true once the explicit session-creation tools were removed in v0.2.69. ([#1454](https://github.com/cyrusagents/cyrus/pull/1454))
+- EdgeWorker state saves are now atomic, preventing a process interrupted during a save from leaving a truncated state file that strands in-flight sessions; empty and legacy-truncated state files also recover cleanly. Thanks @connor-tembo for the contribution. ([CYPACK-1486](https://linear.app/ceedar/issue/CYPACK-1486/can-you-add-a-changelog-entry-for-this), [#1444](https://github.com/cyrusagents/cyrus/pull/1444))
+
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.252` to [`0.3.258`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03258), bringing Claude sessions to parity with Claude Code 2.1.258 plus MCP resource-link and reconnection fixes. Updated `@anthropic-ai/sdk` from `^0.122.0` to [`^0.123.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01230-2026-09-01); the refreshed 31-tool Claude allowance lists are unchanged. ([CYPACK-1489](https://linear.app/ceedar/issue/CYPACK-1489/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1451](https://github.com/cyrusagents/cyrus/pull/1451), [cyrus-hosted#1056](https://github.com/cyrusagents/cyrus-hosted/pull/1056))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.251` to [`0.3.252`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03252), bringing Claude sessions to parity with Claude Code 2.1.252. `@anthropic-ai/sdk` remains current at [`^0.122.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01220-2026-08-27), and the refreshed Claude tool allowance lists are unchanged. ([CYPACK-1488](https://linear.app/ceedar/issue/CYPACK-1488/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1449](https://github.com/cyrusagents/cyrus/pull/1449))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.250` to [`0.3.251`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03251), bringing Claude sessions to parity with Claude Code 2.1.251. `@anthropic-ai/sdk` remains current at [`^0.122.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01220-2026-08-27), and the refreshed Claude tool allowances remove the retired MCP resource-discovery tools. ([CYPACK-1482](https://linear.app/ceedar/issue/CYPACK-1482/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1446](https://github.com/cyrusagents/cyrus/pull/1446))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.247` to [`0.3.250`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03250), adding per-server SDK-hosted MCP timeouts and parity with Claude Code 2.1.250. Updated `@anthropic-ai/sdk` from `^0.121.0` to [`^0.122.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01220-2026-08-27), and refreshed the Claude tool allowances to add agent/resource discovery tools and remove the retired onboarding-guide tool. ([CYPACK-1481](https://linear.app/ceedar/issue/CYPACK-1481/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1443](https://github.com/cyrusagents/cyrus/pull/1443))
+
+### Security
+- Patched eight newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities, while replacing the redundant `fast-uri` override with upstream-compatible direct dependency updates. ([CYPACK-1492](https://linear.app/ceedar/issue/CYPACK-1492/address-open-security-patches-for-cyrus-cli), [#1456](https://github.com/cyrusagents/cyrus/pull/1456))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.71
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.71
+
+#### cyrus-core
+- cyrus-core@0.2.71
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.71
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.71
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.71
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.71
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.71
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.71
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.71
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.71
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.71
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.71
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.71
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.71
+
+#### cyrus-ai
+- cyrus-ai@0.2.71 ([CYPACK-1495](https://linear.app/ceedar/issue/CYPACK-1495/run-a-release), [#1461](https://github.com/cyrusagents/cyrus/pull/1461))
+
+## [0.2.70] - 2026-08-27
+
+### Fixed
+- `strictMcpConfig: false` in `~/.cyrus/config.json` now actually takes effect at startup. Previously the CLI dropped the setting when assembling the worker configuration, so sessions were still launched in strict MCP mode and ambient MCP sources (claude.ai connectors, settings-file servers, plugins) never loaded despite the opt-out. ([CYPACK-1478](https://linear.app/ceedar/issue/CYPACK-1478/if-a-mcp-server-has-no-enabled-tools-will-it-not-be-allowed-as-an-mcp), [#1440](https://github.com/cyrusagents/cyrus/pull/1440))
+- An audit prompted by the same bug found and fixed other silently dropped settings: `cursorDefaultModel` / `cursorDefaultFallbackModel` were ignored at startup, and edits to `userAccessControl`, `global_setup_script`, and Cursor model defaults in `~/.cyrus/config.json` were not picked up by live config reloads. ([CYPACK-1478](https://linear.app/ceedar/issue/CYPACK-1478/if-a-mcp-server-has-no-enabled-tools-will-it-not-be-allowed-as-an-mcp), [#1440](https://github.com/cyrusagents/cyrus/pull/1440))
+
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.245` to [`0.3.247`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03247), adding per-turn message correlation, managed model pricing, per-task stop control, ambient task metadata, and live permission-mode reporting fixes. Updated `@anthropic-ai/sdk` from `^0.120.0` to [`^0.121.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01210-2026-08-26); the Claude tool allowance lists are unchanged. ([CYPACK-1476](https://linear.app/ceedar/issue/CYPACK-1476/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1438](https://github.com/cyrusagents/cyrus/pull/1438))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.70
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.70
+
+#### cyrus-core
+- cyrus-core@0.2.70
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.70
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.70
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.70
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.70
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.70
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.70
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.70
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.70
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.70
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.70
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.70
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.70
+
+#### cyrus-ai
+- cyrus-ai@0.2.70
+
+## [0.2.69] - 2026-08-26
+
+### Added
+- Added an enabled-by-default `strictMcpConfig` setting for Claude sessions. Set it to `false` to make ambient MCP sources—including authenticated claude.ai connectors, project and user settings, and plugins—available alongside Cyrus-configured servers; config reloads and pre-warmed sessions honor changes. ([CYHOST-1245](https://linear.app/ceedar/issue/CYHOST-1245/can-u-add-a-bevahiours-settings-page-setting-for-strict-mcp-config), [#1434](https://github.com/cyrusagents/cyrus/pull/1434))
+- OpenCode is now a supported Cyrus runner for self-hosted sessions, including `opencode` labels and `[agent=opencode]` selectors, provider/model defaults, runtime config overrides, MCP and tool permission translation, CLI-managed auth/state handling, readable Linear activity, session resume/follow-up handling, and stalled-runner recovery. Thanks @JappyMondo and @jappyjan for the original contribution. ([CYPACK-1466](https://linear.app/ceedar/issue/CYPACK-1466/create-clean-opencode-support-pr-from-pr-1263-tip), [#1426](https://github.com/cyrusagents/cyrus/pull/1426))
+
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.241` to [`0.3.245`](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#03245), bringing Claude sessions to parity with Claude Code 2.1.245 and incorporating the 0.3.243 queued-turn, MCP reconnect, managed-hook, and PDF result fixes. `@anthropic-ai/sdk` remains current at [`^0.120.0`](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#01200-2026-08-19), and the Claude tool allowance lists are unchanged. ([CYPACK-1467](https://linear.app/ceedar/issue/CYPACK-1467/update-anthropic-aiclaude-agent-sdk-and-anthropic-aisdk-to-the-latest), [#1427](https://github.com/cyrusagents/cyrus/pull/1427))
+
+### Fixed
+- **OpenCode sessions no longer terminate during quiet work** — The inactivity watchdog is disabled by default so provider requests and context compaction can complete; deployments may still configure an explicit timeout. ([#1428](https://github.com/cyrusagents/cyrus/pull/1428))
+- The self-hosted GitHub App setup flow (`cyrus-setup-github` skill, "enable @mentions") no longer fails with "Default events are not supported by permissions: organization". The generated App manifest subscribed to an event with no matching permission, so GitHub rejected the submission and no App was ever created. ([#1406](https://github.com/cyrusagents/cyrus/issues/1406), [#1407](https://github.com/cyrusagents/cyrus/pull/1407))
+
+### Security
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1431](https://linear.app/ceedar/issue/CYPACK-1431/address-open-security-patches-for-cyrus-cli), [#1404](https://github.com/cyrusagents/cyrus/pull/1404))
+- Removed an unused Gemini runner reference dependency so `pnpm audit` no longer reports the `extract-zip` advisory. ([CYPACK-1443](https://linear.app/ceedar/issue/CYPACK-1443/address-open-security-patches-for-cyrus-cli), [#1409](https://github.com/cyrusagents/cyrus/pull/1409))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.69
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.69
+
+#### cyrus-core
+- cyrus-core@0.2.69
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.69
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.69
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.69
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.69
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.69
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.69
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.69
+
+#### cyrus-opencode-runner
+- cyrus-opencode-runner@0.2.69
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.69
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.69
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.69
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.69
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.69
+
+## [0.2.68] - 2026-08-05
+
+### Added
+- `ClaudeRunnerConfig` accepts a `spawnClaudeCodeProcess` override, forwarded to the Claude Agent SDK option of the same name. Lets the Claude Code process run somewhere other than a local child process — a container, a Kubernetes pod, a remote host — without forking the runner. ([#1391](https://github.com/cyrusagents/cyrus/pull/1391))
+
+### Fixed
+- Linear webhooks sent from Linear's three newly added delivery IPs are no longer rejected. Instances validating webhook source IPs were intermittently dropping agent mentions (the agent appeared to randomly not respond) after Linear expanded its documented egress IP list on 2026-08-04. ([#1395](https://github.com/cyrusagents/cyrus/pull/1395))
+- Cyrus now catches up on what was said in a Slack thread between mentions. Previously, @mentioning Cyrus again in a thread it had already replied to passed along only your new message, so anything the team discussed since the last mention was invisible to it — most noticeably with automatic thread listening turned off, where untagged messages are never delivered. Cyrus now back-reads the messages posted since it last had context and reads them before responding. ([#1388](https://github.com/cyrusagents/cyrus/pull/1388)) Thanks @rairulyle for the contribution!
+
+### Security
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1423](https://linear.app/ceedar/issue/CYPACK-1423/address-open-security-patches-for-cyrus-cli), [#1392](https://github.com/cyrusagents/cyrus/pull/1392))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.68
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.68
+
+#### cyrus-core
+- cyrus-core@0.2.68
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.68
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.68
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.68
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.68
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.68
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.68
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.68
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.68
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.68
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.68
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.68
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.68
+
+## [0.2.67] - 2026-07-25
+
+### Changed
+- Updated the bundled Codex CLI and SDK to `0.144.4`, the minimum Codex release required for GPT-5.6 models such as `gpt-5.6-sol`.
+- Cyrus setup now creates Linear OAuth applications from a manifest-backed setup URL, so callback, webhook, and event type settings are pre-populated consistently instead of configured field by field. ([CYPACK-1403](https://linear.app/ceedar/issue/CYPACK-1403/convert-cyrus-setup-linear-app-creation-to-use-manifest), [#1385](https://github.com/cyrusagents/cyrus/pull/1385))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.204` to `0.3.205`, bringing in enhanced interrupt handling with typed receipts from `Query.interrupt()`, a `still_queued` field for pending async message UUIDs, interrupt capability detection in the init block, and structured `name`/`body` fields on peer-message session events ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1376](https://linear.app/ceedar/issue/CYPACK-1376), [#1368](https://github.com/cyrusagents/cyrus/pull/1368))
+- Refreshed Claude Code tool list: removed deprecated `LSP` tool. ([CYPACK-1376](https://linear.app/ceedar/issue/CYPACK-1376), [#1368](https://github.com/cyrusagents/cyrus/pull/1368))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.202` to `0.3.204`, bringing in `background_tasks_changed` system messages for level-based background task tracking (instead of pairing start/end events), a fix for `sdk.d.ts` unresolved type references breaking consumer typechecking with `skipLibCheck` disabled, and parity with Claude Code v2.1.204 ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1375](https://linear.app/ceedar/issue/CYPACK-1375), [#1367](https://github.com/cyrusagents/cyrus/pull/1367))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.201` to `0.3.202`, bringing in `parent_agent_id` on subagent session messages for multi-level agent hierarchy tracking and a fix for crashes when `apply_flag_settings` receives a non-object value ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1373](https://linear.app/ceedar/issue/CYPACK-1373), [#1364](https://github.com/cyrusagents/cyrus/pull/1364))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.199` to `0.3.201`, bringing in `'manual'` as an alias for the `'default'` permission mode, a fix for `onSetPermissionMode` not firing on SDK-hosted Remote Control sessions, stricter validation for `set_model` control requests, and parity with Claude Code v2.1.201 ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1368](https://linear.app/ceedar/issue/CYPACK-1368), [#1363](https://github.com/cyrusagents/cyrus/pull/1363))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.198` to `0.3.199` and `@anthropic-ai/sdk` from `^0.109.1` to `^0.110.0`, bringing in the latest Claude Code capabilities including `requestId` support in `canUseTool` callbacks, `blocked` field on workflow agent progress events, and the `agent-memory-2026-07-22` beta header ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1365](https://linear.app/ceedar/issue/CYPACK-1365), [#1361](https://github.com/cyrusagents/cyrus/pull/1361))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.185` to `0.3.198` and `@anthropic-ai/sdk` from `^0.105.0` to `^0.109.1`, bringing in the latest Claude Code capabilities and bug fixes ([SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)). ([CYPACK-1364](https://linear.app/ceedar/issue/CYPACK-1364), [#1359](https://github.com/cyrusagents/cyrus/pull/1359))
+- Refreshed Claude Code tool list: added `ReportFindings`; removed deprecated `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` tools. ([CYPACK-1364](https://linear.app/ceedar/issue/CYPACK-1364), [#1359](https://github.com/cyrusagents/cyrus/pull/1359))
+- Updated `@anthropic-ai/claude-agent-sdk` from `0.3.173` to `0.3.185` and `@anthropic-ai/sdk` from `^0.104.1` to `^0.105.0`, bringing in the latest Claude Code capabilities and bug fixes. ([CYPACK-1346](https://linear.app/ceedar/issue/CYPACK-1346), [#1342](https://github.com/cyrusagents/cyrus/pull/1342))
+- Refreshed Claude Code tool list: added `DesignSync`, removed deprecated `TeamCreate` and `TeamDelete` tools. ([CYPACK-1346](https://linear.app/ceedar/issue/CYPACK-1346), [#1342](https://github.com/cyrusagents/cyrus/pull/1342))
+
+### Fixed
+- Forwarded and shared Slack messages are now included when you @mention Cyrus. Previously, forwarding a message (for example a Sentry alert) into a channel and @mentioning Cyrus passed along only your typed comment — the forwarded message's contents were dropped, so a forward with no comment gave Cyrus nothing to work with. The forwarded content is now part of the prompt. ([#1326](https://github.com/cyrusagents/cyrus/pull/1326))
+
+### Security
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1404](https://linear.app/ceedar/issue/CYPACK-1404/run-a-release), [#1386](https://github.com/cyrusagents/cyrus/pull/1386))
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1400](https://linear.app/ceedar/issue/CYPACK-1400), [#1383](https://github.com/cyrusagents/cyrus/pull/1383))
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities. ([CYPACK-1396](https://linear.app/ceedar/issue/CYPACK-1396), [#1380](https://github.com/cyrusagents/cyrus/pull/1380))
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` reports no known vulnerabilities, while replacing redundant broad overrides with direct dependency updates where available. ([CYPACK-1379](https://linear.app/ceedar/issue/CYPACK-1379), [#1370](https://github.com/cyrusagents/cyrus/pull/1370))
+- Patched the tracked Cyrus CLI Bun lockfile so both `pnpm audit` and `bun audit` report no known vulnerabilities. ([CYPACK-1356](https://linear.app/ceedar/issue/CYPACK-1356), [#1353](https://github.com/cyrusagents/cyrus/pull/1353))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.67
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.67
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.67
+
+#### cyrus-core
+- cyrus-core@0.2.67
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.67
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.67
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.67
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.67
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.67
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.67
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.67
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.67
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.67
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.67
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.67
+
+## [0.2.66] - 2026-06-19
+
+### Security
+- Patched the Cyrus CLI dependency graph so `pnpm audit` reports no known vulnerabilities, including updated Sentry, Cursor SDK, Axios, Vite/esbuild, Hono, form-data, ws, protobufjs, and OpenTelemetry resolutions. ([CYPACK-1334](https://linear.app/ceedar/issue/CYPACK-1334), [#1330](https://github.com/cyrusagents/cyrus/pull/1330))
+- Patched newly reported Cyrus CLI dependency advisories so `pnpm audit` continues to report no known vulnerabilities. ([CYPACK-1340](https://linear.app/ceedar/issue/CYPACK-1340), [#1335](https://github.com/cyrusagents/cyrus/pull/1335))
+
+### Changed
+- Tightened the self-reported failure-mode instructions so agents keep reporting true user-visible failures and repeated stuck loops, but avoid filing failure-mode tickets for normal review iteration, brainstorming, first-pass clarification, or probe/no-op messages. ([PRO-116](https://linear.app/ceedar/issue/PRO-116), [#1329](https://github.com/cyrusagents/cyrus/pull/1329))
+
+### Fixed
+- Repository setup and teardown hooks are now discovered from the issue worktree instead of the persistent checkout Cyrus uses to create worktrees. If a branch adds or updates `cyrus-setup.sh`, Cyrus now runs that exact version for the task, so dependency installs, environment bootstrap, generated config, and other repo-specific preparation no longer get skipped or run from an older checkout. Teardown cleanup likewise uses the `cyrus-teardown.sh` committed with the worktree being removed. ([CYPACK-1337](https://linear.app/ceedar/issue/CYPACK-1337), [#1332](https://github.com/cyrusagents/cyrus/pull/1332))
+- Linear agent sessions now show when a repository `cyrus-setup.sh` starts, succeeds, or fails before Cyrus begins working. Failures include duration, exit status, and a short redacted stdout/stderr tail so users can diagnose setup issues without exposing local paths, environment values, or secrets. ([CYPACK-1338](https://linear.app/ceedar/issue/CYPACK-1338), [#1333](https://github.com/cyrusagents/cyrus/pull/1333))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.66
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.66
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.66
+
+#### cyrus-core
+- cyrus-core@0.2.66
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.66
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.66
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.66
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.66
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.66
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.66
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.66
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.66
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.66
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.66
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.66
+
+## [0.2.65] - 2026-06-11
+
+### Fixed
+- Sessions that schedule a wakeup or background task no longer falsely report "Finished" with raw tool JSON, and the scheduled work actually runs. Previously, ending a turn on a `ScheduleWakeup` (or background `Bash`) call shut the Claude subprocess down — silently dropping the timer so the session never resumed — and posted a "Finished" Linear activity whose body was the raw tool-input JSON. Now Cyrus keeps the session alive while a wakeup, session cron, or background task is in flight (so it fires), posts a readable "⏰ Wakeup scheduled" response instead of JSON, and adds a "⏳ Standing by" thought listing what the session is waiting on — returning the Linear agent panel to its working state. Sessions with nothing pending still shut down at turn end to free memory. ([CYPACK-1310](https://linear.app/ceedar/issue/CYPACK-1310), [CYPACK-1177](https://linear.app/ceedar/issue/CYPACK-1177), [CYHOST-905](https://linear.app/ceedar/issue/CYHOST-905), [#1313](https://github.com/cyrusagents/cyrus/pull/1313))
+- The final "response" activity is never raw tool-input JSON. When a turn ends on a tool call with no trailing assistant text, Cyrus now uses the model's result text or skips the response entirely rather than dumping the last tool's input JSON into the Linear timeline. ([CYPACK-1177](https://linear.app/ceedar/issue/CYPACK-1177), [#1313](https://github.com/cyrusagents/cyrus/pull/1313))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.65
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.65
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.65
+
+#### cyrus-core
+- cyrus-core@0.2.65
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.65
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.65
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.65
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.65
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.65
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.65
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.65
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.65
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.65
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.65
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.65
+
+## [0.2.64] - 2026-06-11
+
+### Fixed
+- Slack/chat follow-up messages sent while the agent is mid-task are no longer dropped. Previously a quick second message got "I'm still working on the previous request… I'll pick up your new message once I'm done" and was then silently ignored; it's now queued and delivered as a new turn once the current one finishes (and, with the Codex app-server backend, woven into the active turn). Codex chat threads also now correctly continue the same session on follow-ups instead of starting fresh each time. ([CYPACK-1288](https://linear.app/ceedar/issue/CYPACK-1288), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+- Codex sessions now translate Cyrus MCP allow-list entries into Codex MCP tool filters and approvals, so `mcp__server__tool` permissions restrict Codex sessions to the configured tools without requiring interactive approval. ([CYPACK-1288](https://linear.app/ceedar/issue/CYPACK-1288), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+- Codex sessions now load Cyrus-hosted custom MCP configs with Codex-specific MCP options preserved, so configured MCP servers are available when using the Codex runner. ([CYPACK-1286](https://linear.app/ceedar/issue/CYPACK-1286), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+- Codex issue and chat sessions can now use Cyrus-managed custom skills synced from the hosted app. Scoped managed skills are symlinked into Codex's native repository skill discovery path for each session and cleaned up afterward. ([CYPACK-1287](https://linear.app/ceedar/issue/CYPACK-1287/make-our-managed-skills-available-to-the-codex-runner), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+
+### Added
+- Codex sessions now honor the configured filesystem sandbox when the egress sandbox is enabled: each session runs under a per-thread Codex permission profile that confines writes to the worktree and restricts reads to the worktree plus allowed directories (home and the rest of the filesystem are denied), matching the Claude runner's posture. Without sandbox enabled, behavior is unchanged. ([CYPACK-1288](https://linear.app/ceedar/issue/CYPACK-1288), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+- Codex now runs on the `codex app-server` backend, so it can respond to comments added while it's mid-task without throwing away its in-progress work: a follow-up comment is woven into Codex's current turn (rather than aborting and restarting it), matching how the Claude runner handles mid-task comments. This applies to Linear issues and Slack/chat threads alike. ([CYPACK-1288](https://linear.app/ceedar/issue/CYPACK-1288), [#1293](https://github.com/cyrusagents/cyrus/pull/1293))
+
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` to `0.3.173` (parity with Claude Code v2.1.173; includes `skipMcpDiscovery` plugin option and fix for slash-followed-by-whitespace prompts). ([CYPACK-1306](https://linear.app/ceedar/issue/CYPACK-1306), [#1312](https://github.com/cyrusagents/cyrus/pull/1312))
+- Updated `@anthropic-ai/sdk` to `0.104.1` (latest), keeping Claude sessions on current Anthropic API capabilities. ([CYPACK-1303](https://linear.app/ceedar/issue/CYPACK-1303), [#1308](https://github.com/cyrusagents/cyrus/pull/1308))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.64
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.64
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.64
+
+#### cyrus-core
+- cyrus-core@0.2.64
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.64
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.64
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.64
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.64
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.64
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.64
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.64
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.64
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.64
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.64
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.64
+
 ### Added
 - Cyrus now supports multiple GitHub organizations per team: git and `gh` operations automatically use the right credentials for each repository's org. Tokens are pushed by the Cyrus control plane and a git credential helper picks the matching one per repository, so concurrent sessions across different GitHub orgs no longer share a single login. ([CYHOST-913](https://linear.app/ceedar/issue/CYHOST-913), [#1307](https://github.com/cyrusagents/cyrus/pull/1307))
 

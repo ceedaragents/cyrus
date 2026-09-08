@@ -439,8 +439,9 @@ function connectViaProxy(proxyPort: number, target: string): Promise<number> {
 			method: "CONNECT",
 			path: target,
 		});
-		req.on("connect", (res) => {
+		req.on("connect", (res, socket) => {
 			resolve(res.statusCode || 0);
+			socket.destroy();
 			req.destroy();
 		});
 		req.on("error", () => resolve(0));

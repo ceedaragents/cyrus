@@ -17,6 +17,10 @@ export {
 	migrateEdgeConfig,
 	type NetworkPolicy,
 	NetworkPolicySchema,
+	type OpenCodeConfigOverrides,
+	OpenCodeConfigSchema,
+	type OpenCodeStateScope,
+	OpenCodeStateScopeSchema,
 	type RepositoryConfig,
 	type RepositoryConfigPayload,
 	RepositoryConfigPayloadSchema,
@@ -61,6 +65,27 @@ export type OAuthCallbackHandler = (
 	workspaceId: string,
 	workspaceName: string,
 ) => Promise<void>;
+
+export type RepoSetupHookStatus = "started" | "succeeded" | "failed";
+
+export interface RepoSetupHookEvent {
+	status: RepoSetupHookStatus;
+	issueIdentifier: string;
+	scriptName: string;
+	repositoryName?: string;
+	durationMs?: number;
+	exitCode?: number | null;
+	signal?: string | null;
+	errorMessage?: string;
+	outputTail?: string;
+	stdoutTail?: string;
+	stderrTail?: string;
+	truncated?: boolean;
+}
+
+export type RepoSetupHookEventHandler = (
+	event: RepoSetupHookEvent,
+) => void | Promise<void>;
 
 /**
  * Runtime-only configuration fields for EdgeWorker.
@@ -124,7 +149,10 @@ export interface EdgeWorkerRuntimeConfig {
 		createWorkspace?: (
 			issue: Issue,
 			repositories: RepositoryConfig[],
-			options?: { baseBranchOverrides?: Map<string, string> },
+			options?: {
+				baseBranchOverrides?: Map<string, string>;
+				onRepoSetupHookEvent?: RepoSetupHookEventHandler;
+			},
 		) => Promise<Workspace>;
 
 		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */

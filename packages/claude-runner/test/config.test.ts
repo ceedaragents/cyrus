@@ -19,6 +19,7 @@ describe("config", () => {
 				"Write(**)",
 				"Bash",
 				"Task",
+				"ListAgents",
 				"WebFetch",
 				"WebSearch",
 				"TaskCreate",
@@ -27,11 +28,8 @@ describe("config", () => {
 				"TaskList",
 				"NotebookEdit",
 				"Skill",
-				"AskUserQuestion",
 				"SendMessage",
 				"PushNotification",
-				"EnterPlanMode",
-				"ExitPlanMode",
 				"EnterWorktree",
 				"ExitWorktree",
 				"CronCreate",
@@ -43,12 +41,12 @@ describe("config", () => {
 				"RemoteTrigger",
 				"TaskOutput",
 				"TaskStop",
-				"TeamCreate",
-				"TeamDelete",
 				"ToolSearch",
+				"DesignSync",
 				"Workflow",
+				"ReportFindings",
 			]);
-			expect(availableTools).toHaveLength(33);
+			expect(availableTools).toHaveLength(31);
 		});
 
 		it("should define read-only tools", () => {
@@ -61,15 +59,14 @@ describe("config", () => {
 				"TaskGet",
 				"TaskList",
 				"Task",
+				"ListAgents",
 				"Skill",
 				"Monitor",
 				"LSP",
 				"TaskOutput",
-				"EnterPlanMode",
-				"ExitPlanMode",
 				"ToolSearch",
 			]);
-			expect(readOnlyTools).toHaveLength(15);
+			expect(readOnlyTools).toHaveLength(14);
 		});
 
 		it("should define write tools", () => {
@@ -136,7 +133,7 @@ describe("config", () => {
 			expect(tools).toContain("TaskCreate");
 			expect(tools).toContain("NotebookEdit");
 			expect(tools).toContain("Skill");
-			expect(tools).toContain("AskUserQuestion");
+			expect(tools).toContain("ReportFindings");
 			expect(tools).not.toContain("Bash");
 
 			// Should have all tools minus Bash
@@ -243,11 +240,6 @@ describe("config", () => {
 		it("WebSearch should be read-only", () => {
 			expect(readOnlyTools).toContain("WebSearch");
 			expect(writeTools).not.toContain("WebSearch");
-		});
-
-		it("LSP should be read-only", () => {
-			expect(readOnlyTools).toContain("LSP");
-			expect(writeTools).not.toContain("LSP");
 		});
 
 		it("Notebook tools should be categorized correctly", () => {

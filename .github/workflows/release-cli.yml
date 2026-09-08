@@ -1,0 +1,328 @@
+name: Release Cyrus CLI
+
+run-name: >-
+  ${{ inputs.dry_run && 'Dry run' || 'Release' }}
+  cyrus-ai@${{ inputs.version }} (${{ inputs.dist_tag }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version already committed in every release package
+        required: true
+        type: string
+      dist_tag:
+        description: npm distribution tag
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+          - next
+          - beta
+      dry_run:
+        description: Build and verify every package without publishing or tagging
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-cyrus-cli
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Verify and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      REQUESTED_VERSION: ${{ inputs.version }}
+      DIST_TAG: ${{ inputs.dist_tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
+
+    steps:
+      - name: Require the main branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Cyrus releases must be dispatched from main; received $GITHUB_REF." >&2
+            exit 1
+          fi
+
+      - name: Initialize release paths
+        shell: bash
+        run: echo "RELEASE_ARTIFACTS=$RUNNER_TEMP/cyrus-release" >> "$GITHUB_ENV"
+
+      - name: Check out the release source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node and npm registry
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.18.0"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install the repository pnpm version
+        shell: bash
+        run: |
+          PNPM_VERSION="$(node -p 'require("./package.json").packageManager.split("@")[1]')"
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          pnpm --version
+
+      - name: Validate the release request
+        shell: bash
+        run: |
+          node scripts/release-packages.mjs validate "$REQUESTED_VERSION"
+
+          if git rev-parse --verify --quiet "refs/tags/v${REQUESTED_VERSION}"; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "::warning::Tag v${REQUESTED_VERSION} already exists; continuing because this is a dry run."
+            else
+              echo "Tag v${REQUESTED_VERSION} already exists." >&2
+              exit 1
+            fi
+          fi
+
+          missing_packages=()
+          while IFS=$'\t' read -r directory package_name; do
+            if ! npm view "$package_name" version >/dev/null 2>&1; then
+              missing_packages+=("$package_name")
+            fi
+          done < <(node scripts/release-packages.mjs list)
+
+          if (( ${#missing_packages[@]} > 0 )); then
+            echo "::error title=Unpublished npm package(s)::Every release package must already exist on npm before this workflow runs."
+            printf '  - %s\n' "${missing_packages[@]}"
+            echo "Bootstrap each missing package through the approved npm first-publish process, then configure its GitHub Actions trusted publisher."
+            echo "Trusted publisher command: npm trust github <package> --repo cyrusagents/cyrus --file release-cli.yml --allow-publish --yes"
+            exit 1
+          fi
+
+          while IFS=$'\t' read -r directory package_name; do
+            if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
+              if [[ "$DRY_RUN" == "true" ]]; then
+                echo "::warning::${package_name}@${REQUESTED_VERSION} is already published; continuing because this is a dry run."
+              elif [[ "$(npm view "$package_name" "dist-tags.${DIST_TAG}" 2>/dev/null || true)" == "$REQUESTED_VERSION" ]]; then
+                echo "::warning::${package_name}@${REQUESTED_VERSION} is already published with npm tag ${DIST_TAG}; continuing this partial release."
+              else
+                echo "${package_name}@${REQUESTED_VERSION} is already published without npm tag ${DIST_TAG}." >&2
+                exit 1
+              fi
+            fi
+          done < <(node scripts/release-packages.mjs list)
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level low
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build all release packages
+        run: pnpm build
+
+      - name: Test packages and CLI
+        run: |
+          pnpm test:packages:run
+          pnpm --filter cyrus-ai test:run
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Pack release artifacts in dependency order
+        shell: bash
+        run: |
+          mkdir -p "$RELEASE_ARTIFACTS"
+          while IFS=$'\t' read -r directory package_name; do
+            pnpm --dir "$directory" pack \
+              --out "$RELEASE_ARTIFACTS/%s-%v.tgz"
+          done < <(node scripts/release-packages.mjs list)
+
+      - name: Inspect package manifests
+        shell: bash
+        run: |
+          while IFS=$'\t' read -r directory package_name; do
+            tarball="$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz"
+            test -f "$tarball"
+            PACKAGE_NAME="$package_name" PACKAGE_TARBALL="$tarball" node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+
+          const packed = JSON.parse(
+            execFileSync("tar", ["-xOf", process.env.PACKAGE_TARBALL, "package/package.json"], {
+              encoding: "utf8",
+            }),
+          );
+          if (packed.name !== process.env.PACKAGE_NAME || packed.version !== process.env.REQUESTED_VERSION) {
+            throw new Error(
+              `Packed ${packed.name}@${packed.version}; expected ${process.env.PACKAGE_NAME}@${process.env.REQUESTED_VERSION}.`,
+            );
+          }
+          for (const group of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+            for (const [dependency, range] of Object.entries(packed[group] ?? {})) {
+              if (String(range).startsWith("workspace:")) {
+                throw new Error(`${packed.name} still contains ${dependency}: ${range}.`);
+              }
+            }
+          }
+          NODE
+          done < <(node scripts/release-packages.mjs list)
+
+      - name: Smoke-test the packed CLI
+        shell: bash
+        run: |
+          release_tarballs=()
+          while IFS=$'\t' read -r directory package_name; do
+            release_tarballs+=("$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz")
+          done < <(node scripts/release-packages.mjs list)
+          npm install --global "${release_tarballs[@]}"
+          ACTUAL_VERSION="$(CYRUS_SENTRY_DISABLED=1 cyrus --version)"
+          if [[ "$ACTUAL_VERSION" != "$REQUESTED_VERSION" ]]; then
+            echo "Packed CLI reports ${ACTUAL_VERSION}; expected ${REQUESTED_VERSION}." >&2
+            exit 1
+          fi
+
+      - name: Upload inspected release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: cyrus-${{ inputs.version }}-packages
+          path: ${{ runner.temp }}/cyrus-release/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Install an OIDC-capable npm CLI
+        if: ${{ !inputs.dry_run }}
+        run: npm install --global npm@11.18.0
+
+      - name: Verify and publish packages in dependency order
+        shell: bash
+        run: |
+          verify_registry_version() {
+            local package_name="$1"
+            local published=""
+            local tagged=""
+            # npm warns that a fresh publish "may take a few minutes to become
+            # available", so allow up to 10 minutes before declaring failure.
+            local deadline=$((SECONDS + 600))
+            local attempt=0
+
+            while true; do
+              attempt=$((attempt + 1))
+              published="$(npm view "${package_name}@${REQUESTED_VERSION}" version 2>/dev/null || true)"
+              tagged="$(npm view "$package_name" "dist-tags.${DIST_TAG}" 2>/dev/null || true)"
+              if [[ "$published" == "$REQUESTED_VERSION" && "$tagged" == "$REQUESTED_VERSION" ]]; then
+                return 0
+              fi
+              if [[ "$SECONDS" -ge "$deadline" ]]; then
+                break
+              fi
+              echo "Waiting for ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG} to become visible (attempt ${attempt}, retrying for up to 10 minutes)."
+              sleep 10
+            done
+
+            echo "${package_name}@${REQUESTED_VERSION} is not consistently visible with npm tag ${DIST_TAG} after 10 minutes." >&2
+            return 1
+          }
+
+          tarball_integrity() {
+            TARBALL_PATH="$1" node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+
+          const digest = createHash("sha512")
+            .update(readFileSync(process.env.TARBALL_PATH))
+            .digest("base64");
+          process.stdout.write(`sha512-${digest}`);
+          NODE
+          }
+
+          while IFS=$'\t' read -r directory package_name; do
+            tarball="$RELEASE_ARTIFACTS/${package_name}-${REQUESTED_VERSION}.tgz"
+            if npm view "${package_name}@${REQUESTED_VERSION}" version >/dev/null 2>&1; then
+              verify_registry_version "$package_name"
+              registry_integrity="$(npm view "${package_name}@${REQUESTED_VERSION}" dist.integrity)"
+              packed_integrity="$(tarball_integrity "$tarball")"
+              if [[ "$registry_integrity" != "$packed_integrity" ]]; then
+                echo "${package_name}@${REQUESTED_VERSION} does not match the artifact packed by this run; refusing a mixed-commit release." >&2
+                exit 1
+              fi
+              echo "Skipping immutable ${package_name}@${REQUESTED_VERSION}; verifying npm tag ${DIST_TAG}."
+              continue
+            fi
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "Dry run would publish ${package_name}@${REQUESTED_VERSION} with npm tag ${DIST_TAG}."
+              continue
+            fi
+
+            npm publish "$tarball" --access public --tag "$DIST_TAG"
+            verify_registry_version "$package_name"
+          done < <(node scripts/release-packages.mjs list)
+
+      - name: Tag the release
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "v${REQUESTED_VERSION}" --message "Release v${REQUESTED_VERSION}" "$GITHUB_SHA"
+          git push origin "v${REQUESTED_VERSION}"
+
+      - name: Create the GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/release-packages.mjs notes "$REQUESTED_VERSION" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "v${REQUESTED_VERSION}" \
+            --verify-tag \
+            --title "v${REQUESTED_VERSION}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Write release summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          if [[ "$JOB_STATUS" != "success" ]]; then
+            action="Failed before the release completed"
+          elif [[ "$DRY_RUN" == "true" ]]; then
+            action="Verified without publishing"
+          else
+            action="Published, tagged, and released"
+          fi
+          linear_issues="$(
+            node scripts/release-packages.mjs notes "$REQUESTED_VERSION" 2>/dev/null \
+              | grep -Eo 'CYPACK-[0-9]+' \
+              | sort -u \
+              | paste -sd ',' - \
+              | sed 's/,/, /g'
+          )" || linear_issues=""
+          package_count="$(
+            node scripts/release-packages.mjs list 2>/dev/null \
+              | wc -l \
+              | tr -d ' '
+          )" || package_count="unknown"
+          {
+            echo "## Cyrus CLI"
+            echo
+            echo "- **Result:** ${action}"
+            echo "- **Version:** \`${REQUESTED_VERSION}\`"
+            echo "- **npm tag:** \`${DIST_TAG}\`"
+            echo "- **Packages:** ${package_count} coordinated artifacts"
+            echo "- **Source:** \`${GITHUB_SHA}\` on \`${GITHUB_REF_NAME}\`"
+            if [[ -n "$linear_issues" ]]; then
+              echo "- **Post-release Linear transition:** ${linear_issues} → \`ReleasedMonitoring\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -46,6 +46,9 @@ interface V2CyrusAgentSession {
 	};
 	claudeSessionId?: string;
 	geminiSessionId?: string;
+	codexSessionId?: string;
+	cursorSessionId?: string;
+	opencodeSessionId?: string;
 	metadata?: Record<string, unknown>;
 }
 
@@ -118,7 +121,13 @@ export class PersistenceManager {
 				savedAt: new Date().toISOString(),
 				state,
 			};
-			await writeFile(stateFile, JSON.stringify(stateData, null, 2), "utf8");
+			// Write-then-rename so the state file is always a complete document.
+			// A plain writeFile interrupted mid-write (SIGKILL, OOM kill, power
+			// loss) leaves truncated JSON that the next boot cannot parse, which
+			// orphans every in-flight session.
+			const tmpFile = `${stateFile}.tmp`;
+			await writeFile(tmpFile, JSON.stringify(stateData, null, 2), "utf8");
+			await rename(tmpFile, stateFile);
 		} catch (error) {
 			this.logger.error("Failed to save EdgeWorker state:", error);
 			throw error;
@@ -136,7 +145,13 @@ export class PersistenceManager {
 				return null;
 			}
 
-			const stateData = JSON.parse(await readFile(stateFile, "utf8"));
+			const rawState = await readFile(stateFile, "utf8");
+			if (!rawState.trim()) {
+				// deleteStateFile clears the file rather than unlinking it; an
+				// empty file is "no state", not a parse error.
+				return null;
+			}
+			const stateData = JSON.parse(rawState);
 
 			// Validate state structure exists
 			if (!stateData.state) {
@@ -311,6 +326,9 @@ export class PersistenceManager {
 			workspace: v2Session.workspace,
 			claudeSessionId: v2Session.claudeSessionId,
 			geminiSessionId: v2Session.geminiSessionId,
+			codexSessionId: v2Session.codexSessionId,
+			cursorSessionId: v2Session.cursorSessionId,
+			opencodeSessionId: v2Session.opencodeSessionId,
 			metadata: v2Session.metadata,
 			// New field: structured issue context
 			issueContext,

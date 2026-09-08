@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-ai",
-	"version": "0.2.63",
+	"version": "0.2.71",
 	"description": "AI-powered Linear issue automation using Claude",
 	"main": "dist/src/app.js",
 	"types": "dist/src/app.d.ts",
@@ -27,7 +27,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/ceedaragents/cyrus.git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
 		"directory": "apps/cli"
 	},
 	"keywords": [
@@ -41,7 +41,7 @@
 	"license": "MIT",
 	"dependencies": {
 		"@linear/sdk": "^64.0.0",
-		"@sentry/node": "^9.47.1",
+		"@sentry/node": "^10.65.0",
 		"commander": "^14.0.2",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
@@ -50,8 +50,8 @@
 		"cyrus-edge-worker": "workspace:*",
 		"cyrus-slack-event-transport": "workspace:*",
 		"dotenv": "^16.5.0",
-		"express": "^5.2.0",
-		"fastify": "^5.8.5",
+		"express": "^5.2.1",
+		"fastify": "^5.12.1",
 		"file-type": "^21.0.0",
 		"fs-extra": "^11.3.0",
 		"node-fetch": "^2.7.0",
@@ -60,9 +60,9 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"@vitest/ui": "^4.1.0",
-		"nodemon": "^2.0.22",
+		"@vitest/ui": "^4.1.10",
+		"nodemon": "^3.1.14",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	}
 }

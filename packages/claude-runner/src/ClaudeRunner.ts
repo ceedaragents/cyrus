@@ -9,14 +9,19 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
+	type BackgroundTaskSummary,
 	type CanUseTool,
+	type HookCallbackMatcher,
+	type HookEvent,
 	type PermissionResult,
 	type Query,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
+	type SessionCronSummary,
+	type StopHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { AskUserQuestionInput } from "cyrus-core";
+import type { AgentPendingWork, AskUserQuestionInput } from "cyrus-core";
 import {
 	createLogger,
 	type IAgentRunner,
@@ -189,6 +194,8 @@ function buildSanitizedQueryOptions(
 	out.hasExtraArgs = !!o.extraArgs;
 	out.hasPathToClaudeCodeExecutable =
 		typeof o.pathToClaudeCodeExecutable === "string";
+	out.hasSpawnClaudeCodeProcess =
+		typeof o.spawnClaudeCodeProcess === "function";
 
 	return out;
 }
@@ -269,6 +276,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private canUseToolCallback: CanUseTool | undefined;
 	private repositoryEnv: Record<string, string> = {};
 	private keepSessionWarm: boolean;
+	private pendingSessionCrons: SessionCronSummary[] = [];
+	private pendingBackgroundTasks: BackgroundTaskSummary[] = [];
 
 	constructor(config: ClaudeRunnerConfig, keepSessionWarm = false) {
 		super();
@@ -458,6 +467,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			startedAt: new Date(),
 			isRunning: true,
 		};
+
+		// Reset pending-work state from any previous query on this runner
+		this.pendingSessionCrons = [];
+		this.pendingBackgroundTasks = [];
 
 		const isResumed = !!this.config.resumeSessionId;
 		this.logger.event(isResumed ? "session_resumed" : "session_started", {
@@ -703,16 +716,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					// Only use MCP servers we explicitly pass via `mcpConfig` /
-					// `mcpServers`. The flag is undertyped in the SDK's TS
-					// definition (described as "strict validation") but Claude
-					// Code's `--strict-mcp-config` CLI help is unambiguous:
-					// "Only use MCP servers from --mcp-config, ignoring all
-					// other MCP configurations." That's the contract we want
-					// for hosted sessions — never silently inherit servers
-					// from the user's `~/.claude.json`, project `.mcp.json`,
-					// or other ambient sources.
-					strictMcpConfig: true,
-					...(this.config.hooks && { hooks: this.config.hooks }),
+					// `mcpServers` by default. Operators may opt out to let Claude
+					// Code also load project/user settings, plugins, and authenticated
+					// claude.ai connectors.
+					strictMcpConfig: this.config.strictMcpConfig ?? true,
+					hooks: this.buildHooksWithPendingWorkRecorder(),
 					...(this.config.plugins?.length && { plugins: this.config.plugins }),
 					...(this.config.skills !== undefined && {
 						skills: this.config.skills,
@@ -725,6 +733,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(this.config.sandbox && { sandbox: this.config.sandbox }),
 					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
 					...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
+					...(this.config.spawnClaudeCodeProcess && {
+						spawnClaudeCodeProcess: this.config.spawnClaudeCodeProcess,
+					}),
 				},
 			};
 
@@ -817,7 +828,25 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					!this.keepSessionWarm &&
 					this.streamingPrompt
 				) {
-					this.streamingPrompt.complete();
+					// The Stop hook fires before the result message reaches this
+					// loop, so the pending-work snapshot is fresh for this turn.
+					// When a scheduled wakeup or background task is still in
+					// flight, completing the prompt would close the CLI's stdin
+					// and kill the in-process timer with it (verified in the
+					// CYPACK-1310 test drive) — hold the prompt open instead and
+					// let the wakeup turn run; its own Stop hook reports empty
+					// pending work, and the result that follows completes the
+					// prompt here. Error results always complete: pending-work
+					// state may be stale when a turn dies mid-flight.
+					if (message.subtype === "success" && this.hasPendingWork()) {
+						this.logger.event("session_held_open_for_pending_work", {
+							sessionCronCount: this.pendingSessionCrons.length,
+							backgroundTaskCount: this.pendingBackgroundTasks.length,
+							claudeSessionId: this.sessionInfo?.sessionId,
+						});
+					} else {
+						this.streamingPrompt.complete();
+					}
 				}
 			}
 
@@ -979,6 +1008,69 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	isWarm(): boolean {
 		return this.keepSessionWarm;
+	}
+
+	/**
+	 * Pending work that will wake this session later, as last reported by the
+	 * SDK's Stop hook. This is the only reliable signal — the message stream
+	 * (including the `result` message) is identical with and without pending
+	 * wakeups (verified empirically in the CYPACK-1310 test drive).
+	 */
+	getPendingWork(): AgentPendingWork {
+		return {
+			sessionCrons: [...this.pendingSessionCrons],
+			backgroundTasks: [...this.pendingBackgroundTasks],
+		};
+	}
+
+	/**
+	 * Whether the session has scheduled wakeups/crons or in-flight background
+	 * tasks that will wake it later.
+	 */
+	hasPendingWork(): boolean {
+		return (
+			this.pendingSessionCrons.length > 0 ||
+			this.pendingBackgroundTasks.length > 0
+		);
+	}
+
+	/**
+	 * Merge the caller-provided hooks with an internal Stop hook that records
+	 * the SDK's pending-work snapshot (`session_crons` + `background_tasks`).
+	 *
+	 * The Stop hook is the only place the SDK reports work that will wake the
+	 * session later (ScheduleWakeup/CronCreate timers, backgrounded tasks);
+	 * the recorder runs on every stop attempt and overwrites the previous
+	 * snapshot, so by the time the `result` message reaches the query loop
+	 * the snapshot is current for that turn (the hook fires before `result`
+	 * is emitted). The recorder never blocks the stop.
+	 */
+	private buildHooksWithPendingWorkRecorder(): Partial<
+		Record<HookEvent, HookCallbackMatcher[]>
+	> {
+		const recorder: HookCallbackMatcher = {
+			matcher: ".*",
+			hooks: [
+				async (input) => {
+					const stopInput = input as StopHookInput;
+					this.pendingSessionCrons = stopInput.session_crons ?? [];
+					this.pendingBackgroundTasks = stopInput.background_tasks ?? [];
+					if (this.hasPendingWork()) {
+						this.logger.event("pending_work_recorded", {
+							sessionCronCount: this.pendingSessionCrons.length,
+							backgroundTaskCount: this.pendingBackgroundTasks.length,
+							claudeSessionId: this.sessionInfo?.sessionId,
+						});
+					}
+					return {};
+				},
+			],
+		};
+		const configHooks = this.config.hooks ?? {};
+		return {
+			...configHooks,
+			Stop: [...(configHooks.Stop ?? []), recorder],
+		};
 	}
 
 	/**

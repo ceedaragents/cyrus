@@ -1,7 +1,12 @@
 {
 	"name": "cyrus-core",
-	"version": "0.2.63",
+	"version": "0.2.71",
 	"description": "Core business logic for Cyrus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/core"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -18,16 +23,16 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-agent-sdk": "0.3.170",
+		"@anthropic-ai/claude-agent-sdk": "0.3.263",
 		"@linear/sdk": "^64.0.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"fastify": "^5.8.5",
-		"tsx": "^4.20.6",
+		"fastify": "^5.12.1",
+		"tsx": "^4.23.0",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	},
 	"publishConfig": {
 		"access": "public"

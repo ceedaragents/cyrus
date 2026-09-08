@@ -436,13 +436,12 @@ The agent automatically moves issues to the "started" state when assigned. Linea
    - `packages/edge-worker/src/SlackChatAdapter.ts` — Builds the Slack chat system prompt including orchestration notes with repo routing syntax
    - `packages/edge-worker/src/ActivityPoster.ts` — Posts routing activities to Linear timeline (method display names, formatting)
 
-9. **Adding a new top-level `EdgeWorkerConfig` field**: Adding a property to the `EdgeWorkerConfig` Zod schema in `packages/core/src/config-schemas.ts` is **not enough** to make it available at runtime. `ConfigManager.loadConfigSafely()` in `packages/edge-worker/src/ConfigManager.ts` reads `config.json`, then explicitly merges a **hardcoded whitelist** of fields onto its in-memory config — every field not on that list is silently dropped on each reload. Likewise, `detectGlobalConfigChanges()` only fires a `configChanged` event when one of a hardcoded list of keys differs from the previous reload.
+9. **Adding a new top-level `EdgeWorkerConfig` field**: Adding a property to the `EdgeConfigSchema` Zod schema in `packages/core/src/config-schemas.ts` is **not enough** to make it available at runtime. Two hand-maintained copy sites exist, and both now have guardrails that fail fast when a field is missed (added after `strictMcpConfig` was silently dropped in CYPACK-1478; `slackAllowedTools` & friends were dropped the same way in CYHOST-967):
 
-   When you add a new top-level field you **must update both lists**:
-   - The merge in `loadConfigSafely()` (around line ~200) — add `<newField>: parsedConfig.<newField> || this.config.<newField>`.
-   - The `globalKeys` array in `detectGlobalConfigChanges()` — add the field name so changes to it trigger downstream `setConfig` calls on dependent services (e.g., `ToolPermissionResolver`).
+   - **Cold start** — `WorkerService.startEdgeWorker()` in `apps/cli/src/services/WorkerService.ts` spreads the entire file config (`...edgeConfig`) into the `EdgeWorkerConfig`, so plain pass-through fields flow automatically and need **no** code change. Only add an explicit line below the spread if the field needs env-var precedence or a computed/param override — never add a redundant pass-through line. The `"forwards every EdgeConfig field"` test in `WorkerService.test.ts` has a schema-complete fixture that fails when a new schema field isn't covered.
+   - **Hot reload** — `ConfigManager` in `packages/edge-worker/src/ConfigManager.ts` merges a hardcoded list of fields in `loadConfigSafely()` and watches the same list in `detectGlobalConfigChanges()`. Both are driven by the `RELOAD_MERGED_KEYS` const at the top of the file, which has a **compile-time exhaustiveness check**: adding a schema field without classifying it into `RELOAD_MERGED_KEYS` (plus a merge line in `loadConfigSafely()`) or `RELOAD_EXEMPT_KEYS` is a `tsc` error that names the missing key.
 
-   Symptom of forgetting this: the field appears in `~/.cyrus/config.json`, the cyrus process is restarted, but downstream code keeps seeing the default (or never picks up hot-reloads). This bit us with `slackAllowedTools` / `githubAllowedTools` / `slackMcpConfigs` / `linearMcpConfigs` / `githubMcpConfigs` during CYHOST-967.
+   So the workflow for a new field is: add it to `EdgeConfigSchema`, let `tsc` and the CLI test point at the two sites, add the merge line + `RELOAD_MERGED_KEYS` entry (hot reload) and — only if it needs env precedence — an explicit override in `startEdgeWorker()`.
 
 10. **Changing the `cyrus-tools` MCP server's exposed tools**: When you add or remove a tool from the inline `cyrus-tools` MCP server (the one served by `apps/proxy` / wired up in `McpConfigService.buildMcpConfig`), you **must also update the catalog `cyrus-hosted` keeps for the `/settings/tools` UI**. cyrus-hosted maintains a per-server tool list so its grid can render a row per tool (with the right per-platform toggle) without having to introspect a live MCP server. Today that catalog lives in `apps/app/src/lib/cyrus-config/builder.ts` under the `KNOWN_MCP_TOOLS` map (look for the `"mcp__cyrus-tools"` key); update that array in the same PR — the same constants are also imported by the platform-default lists in `packages/core/src/allowed-tools-defaults.ts` when a particular `cyrus-tools` tool is enabled by default, so reflect that there too if the new tool should be on out of the box.
 
@@ -468,7 +467,7 @@ transitive-dependency vulnerabilities:
    transitive. Regenerate the lockfile and let pnpm's natural resolution do the
    work.
 
-2. **Only use root `pnpm.overrides` when a direct-dep bump cannot reach the
+2. **Only use workspace-level overrides in `pnpm-workspace.yaml` when a direct-dep bump cannot reach the
    vulnerable transitive.** This is the fallback for deep transitives (3+
    levels deep) whose owning direct dep has no released version that resolves
    to the patched transitive — typically because upstream hasn't released yet
@@ -477,7 +476,7 @@ transitive-dependency vulnerabilities:
 
 3. **Always clean up overrides when a future dep bump makes them redundant.**
    When you update a direct dependency (security or otherwise), check whether
-   any existing entry in `pnpm.overrides` is now satisfied naturally by the
+   any existing override entry is now satisfied naturally by the
    new resolution. If so, **remove that override in the same change**. Verify
    with `pnpm install && pnpm audit` that the removal is safe before committing.
 

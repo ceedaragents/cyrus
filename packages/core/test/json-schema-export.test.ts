@@ -43,6 +43,9 @@ describe("JSON Schema export", () => {
 				"claudeDefaultFallbackModel",
 				"geminiDefaultModel",
 				"codexDefaultModel",
+				"opencodeDefaultModel",
+				"opencodeDefaultFallbackModel",
+				"inferOpenCodeRunnerFromProviderModel",
 				"defaultRunner",
 				"defaultModel",
 				"defaultFallbackModel",
@@ -55,6 +58,7 @@ describe("JSON Schema export", () => {
 				"slackMcpConfigs",
 				"linearMcpConfigs",
 				"githubMcpConfigs",
+				"strictMcpConfig",
 				"issueUpdateTrigger",
 				"prReviewTrigger",
 				"userAccessControl",
@@ -75,6 +79,7 @@ describe("JSON Schema export", () => {
 				"gemini",
 				"codex",
 				"cursor",
+				"opencode",
 			]);
 		});
 

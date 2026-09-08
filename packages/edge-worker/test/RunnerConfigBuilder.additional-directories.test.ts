@@ -5,6 +5,7 @@ import {
 	type IMcpConfigProvider,
 	type IRunnerSelector,
 	RunnerConfigBuilder,
+	resolveIssueMcpConfigPath,
 } from "../src/RunnerConfigBuilder.js";
 
 const silentLogger: ILogger = {
@@ -118,5 +119,33 @@ describe("RunnerConfigBuilder additionalDirectories (multi-repo skill discovery)
 		const { config } = buildIssueConfig(session);
 
 		expect(config.additionalDirectories).toEqual(["/ws/root/repo-b"]);
+	});
+});
+
+describe("resolveIssueMcpConfigPath", () => {
+	it("uses platform-level MCP configs when the repo inherits platform tools", () => {
+		const repository = makeRepository();
+		const result = resolveIssueMcpConfigPath(
+			repository,
+			["/home/user/.cyrus/mcp-configs/mcp-supabase.json"],
+			() => "/repo/.mcp.json",
+		);
+
+		expect(result).toBe("/home/user/.cyrus/mcp-configs/mcp-supabase.json");
+	});
+
+	it("uses repo MCP config when the repo owns an allowedTools override", () => {
+		const repository = {
+			...makeRepository(),
+			allowedTools: ["Read(**)", "mcp__repo"],
+			mcpConfigPath: "/repo/.mcp.json",
+		} as unknown as RepositoryConfig;
+		const result = resolveIssueMcpConfigPath(
+			repository,
+			["/home/user/.cyrus/mcp-configs/mcp-supabase.json"],
+			(repo) => (repo as RepositoryConfig).mcpConfigPath,
+		);
+
+		expect(result).toBe("/repo/.mcp.json");
 	});
 });

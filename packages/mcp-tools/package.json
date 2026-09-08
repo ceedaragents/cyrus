@@ -1,7 +1,12 @@
 {
 	"name": "cyrus-mcp-tools",
-	"version": "0.2.63",
+	"version": "0.2.71",
 	"description": "Runner-neutral MCP tool servers for Cyrus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyrusagents/cyrus.git",
+		"directory": "packages/mcp-tools"
+	},
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -17,7 +22,7 @@
 	},
 	"dependencies": {
 		"@linear/sdk": "^64.0.0",
-		"@modelcontextprotocol/sdk": "^1.29.0",
+		"@modelcontextprotocol/sdk": "^1.30.0",
 		"fs-extra": "^11.3.2",
 		"openai": "^6.9.1",
 		"zod": "^4.3.5"
@@ -26,7 +31,7 @@
 		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^20.0.0",
 		"typescript": "^5.3.3",
-		"vitest": "^4.1.0"
+		"vitest": "^4.1.10"
 	},
 	"publishConfig": {
 		"access": "public"

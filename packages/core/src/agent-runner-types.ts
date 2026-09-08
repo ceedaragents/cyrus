@@ -1,14 +1,17 @@
 import type {
+	BackgroundTaskSummary,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
 	SDKMessage,
 	SDKUserMessage,
 	SdkPluginConfig,
+	SessionCronSummary,
 } from "@anthropic-ai/claude-agent-sdk";
 // Import the AskUserQuestionInput type from the SDK's tool input types
 // This ensures we use the SDK's official type definitions
 import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
+import type { OpenCodeStateScope, RunnerType } from "./config-schemas.js";
 import type { ILogger } from "./logging/ILogger.js";
 
 // ============================================================================
@@ -24,6 +27,29 @@ import type { ILogger } from "./logging/ILogger.js";
  * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
  */
 export type AskUserQuestionInput = SDKAskUserQuestionInput;
+
+// ============================================================================
+// PENDING WORK TYPES
+// ============================================================================
+
+/**
+ * Work that will wake an agent session later, reported by the SDK's Stop
+ * hook (`session_crons` / `background_tasks` on `StopHookInput`). These are
+ * the only signals that distinguish "session is done" from "session is
+ * paused waiting to be woken" — the message stream itself (including the
+ * `result` message) carries no pending-work information. See the F1 test
+ * drive `2026-06-11-cypack-1310-schedulewakeup.md` for the evidence.
+ */
+export interface AgentPendingWork {
+	/**
+	 * Session-scoped cron tasks (CronCreate, ScheduleWakeup, /loop) that will
+	 * wake the session later. One-shot wakeups have `recurring: false` and a
+	 * cron `schedule` encoding their single fire time.
+	 */
+	sessionCrons: SessionCronSummary[];
+	/** In-flight background work (running/pending + backgrounded tasks). */
+	backgroundTasks: BackgroundTaskSummary[];
+}
 
 /**
  * Simplified option type for easier API consumption.
@@ -333,6 +359,17 @@ export interface IAgentRunner {
 	isWarm?(): boolean;
 
 	/**
+	 * Pending work that will wake this session later (scheduled wakeups,
+	 * session crons, in-flight background tasks), as last reported by the
+	 * SDK's Stop hook. Runners that support this return the latest snapshot;
+	 * both arrays are empty when nothing is scheduled or in flight.
+	 *
+	 * Consult this when a `result` message arrives to decide whether the
+	 * session is truly finished or merely paused until a wakeup fires.
+	 */
+	getPendingWork?(): AgentPendingWork;
+
+	/**
 	 * Check if the session is currently running
 	 *
 	 * @returns True if the session is active and processing, false otherwise
@@ -386,6 +423,15 @@ export interface IAgentRunner {
 	getFormatter(): IMessageFormatter;
 }
 
+export type JsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| JsonValue[]
+	| JsonObject;
+export type JsonObject = { [key: string]: JsonValue };
+
 /**
  * Configuration for agent runner
  *
@@ -425,6 +471,8 @@ export interface AgentRunnerConfig {
 	additionalDirectories?: string[];
 	/** Session ID to resume from a previous session */
 	resumeSessionId?: string;
+	/** Runner implementation that owns resumeSessionId, used to avoid cross-runner resumes */
+	runnerType?: RunnerType;
 	/** Workspace name for logging and organization */
 	workspaceName?: string;
 	/** Additional text to append to default system prompt */
@@ -433,6 +481,19 @@ export interface AgentRunnerConfig {
 	mcpConfigPath?: string | string[];
 	/** MCP server configurations (inline) */
 	mcpConfig?: Record<string, McpServerConfig>;
+	/**
+	 * Whether Claude should use only MCP servers explicitly supplied by Cyrus.
+	 * Defaults to true for Claude sessions.
+	 */
+	strictMcpConfig?: boolean;
+	/** Global OpenCode runtime config overrides from Cyrus config */
+	opencodeGlobalConfig?: JsonObject;
+	/** Repository OpenCode runtime config overrides from Cyrus config */
+	opencodeRepositoryConfig?: JsonObject;
+	/** OpenCode CLI config/state/cache scope. Defaults to inheriting parent env. */
+	opencodeStateScope?: OpenCodeStateScope;
+	/** Stable key used when opencodeStateScope is repository. */
+	opencodeStateKey?: string;
 	/** AI model to use (e.g., "opus", "sonnet", "haiku") */
 	model?: string;
 	/** Fallback model if primary is unavailable */
@@ -475,7 +536,8 @@ export interface AgentRunnerConfig {
 	 * - `string[]`: enable only the listed skills.
 	 *
 	 * Used to enforce per-skill scope (repository / Linear team / Linear label).
-	 * Only the Claude runner respects this today.
+	 * Claude passes this to its SDK; Codex uses it to stage only allowed skills
+	 * into its native repository skill discovery layout.
 	 */
 	skills?: string[] | "all";
 	/**
@@ -551,6 +613,7 @@ export type AgentUserMessage = SDKUserMessage;
  * underlying provider SDK.
  */
 export type {
+	BackgroundTaskSummary,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
@@ -559,4 +622,5 @@ export type {
 	SDKMessage,
 	SDKResultMessage,
 	SDKUserMessage,
+	SessionCronSummary,
 } from "@anthropic-ai/claude-agent-sdk";

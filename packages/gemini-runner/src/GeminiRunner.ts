@@ -33,6 +33,12 @@ import type {
 	GeminiSessionInfo,
 } from "./types.js";
 
+const NOT_APPLIED_FALLBACK_CREDIT = {
+	fallback_credit: {
+		status: { type: "not_applied", reason: "not_enabled" },
+	},
+} as const;
+
 export declare interface GeminiRunner {
 	on<K extends keyof GeminiRunnerEvents>(
 		event: K,
@@ -458,6 +464,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					output_tokens: 0,
 					cache_creation_input_tokens: 0,
 					cache_read_input_tokens: 0,
+					...NOT_APPLIED_FALLBACK_CREDIT,
 					cache_creation: {
 						ephemeral_1h_input_tokens: 0,
 						ephemeral_5m_input_tokens: 0,

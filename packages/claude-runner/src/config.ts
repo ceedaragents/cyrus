@@ -23,6 +23,7 @@ export const availableTools = [
 	// Execution tools
 	"Bash",
 	"Task",
+	"ListAgents",
 
 	// Web tools
 	"WebFetch",
@@ -42,13 +43,10 @@ export const availableTools = [
 	"Skill",
 
 	// User interaction tools
-	"AskUserQuestion",
 	"SendMessage",
 	"PushNotification",
 
 	// Plan and worktree management
-	"EnterPlanMode",
-	"ExitPlanMode",
 	"EnterWorktree",
 	"ExitWorktree",
 
@@ -65,15 +63,17 @@ export const availableTools = [
 	"TaskOutput",
 	"TaskStop",
 
-	// Team management
-	"TeamCreate",
-	"TeamDelete",
-
 	// Tool discovery
 	"ToolSearch",
 
+	// Design sync
+	"DesignSync",
+
 	// Workflow orchestration
 	"Workflow",
+
+	// Findings reporting
+	"ReportFindings",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -92,12 +92,11 @@ export const readOnlyTools: ToolName[] = [
 	"TaskGet",
 	"TaskList",
 	"Task",
+	"ListAgents",
 	"Skill",
 	"Monitor",
 	"LSP",
 	"TaskOutput",
-	"EnterPlanMode",
-	"ExitPlanMode",
 	"ToolSearch",
 ];
 
