@@ -301,6 +301,17 @@ export class EdgeWorker extends EventEmitter {
 	>();
 
 	/**
+	 * Agent session IDs whose `created` webhook has already been accepted for
+	 * processing. Linear delivers webhooks at-least-once and retries deliveries
+	 * it considers failed (roughly 1 minute and 1 hour later), so the same
+	 * `AgentSessionEvent.created` payload can arrive multiple times. A given
+	 * agent session is only ever created once, so a repeated ID is always a
+	 * duplicate delivery and must not spawn a second runner in the same
+	 * worktree.
+	 */
+	private acceptedAgentSessionCreations = new Set<string>();
+
+	/**
 	 * Resolve `~/` prefixes in path-bearing config fields that are otherwise
 	 * passed verbatim to `fs.readFileSync` (which does not expand tildes).
 	 * Repository-scoped paths are normalized separately in addNew /
@@ -4337,6 +4348,22 @@ ${taskSection}`;
 		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
+		const agentSessionId = webhook.agentSession?.id;
+
+		// Deduplicate at-least-once webhook delivery. The set is marked
+		// synchronously (before the first await) so a redelivery arriving while
+		// the first one is still being processed is also rejected. Sessions
+		// restored from persisted state are seeded into the set in
+		// restoreMappings, covering retries that span a restart.
+		if (agentSessionId) {
+			if (this.acceptedAgentSessionCreations.has(agentSessionId)) {
+				this.logger.warn(
+					`Ignoring duplicate agentSessionCreated webhook for session ${agentSessionId}`,
+				);
+				return;
+			}
+			this.acceptedAgentSessionCreations.add(agentSessionId);
+		}
 		const issueId = webhook.agentSession?.issue?.id;
 
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
@@ -7105,6 +7132,14 @@ ${input.userComment}
 				state.agentSessions,
 				state.agentSessionEntries,
 			);
+
+			// Restored sessions already had their created webhook processed in a
+			// previous run; Linear retries webhook deliveries for up to an hour,
+			// so a redelivered created webhook after a restart must not spawn a
+			// second runner for them.
+			for (const sessionId of Object.keys(state.agentSessions)) {
+				this.acceptedAgentSessionCreations.add(sessionId);
+			}
 
 			// Rebuild session-to-repo mapping from issueRepositoryCache
 			// For each restored session, look up its issue in the cache to find the repo
